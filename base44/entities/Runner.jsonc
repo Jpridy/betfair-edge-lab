@@ -1,0 +1,60 @@
+{
+  "name": "Runner",
+  "type": "object",
+  "properties": {
+    "marketId": {
+      "type": "string"
+    },
+    "betfairSelectionId": {
+      "type": "string"
+    },
+    "runnerName": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "REMOVED",
+        "WINNER",
+        "LOSER"
+      ]
+    },
+    "bestBackPrice": {
+      "type": "number"
+    },
+    "bestBackSize": {
+      "type": "number"
+    },
+    "bestLayPrice": {
+      "type": "number"
+    },
+    "bestLaySize": {
+      "type": "number"
+    },
+    "lastTradedPrice": {
+      "type": "number"
+    },
+    "tradedVolume": {
+      "type": "number"
+    },
+    "impliedProbability": {
+      "type": "number"
+    },
+    "favouriteRank": {
+      "type": "number"
+    },
+    "isFavourite": {
+      "type": "boolean",
+      "default": false
+    },
+    "isOutsider": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "marketId",
+    "runnerName"
+  ]
+}

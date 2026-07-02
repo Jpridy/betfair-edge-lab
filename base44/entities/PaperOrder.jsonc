@@ -1,0 +1,88 @@
+{
+  "name": "PaperOrder",
+  "type": "object",
+  "properties": {
+    "strategyName": {
+      "type": "string"
+    },
+    "marketId": {
+      "type": "string"
+    },
+    "runnerId": {
+      "type": "string"
+    },
+    "runnerName": {
+      "type": "string"
+    },
+    "marketName": {
+      "type": "string"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "BACK",
+        "LAY"
+      ]
+    },
+    "orderType": {
+      "type": "string",
+      "enum": [
+        "LIMIT",
+        "MARKET"
+      ]
+    },
+    "requestedOdds": {
+      "type": "number"
+    },
+    "matchedOdds": {
+      "type": "number"
+    },
+    "requestedStake": {
+      "type": "number"
+    },
+    "matchedStake": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "signal_created",
+        "risk_checked",
+        "submitted",
+        "matched",
+        "partially_matched",
+        "unmatched",
+        "cancelled",
+        "lapsed",
+        "failed"
+      ]
+    },
+    "expectedValue": {
+      "type": "number"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "won",
+        "lost",
+        "void"
+      ]
+    },
+    "grossProfit": {
+      "type": "number"
+    },
+    "commission": {
+      "type": "number"
+    },
+    "netProfit": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "marketId",
+    "side",
+    "requestedOdds",
+    "requestedStake"
+  ]
+}

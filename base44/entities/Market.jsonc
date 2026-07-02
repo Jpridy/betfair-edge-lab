@@ -1,0 +1,58 @@
+{
+  "name": "Market",
+  "type": "object",
+  "properties": {
+    "betfairMarketId": {
+      "type": "string"
+    },
+    "eventType": {
+      "type": "string"
+    },
+    "country": {
+      "type": "string"
+    },
+    "venue": {
+      "type": "string"
+    },
+    "eventName": {
+      "type": "string"
+    },
+    "marketName": {
+      "type": "string"
+    },
+    "marketType": {
+      "type": "string"
+    },
+    "startTime": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "SUSPENDED",
+        "CLOSED",
+        "SETTLED"
+      ]
+    },
+    "inPlay": {
+      "type": "boolean",
+      "default": false
+    },
+    "totalMatched": {
+      "type": "number"
+    },
+    "numberOfRunners": {
+      "type": "number"
+    },
+    "watched": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "betfairMarketId",
+    "eventName",
+    "marketName"
+  ]
+}

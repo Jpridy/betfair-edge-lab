@@ -1,0 +1,61 @@
+{
+  "name": "BacktestRun",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "strategyName": {
+      "type": "string"
+    },
+    "startingBankroll": {
+      "type": "number"
+    },
+    "endingBankroll": {
+      "type": "number"
+    },
+    "totalBets": {
+      "type": "number"
+    },
+    "wins": {
+      "type": "number"
+    },
+    "losses": {
+      "type": "number"
+    },
+    "strikeRate": {
+      "type": "number"
+    },
+    "grossProfit": {
+      "type": "number"
+    },
+    "netProfit": {
+      "type": "number"
+    },
+    "roi": {
+      "type": "number"
+    },
+    "profitFactor": {
+      "type": "number"
+    },
+    "maxDrawdown": {
+      "type": "number"
+    },
+    "longestLosingStreak": {
+      "type": "number"
+    },
+    "averageOdds": {
+      "type": "number"
+    },
+    "averageStake": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "strategyName"
+  ]
+}

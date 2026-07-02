@@ -1,0 +1,39 @@
+{
+  "name": "BankrollHistory",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string"
+    },
+    "bankroll": {
+      "type": "number"
+    },
+    "dailyProfitLoss": {
+      "type": "number"
+    },
+    "totalProfitLoss": {
+      "type": "number"
+    },
+    "openExposure": {
+      "type": "number"
+    },
+    "drawdown": {
+      "type": "number"
+    },
+    "roi": {
+      "type": "number"
+    },
+    "strikeRate": {
+      "type": "number"
+    },
+    "longestLosingStreak": {
+      "type": "number"
+    },
+    "timestamp": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "bankroll"
+  ]
+}

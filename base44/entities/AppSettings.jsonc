@@ -1,0 +1,126 @@
+{
+  "name": "AppSettings",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "research",
+        "paper",
+        "live_locked"
+      ],
+      "default": "paper"
+    },
+    "commissionRate": {
+      "type": "number",
+      "default": 0.05
+    },
+    "bankroll": {
+      "type": "number",
+      "default": 10000
+    },
+    "baseStake": {
+      "type": "number",
+      "default": 100
+    },
+    "maxStake": {
+      "type": "number",
+      "default": 500
+    },
+    "maxStakePercent": {
+      "type": "number",
+      "default": 5
+    },
+    "dailyLossLimit": {
+      "type": "number",
+      "default": 500
+    },
+    "maxMarketExposure": {
+      "type": "number",
+      "default": 1000
+    },
+    "maxOpenOrders": {
+      "type": "number",
+      "default": 10
+    },
+    "maxTradesPerMarket": {
+      "type": "number",
+      "default": 5
+    },
+    "maxTradesPerDay": {
+      "type": "number",
+      "default": 50
+    },
+    "minimumLiquidity": {
+      "type": "number",
+      "default": 5000
+    },
+    "minimumTradedVolume": {
+      "type": "number",
+      "default": 10000
+    },
+    "minOdds": {
+      "type": "number",
+      "default": 1.5
+    },
+    "maxOdds": {
+      "type": "number",
+      "default": 20
+    },
+    "defaultTimeWindowStartSeconds": {
+      "type": "number",
+      "default": 300
+    },
+    "defaultTimeWindowEndSeconds": {
+      "type": "number",
+      "default": 30
+    },
+    "allowInPlay": {
+      "type": "boolean",
+      "default": false
+    },
+    "emergencyStopActive": {
+      "type": "boolean",
+      "default": false
+    },
+    "liveTradingEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "selectedJurisdiction": {
+      "type": "string",
+      "default": "AU"
+    },
+    "apiPollingInterval": {
+      "type": "number",
+      "default": 5
+    },
+    "strategyValueBetEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "strategyScalpingEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "strategyFavOutsiderEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "strategyCrossMarketEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "favouriteSideEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "outsiderSideEnabled": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "mode"
+  ]
+}

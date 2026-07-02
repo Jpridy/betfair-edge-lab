@@ -1,0 +1,62 @@
+{
+  "name": "StrategySignal",
+  "type": "object",
+  "properties": {
+    "strategyName": {
+      "type": "string"
+    },
+    "marketId": {
+      "type": "string"
+    },
+    "runnerId": {
+      "type": "string"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "BACK",
+        "LAY"
+      ]
+    },
+    "odds": {
+      "type": "number"
+    },
+    "stakeSuggestion": {
+      "type": "number"
+    },
+    "modelProbability": {
+      "type": "number"
+    },
+    "impliedProbability": {
+      "type": "number"
+    },
+    "fairOdds": {
+      "type": "number"
+    },
+    "edgePercent": {
+      "type": "number"
+    },
+    "expectedValue": {
+      "type": "number"
+    },
+    "confidence": {
+      "type": "number"
+    },
+    "signalStatus": {
+      "type": "string",
+      "enum": [
+        "active",
+        "expired",
+        "executed",
+        "blocked"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "strategyName",
+    "marketId"
+  ]
+}

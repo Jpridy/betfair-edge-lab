@@ -1,0 +1,51 @@
+{
+  "name": "MarketSnapshot",
+  "type": "object",
+  "properties": {
+    "marketId": {
+      "type": "string"
+    },
+    "runnerId": {
+      "type": "string"
+    },
+    "snapshotTime": {
+      "type": "string"
+    },
+    "bestBackPrice": {
+      "type": "number"
+    },
+    "bestBackSize": {
+      "type": "number"
+    },
+    "bestLayPrice": {
+      "type": "number"
+    },
+    "bestLaySize": {
+      "type": "number"
+    },
+    "lastTradedPrice": {
+      "type": "number"
+    },
+    "tradedVolume": {
+      "type": "number"
+    },
+    "totalMatched": {
+      "type": "number"
+    },
+    "spread": {
+      "type": "number"
+    },
+    "overround": {
+      "type": "number"
+    },
+    "inPlay": {
+      "type": "boolean"
+    },
+    "marketStatus": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "marketId"
+  ]
+}

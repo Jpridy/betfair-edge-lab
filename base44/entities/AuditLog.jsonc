@@ -1,0 +1,45 @@
+{
+  "name": "AuditLog",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "api",
+        "mode",
+        "settings",
+        "strategy",
+        "risk",
+        "order",
+        "emergency",
+        "system"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "error",
+        "critical"
+      ]
+    },
+    "user": {
+      "type": "string"
+    },
+    "details": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "category",
+    "severity"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "RiskEvent",
+  "type": "object",
+  "properties": {
+    "eventType": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical",
+        "emergency"
+      ]
+    },
+    "blocked": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "marketId": {
+      "type": "string"
+    },
+    "runnerId": {
+      "type": "string"
+    },
+    "orderId": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventType",
+    "severity",
+    "reason"
+  ]
+}
