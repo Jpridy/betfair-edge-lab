@@ -29,10 +29,10 @@ export default function StatusStrip() {
     },
     {
       label: 'Data',
-      value: apiConnected ? 'API Connected' : 'Disconnected',
+      value: apiConnected ? 'API Connected' : demoMode ? 'Demo Data' : 'Disconnected',
       icon: apiConnected ? Wifi : WifiOff,
-      color: apiConnected ? 'text-chart-1' : 'text-chart-4',
-      dot: apiConnected ? 'bg-chart-1' : 'bg-chart-4',
+      color: apiConnected ? 'text-chart-1' : demoMode ? 'text-chart-3' : 'text-chart-4',
+      dot: apiConnected ? 'bg-chart-1' : demoMode ? 'bg-chart-3' : 'bg-chart-4',
     },
     {
       label: 'Risk',
@@ -51,8 +51,8 @@ export default function StatusStrip() {
   ];
 
   return (
-    <div className="bg-card/50 border-b border-border px-4 md:px-6 py-2">
-      <div className="flex items-center gap-4 md:gap-6 overflow-x-auto">
+    <div className="bg-card/50 border-b border-border px-4 md:px-6 lg:px-8 py-2">
+      <div className="max-w-7xl mx-auto flex items-center gap-4 md:gap-8 overflow-x-auto">
         {items.map(item => {
           const Icon = item.icon;
           return (
