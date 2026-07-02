@@ -61,7 +61,7 @@ export default function BetfairConnection() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold text-foreground">Connect Your Betfair Account</div>
-                <div className="text-xs text-muted-foreground mt-1">Log in to Betfair using your stored credentials to link your exchange account.</div>
+                <div className="text-xs text-muted-foreground mt-1">Connect using your Betfair SSOID (session token) stored in app secrets.</div>
               </div>
               <StatusBadge status="warning">Not Connected</StatusBadge>
             </div>
@@ -78,17 +78,25 @@ export default function BetfairConnection() {
 
             <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Credentials Source</span>
-                <span className="font-mono text-foreground">App Secrets</span>
+                <span className="text-muted-foreground">Auth Method</span>
+                <span className="font-mono text-foreground">SSOID Key</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Required Secrets</span>
-                <span className="font-mono text-foreground">BETFAIR_USERNAME, BETFAIR_PASSWORD, BETFAIR_APP_KEY</span>
+                <span className="font-mono text-foreground">BETFAIR_SSOID, BETFAIR_APP_KEY</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Jurisdiction</span>
                 <span className="font-mono text-foreground">BETFAIR_JURISDICTION</span>
               </div>
+            </div>
+
+            <div className="bg-muted/20 border border-border rounded-lg p-3 text-xs text-muted-foreground space-y-1">
+              <div className="font-semibold text-foreground">How to get your SSOID:</div>
+              <div>1. Log in to <span className="font-mono text-chart-3">betfair.com</span> in your browser</div>
+              <div>2. Open DevTools (F12) → Application → Cookies → betfair.com</div>
+              <div>3. Copy the value of the <span className="font-mono text-chart-3">ssoid</span> cookie</div>
+              <div>4. Set it as the <span className="font-mono text-chart-3">BETFAIR_SSOID</span> secret in app settings</div>
             </div>
 
             <Button onClick={handleConnect} disabled={loading} className="w-full h-11 font-medium">

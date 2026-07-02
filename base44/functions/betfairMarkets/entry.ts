@@ -7,40 +7,16 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const appKey = Deno.env.get("BETFAIR_APP_KEY");
-    const username = Deno.env.get("BETFAIR_USERNAME");
-    const password = Deno.env.get("BETFAIR_PASSWORD");
     const jurisdiction = Deno.env.get("BETFAIR_JURISDICTION") || "AU";
-
-    if (!appKey || !username || !password) {
-      return Response.json({ error: 'Betfair credentials not configured' }, { status: 400 });
-    }
 
     let body;
     try { body = await req.json(); } catch { body = {}; }
-    let sessionToken = body?.sessionToken;
 
-    // Login if no session token
-    if (!sessionToken) {
-      const loginBody = new URLSearchParams({ username, password });
-      const loginRes = await fetch('https://identitysso-api.betfair.com/api/login', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-Application': appKey,
-        },
-        body: loginBody,
-      });
-      const loginText = await loginRes.text();
-      let loginData;
-      try { loginData = JSON.parse(loginText); } catch { loginData = null; }
+    // Use SSOID from env (preferred) or from request body
+    const sessionToken = body?.sessionToken || Deno.env.get("BETFAIR_SSOID");
 
-      if (!loginData || loginData.status !== 'SUCCESS' || !loginData.token) {
-        return Response.json({
-          error: loginData?.error || 'Login failed — Betfair may be blocking the server IP or credentials may be invalid.',
-        }, { status: 401 });
-      }
-      sessionToken = loginData.token;
+    if (!appKey || !sessionToken) {
+      return Response.json({ error: 'Betfair SSOID or App Key not configured' }, { status: 400 });
     }
 
     const apiBase = jurisdiction === 'AU'
@@ -88,7 +64,7 @@ Deno.serve(async (req) => {
 
     // Session expired?
     if (catalogueText.includes('UNAUTHORIZED') || catalogueText.includes('INVALID_SESSION') || catalogueText.includes('NO_SESSION')) {
-      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired' }, { status: 401 });
+      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair SSOID expired' }, { status: 401 });
     }
 
     if (!catalogueRes.ok) {

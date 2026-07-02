@@ -6,109 +6,58 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const username = Deno.env.get("BETFAIR_USERNAME");
-    const password = Deno.env.get("BETFAIR_PASSWORD");
     const appKey = Deno.env.get("BETFAIR_APP_KEY");
+    const ssoid = Deno.env.get("BETFAIR_SSOID");
     const jurisdiction = Deno.env.get("BETFAIR_JURISDICTION") || "AU";
 
-    if (!username || !password || !appKey) {
+    if (!appKey || !ssoid) {
       return Response.json({
         status: 'error',
-        error: 'Betfair credentials not configured. Set BETFAIR_USERNAME, BETFAIR_PASSWORD, and BETFAIR_APP_KEY as secrets.'
+        error: 'Betfair SSOID or App Key not configured. Set BETFAIR_SSOID and BETFAIR_APP_KEY as secrets.'
       }, { status: 400 });
     }
 
-    // Betfair interactive login — try JSON API endpoint first, then HTML endpoint
-    const loginBody = new URLSearchParams({ username, password });
-    const loginHeaders = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
+    const apiBase = jurisdiction === 'AU'
+      ? 'https://api-au.betfair.com'
+      : 'https://api.betfair.com';
+
+    const authHeaders = {
+      'X-Authentication': ssoid,
       'X-Application': appKey,
-      'User-Agent': 'BetfairEdgeLab/1.0',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
     };
 
-    let loginData = null;
-    let loginError = null;
-
-    // Try JSON API endpoint
-    try {
-      const loginRes = await fetch('https://identitysso-api.betfair.com/api/login', {
-        method: 'POST',
-        headers: loginHeaders,
-        body: loginBody,
-      });
-      const loginText = await loginRes.text();
-      try {
-        loginData = JSON.parse(loginText);
-      } catch {
-        loginError = `Betfair returned non-JSON response (HTTP ${loginRes.status}). The server IP may be blocked by Betfair.`;
-      }
-    } catch (e) {
-      loginError = `Network error: ${e.message}`;
-    }
-
-    // Fallback to HTML endpoint
-    if (!loginData || loginData.status !== 'SUCCESS') {
-      try {
-        const loginRes2 = await fetch('https://identitysso.betfair.com/api/login', {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Application': appKey,
-          },
-          body: loginBody,
-        });
-        const loginText2 = await loginRes2.text();
-        try {
-          loginData = JSON.parse(loginText2);
-        } catch {
-          // If both endpoints fail, return the error
-        }
-      } catch (e) {
-        // Keep original error
-      }
-    }
-
-    if (!loginData || loginData.status !== 'SUCCESS' || !loginData.token) {
-      return Response.json({
-        status: 'error',
-        error: loginData?.error || loginError || 'Login failed — Betfair may be blocking the server IP or credentials may be invalid.',
-        loginStatus: loginData?.status || 'unknown',
-      }, { status: 401 });
-    }
-
-    const sessionToken = loginData.token;
-
-    // Get account funds
+    // Validate the SSOID by fetching account funds
     let accountFunds = null;
     try {
-      const fundsRes = await fetch('https://api.betfair.com/exchange/account/rest/v1.0/getAccountFunds/', {
+      const fundsRes = await fetch(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, {
         method: 'POST',
-        headers: {
-          'X-Authentication': sessionToken,
-          'X-Application': appKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: authHeaders,
         body: '{}',
       });
-      accountFunds = await fundsRes.json();
+      const fundsText = await fundsRes.text();
+      try { accountFunds = JSON.parse(fundsText); } catch { accountFunds = null; }
+
+      if (fundsRes.status === 401 || (accountFunds && accountFunds.error)) {
+        return Response.json({
+          status: 'error',
+          error: 'SSOID is invalid or expired. Please get a new SSOID from your Betfair browser session.'
+        }, { status: 401 });
+      }
     } catch (e) {
-      // Funds fetch is optional
+      return Response.json({
+        status: 'error',
+        error: `Failed to validate SSOID: ${e.message}`
+      }, { status: 502 });
     }
 
     // Get account details (currency, name)
     let accountDetails = null;
     try {
-      const detailsRes = await fetch('https://api.betfair.com/exchange/account/rest/v1.0/getAccountDetails/', {
+      const detailsRes = await fetch(`${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, {
         method: 'POST',
-        headers: {
-          'X-Authentication': sessionToken,
-          'X-Application': appKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: authHeaders,
         body: '{}',
       });
       accountDetails = await detailsRes.json();
@@ -118,8 +67,7 @@ Deno.serve(async (req) => {
 
     return Response.json({
       status: 'success',
-      sessionToken,
-      username,
+      sessionToken: ssoid,
       jurisdiction,
       balance: accountFunds?.availableToBetBalance ?? null,
       exposure: accountFunds?.exposure ?? null,
