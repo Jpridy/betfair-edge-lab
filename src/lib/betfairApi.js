@@ -1,12 +1,13 @@
 /**
  * Frontend Betfair API service.
  *
- * Makes direct browser-to-Betfair API calls using the user's SSOID.
- * This bypasses Cloudflare blocks on cloud server IPs because the request
- * comes from the user's residential IP with a real browser TLS fingerprint.
+ * All Betfair API calls are routed through a Cloudflare Worker proxy
+ * (BETFAIR_PROXY_URL) which:
+ *   1. Runs on Cloudflare's edge network → bypasses Betfair's Cloudflare bot protection
+ *   2. Adds CORS headers → allows the browser to read the responses
  *
- * The app key is fetched from the backend (it's not a true secret — Betfair
- * expects it in client-side headers per their documentation).
+ * Login is done server-side (betfairLogin backend function) through the same proxy.
+ * Market data is fetched browser-side through the proxy.
  */
 
 import { base44 } from '@/api/base44Client';
@@ -16,7 +17,7 @@ let _config = null;
 export async function getBetfairConfig() {
   if (_config) return _config;
   const res = await base44.functions.invoke('betfairLogin', {});
-  if (res.data?.status === 'success') {
+  if (res.data?.appKey) {
     _config = res.data;
     return _config;
   }
@@ -24,154 +25,53 @@ export async function getBetfairConfig() {
 }
 
 /**
- * Log in to Betfair using username and password.
- * Attempts direct browser-to-Betfair login first (bypasses Cloudflare blocks
- * on cloud server IPs). Falls back to a CORS proxy if the direct call is blocked.
- * Returns account info on success, throws on failure.
+ * Connect to Betfair by logging in through the backend (which uses the proxy).
+ * Returns account info + session token on success, throws on failure.
  */
-export async function loginWithCredentials(username, password) {
-  const config = await getBetfairConfig();
-  const loginBody = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
-  const directUrl = 'https://identitysso.betfair.com/api/login';
-  const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(directUrl)}`;
+export async function connectToBetfair(username, password) {
+  const res = await base44.functions.invoke('betfairLogin', { username, password });
+  const data = res.data;
 
-  let loginData = null;
-  let lastError = '';
-
-  // Attempt 1: Direct browser-to-Betfair login
-  try {
-    const loginRes = await fetch(directUrl, {
-      method: 'POST',
-      headers: {
-        'X-Application': config.appKey,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: loginBody,
-    });
-    const loginText = await loginRes.text();
-
-    if (!loginText.includes('<!DOCTYPE') && !loginText.includes('<html')) {
-      try {
-        loginData = JSON.parse(loginText);
-      } catch { lastError = `Unexpected response (HTTP ${loginRes.status})`; }
-    } else {
-      lastError = 'Cloudflare blocked the direct request';
-    }
-  } catch (err) {
-    lastError = 'CORS blocked the direct request';
+  if (data.status === 'error') {
+    throw new Error(data.error);
   }
 
-  // Attempt 2: CORS proxy fallback
-  if (!loginData) {
-    try {
-      const proxyRes = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: {
-          'X-Application': config.appKey,
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: loginBody,
-      });
-      const proxyText = await proxyRes.text();
-
-      if (!proxyText.includes('<!DOCTYPE') && !proxyText.includes('<html')) {
-        try { loginData = JSON.parse(proxyText); } catch { lastError = `Proxy returned unexpected response (HTTP ${proxyRes.status})`; }
-      } else {
-        lastError = 'Cloudflare blocked the proxy request too';
-      }
-    } catch (err) {
-      lastError = `Proxy request failed: ${err.message}`;
-    }
-  }
-
-  if (!loginData) {
-    throw new Error(`Could not reach Betfair login. ${lastError}. Please use the SSOID method: log into betfair.com, copy the "ssoid" cookie from DevTools, and paste it in Settings.`);
-  }
-
-  if (loginData.status !== 'SUCCESS' || !loginData.token) {
-    throw new Error(`Betfair login failed: ${loginData.error || 'Invalid credentials'}`);
-  }
-
-  // Login succeeded — validate the session token by fetching account funds
-  return await validateSsoid(loginData.token);
-}
-
-/**
- * Validate an SSOID by fetching account funds.
- * Returns account info if valid, throws if invalid.
- */
-export async function validateSsoid(ssoid) {
-  const config = await getBetfairConfig();
-
-  const fundsRes = await fetch(`${config.apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, {
-    method: 'POST',
-    headers: {
-      'X-Authentication': ssoid,
-      'X-Application': config.appKey,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: '{}',
-  });
-
-  if (!fundsRes.ok) {
-    const text = await fundsRes.text();
-    if (fundsRes.status === 401 || text.includes('UNAUTHORIZED') || text.includes('INVALID_SESSION') || text.includes('NO_SESSION')) {
-      throw new Error('SSOID is invalid or expired. Log into betfair.com again and get a fresh SSOID.');
-    }
-    // If we get HTML (Cloudflare block), CORS is blocking browser-side calls too
-    if (text.includes('<!DOCTYPE') || text.includes('<html')) {
-      throw new Error('Betfair API is blocking browser requests (CORS/Cloudflare). This may require a different network configuration.');
-    }
-    throw new Error(`Betfair API error (HTTP ${fundsRes.status})`);
-  }
-
-  const funds = await fundsRes.json();
-  if (funds?.error) {
-    throw new Error(`Betfair: ${funds.error}${funds.errorCode ? ` (${funds.errorCode})` : ''}`);
-  }
-
-  // Get account details (currency, name)
-  let details = null;
-  try {
-    const detailsRes = await fetch(`${config.apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, {
-      method: 'POST',
-      headers: {
-        'X-Authentication': ssoid,
-        'X-Application': config.appKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: '{}',
-    });
-    if (detailsRes.ok) details = await detailsRes.json();
-  } catch (e) {
-    // Optional
-  }
+  _config = data;
 
   return {
-    sessionToken: ssoid,
-    jurisdiction: config.jurisdiction,
-    balance: funds?.availableToBetBalance ?? null,
-    exposure: funds?.exposure ?? null,
-    exposureLimit: funds?.exposureLimit ?? null,
-    discountRate: funds?.discountRate ?? null,
-    pointsBalance: funds?.pointsBalance ?? null,
-    currency: details?.currencyCode ?? null,
-    firstName: details?.firstName ?? null,
-    lastName: details?.lastName ?? null,
-    locale: details?.localeCode ?? null,
+    sessionToken: data.sessionToken,
+    jurisdiction: data.jurisdiction,
+    balance: data.account?.balance ?? null,
+    exposure: data.account?.exposure ?? null,
+    exposureLimit: data.account?.exposureLimit ?? null,
+    discountRate: data.account?.discountRate ?? null,
+    pointsBalance: data.account?.pointsBalance ?? null,
+    currency: data.account?.currency ?? null,
+    firstName: data.account?.firstName ?? null,
+    lastName: data.account?.lastName ?? null,
+    locale: data.account?.locale ?? null,
   };
+}
+
+/** Build a proxied URL for browser-to-Betfair calls */
+function proxied(targetUrl, config) {
+  if (config.proxyUrl) {
+    return `${config.proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
+  }
+  return targetUrl;
 }
 
 /**
  * Fetch live horse racing markets and runner prices.
- * Returns { markets, runners, fetchedAt, isDelayed }.
+ * Returns { status, markets, runners, fetchedAt, isDelayed }.
  */
 export async function fetchBetfairMarkets(ssoid) {
   const config = await getBetfairConfig();
+
+  if (!config.proxyUrl) {
+    return { status: 'error', error: 'BETFAIR_PROXY_URL not configured. Market data requires the Cloudflare Worker proxy.' };
+  }
+
   const bettingBase = `${config.apiBase}/exchange/betting/rest/v1.0`;
 
   const authHeaders = {
@@ -181,12 +81,11 @@ export async function fetchBetfairMarkets(ssoid) {
     'Accept': 'application/json',
   };
 
-  // Date range: midnight today to midnight tomorrow+1
   const now = new Date();
   const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
 
-  // 1. List Market Catalogue — Horse Racing (eventType 7), WIN markets
+  // 1. List Market Catalogue
   const catalogueBody = {
     filter: {
       eventTypeIds: ['7'],
@@ -198,7 +97,7 @@ export async function fetchBetfairMarkets(ssoid) {
     marketProjection: ['EVENT', 'MARKET_DESCRIPTION', 'RUNNER_METADATA', 'RUNNER_DESCRIPTION', 'MARKET_START_TIME'],
   };
 
-  const catalogueRes = await fetch(`${bettingBase}/listMarketCatalogue/`, {
+  const catalogueRes = await fetch(proxied(`${bettingBase}/listMarketCatalogue/`, config), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(catalogueBody),
@@ -207,7 +106,7 @@ export async function fetchBetfairMarkets(ssoid) {
   const catalogueText = await catalogueRes.text();
 
   if (catalogueText.includes('UNAUTHORIZED') || catalogueText.includes('INVALID_SESSION') || catalogueText.includes('NO_SESSION')) {
-    return { status: 'error', sessionExpired: true, error: 'Betfair SSOID expired' };
+    return { status: 'error', sessionExpired: true, error: 'Betfair session expired' };
   }
 
   if (!catalogueRes.ok) {
@@ -230,7 +129,7 @@ export async function fetchBetfairMarkets(ssoid) {
     priceProjection: { priceData: ['EX_BEST_OFFERS', 'EX_TRADED'], virtualise: 'true' },
   };
 
-  const bookRes = await fetch(`${bettingBase}/listMarketBook/`, {
+  const bookRes = await fetch(proxied(`${bettingBase}/listMarketBook/`, config), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(bookBody),

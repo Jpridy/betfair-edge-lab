@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink } from 'lucide-react';
-import { loginWithCredentials } from '@/lib/betfairApi';
+import { connectToBetfair } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
   const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setDemoMode, addAuditLog } = useApp();
@@ -22,7 +22,7 @@ export default function BetfairConnection() {
     setLoading(true);
     setError('');
     try {
-      const account = await loginWithCredentials(usernameInput.trim(), passwordInput);
+      const account = await connectToBetfair(usernameInput.trim(), passwordInput);
       setApiConnected(true);
       setBetfairSessionToken(account.sessionToken);
       setDemoMode(false);
@@ -127,7 +127,7 @@ export default function BetfairConnection() {
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-chart-4" />
                 <div>
-                  Your credentials are sent directly to Betfair from your browser and are never stored. If the login is blocked by CORS, use the <a href="https://www.betfair.com" target="_blank" rel="noopener noreferrer" className="text-chart-3 inline-flex items-center gap-0.5 hover:underline">SSOID method <ExternalLink className="h-3 w-3" /></a> instead.
+                  Login is handled securely through a Cloudflare Worker proxy that bypasses Betfair's bot protection. Your credentials are never stored. If the connection fails, ensure the <span className="font-mono text-foreground">BETFAIR_PROXY_URL</span> secret is set to your deployed Worker URL.
                 </div>
               </div>
             </div>
