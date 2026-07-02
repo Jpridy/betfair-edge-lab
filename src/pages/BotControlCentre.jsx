@@ -8,8 +8,8 @@ import LiveBotLockPanel from '@/components/bot/LiveBotLockPanel';
 export default function BotControlCentre() {
   return (
     <div className="space-y-5">
-      <BotStatusCard />
       <BotControls />
+      <BotStatusCard />
       <BotLoopDisplay />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <BotRulesPanel />

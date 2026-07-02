@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, HelpCircle, Menu } from 'lucide-react';
+import { Bell, HelpCircle, Menu, GraduationCap, Cog } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
 export default function TopBar({ title, subtitle, onMenuClick }) {
-  const { apiConnected, demoMode, jurisdiction, setJurisdiction, notifications, mode, emergencyStop } = useApp();
+  const { apiConnected, demoMode, jurisdiction, setJurisdiction, notifications, mode, emergencyStop, beginnerMode, setBeginnerMode } = useApp();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -48,6 +48,17 @@ export default function TopBar({ title, subtitle, onMenuClick }) {
           <span className="text-xs font-medium text-muted-foreground">{apiConnected ? 'API Connected' : 'Demo Mode'}</span>
         </div>
 
+        <button
+          onClick={() => setBeginnerMode(!beginnerMode)}
+          className={cn(
+            'h-8 px-3 rounded-md text-xs font-bold border flex items-center gap-1.5 transition-colors shrink-0',
+            beginnerMode
+              ? 'bg-chart-3/10 text-chart-3 border-chart-3/30'
+              : 'bg-muted text-muted-foreground border-border'
+          )}
+        >
+          {beginnerMode ? <><GraduationCap className="h-3.5 w-3.5" /> Beginner</> : <><Cog className="h-3.5 w-3.5" /> Advanced</>}
+        </button>
         <Select value={jurisdiction} onValueChange={setJurisdiction}>
           <SelectTrigger className="h-8 w-[140px] md:w-[180px] text-xs hidden sm:flex">
             <SelectValue />

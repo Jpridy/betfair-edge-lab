@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AlertOctagon } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
+import StatusStrip from '@/components/StatusStrip';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 
@@ -44,6 +45,7 @@ export default function Layout() {
             </Button>
           </div>
         )}
+        <StatusStrip />
         <main className="flex-1 p-4 md:p-6">
           <Outlet />
         </main>

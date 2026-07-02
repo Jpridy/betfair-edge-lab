@@ -2,189 +2,218 @@ import React from 'react';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Link } from 'react-router-dom';
-import { Activity, TrendingUp, CheckCircle2, Bot } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Activity, TrendingUp, TrendingDown, Wallet, Target, Zap, Bot, Clock, AlertTriangle, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
+import OnboardingChecklist from '@/components/OnboardingChecklist';
 
 export default function DashboardHome() {
-  const { bankrollStats, plData, markets, paperOrders, strategySignals, riskStatus, heatmap, mode, emergencyStop, demoMode, botState, botActivity, botSettings } = useApp();
+  const { bankrollStats, markets, paperOrders, strategySignals, mode, emergencyStop, demoMode, botState, botActivity, botSettings, botCycles, beginnerMode } = useApp();
 
-  const botCards = [
-    { label: 'Bot Status', value: botState.running ? (botState.paused ? 'Paused' : 'Running') : 'Stopped', color: botState.running && !botState.paused ? 'text-chart-1' : 'text-muted-foreground' },
-    { label: 'Bot Mode', value: emergencyStop ? 'EMERGENCY' : mode === 'paper' ? 'Paper Bot' : mode === 'research' ? 'Research' : 'Live Locked', color: emergencyStop ? 'text-chart-5' : 'text-chart-4' },
-    { label: 'Bot Running', value: botState.running ? 'Yes' : 'No', color: botState.running ? 'text-chart-1' : 'text-muted-foreground' },
-    { label: 'Active Strategy', value: botSettings.selectedStrategies[0] || '—', color: 'text-foreground' },
-    { label: 'Signals Today', value: botState.signalsToday, color: 'text-chart-3' },
-    { label: 'Paper Orders Today', value: botState.ordersToday, color: 'text-chart-2' },
-    { label: 'Bot P/L Today', value: `$${botState.botPLToday.toFixed(2)}`, color: botState.botPLToday >= 0 ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Last Bot Cycle', value: botState.lastCycleTime ? new Date(botState.lastCycleTime).toLocaleTimeString('en-AU', { hour12: false }) : '—', color: 'text-foreground' },
-    { label: 'Emergency Stop', value: emergencyStop ? 'ACTIVE' : 'Ready', color: emergencyStop ? 'text-chart-5' : 'text-chart-1' },
+  const isRunning = botState.running && !botState.paused && !emergencyStop;
+  const isPaused = botState.paused && !emergencyStop;
+  const lastCycle = botCycles[0];
+  const lastBlockedCycle = botCycles.find(c => c.ordersBlocked > 0);
+  const watchedMarkets = markets.filter(m => m.watched);
+  const activeStrategies = botSettings.selectedStrategies;
+
+  const cards = [
+    {
+      label: 'Bot Status',
+      value: emergencyStop ? 'Emergency Stop' : isRunning ? 'Running' : isPaused ? 'Paused' : 'Stopped',
+      sub: botState.cycleNumber > 0 ? `Cycle #${botState.cycleNumber}` : 'Not started',
+      icon: Bot,
+      color: emergencyStop ? 'text-chart-5' : isRunning ? 'text-chart-1' : 'text-muted-foreground',
+      bg: emergencyStop ? 'bg-chart-5/10' : isRunning ? 'bg-chart-1/10' : '',
+    },
+    {
+      label: 'Paper P/L Today',
+      value: `${bankrollStats.todayPL >= 0 ? '+' : ''}$${bankrollStats.todayPL.toFixed(2)}`,
+      sub: `${bankrollStats.roi}% ROI today`,
+      icon: bankrollStats.todayPL >= 0 ? TrendingUp : TrendingDown,
+      color: bankrollStats.todayPL >= 0 ? 'text-chart-1' : 'text-chart-5',
+      bg: bankrollStats.todayPL >= 0 ? 'bg-chart-1/10' : 'bg-chart-5/10',
+    },
+    {
+      label: 'Bankroll',
+      value: `$${bankrollStats.bankroll.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      sub: `Available: $${bankrollStats.available.toFixed(0)}`,
+      icon: Wallet,
+      color: 'text-foreground',
+      bg: '',
+    },
+    {
+      label: 'Open Exposure',
+      value: `$${bankrollStats.openExposure.toFixed(0)}`,
+      sub: `${((bankrollStats.openExposure / bankrollStats.bankroll) * 100).toFixed(1)}% of bank`,
+      icon: ShieldCheck,
+      color: 'text-chart-4',
+      bg: 'bg-chart-4/10',
+    },
+    {
+      label: 'Signals Today',
+      value: botState.signalsToday,
+      sub: `${strategySignals.length} active signals`,
+      icon: Zap,
+      color: 'text-chart-3',
+      bg: 'bg-chart-3/10',
+    },
+    {
+      label: 'Paper Orders Today',
+      value: botState.ordersToday,
+      sub: botState.ordersBlockedToday > 0 ? `${botState.ordersBlockedToday} blocked by risk` : 'No blocks today',
+      icon: Activity,
+      color: 'text-chart-2',
+      bg: 'bg-chart-2/10',
+    },
+    {
+      label: 'Active Strategy',
+      value: activeStrategies[0] || 'None',
+      sub: `${activeStrategies.length} strategies enabled`,
+      icon: Target,
+      color: 'text-foreground',
+      bg: '',
+    },
+    {
+      label: 'Last Bot Cycle',
+      value: botState.lastCycleTime ? new Date(botState.lastCycleTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—',
+      sub: lastCycle ? `${lastCycle.marketsScanned} scanned, ${lastCycle.marketsPassedFilters} passed` : 'No cycles yet',
+      icon: Clock,
+      color: 'text-foreground',
+      bg: '',
+    },
   ];
 
-  const plMetrics = [
-    { label: 'P/L', value: `+$${bankrollStats.totalPL.toFixed(2)}`, trend: 'up' },
-    { label: 'ROI', value: `${bankrollStats.roi}%`, trend: 'up' },
-    { label: 'Strike Rate', value: `${bankrollStats.strikeRate}%`, trend: 'up' },
-    { label: 'Max Drawdown', value: `$${bankrollStats.maxDrawdown.toFixed(2)}`, trend: 'down' },
-    { label: 'Losing Streak', value: bankrollStats.longestLosingStreak, trend: 'neutral' },
-  ];
-
-  const heatmapBuckets = [
-    { label: 'Very High', count: heatmap.veryHigh, color: 'bg-chart-1' },
-    { label: 'High', count: heatmap.high, color: 'bg-chart-1/70' },
-    { label: 'Medium', count: heatmap.medium, color: 'bg-chart-4' },
-    { label: 'Low', count: heatmap.low, color: 'bg-chart-4/70' },
-    { label: 'Very Low', count: heatmap.veryLow, color: 'bg-chart-5' },
-  ];
+  let nextAction = null;
+  if (emergencyStop) {
+    nextAction = { text: 'Emergency stop is active. Clear it from the red banner at the top to resume.', link: null };
+  } else if (!botState.running && mode !== 'paper') {
+    nextAction = { text: 'Switch to Paper Bot mode and start the bot from the Bot Control Centre.', link: '/bot-control', linkText: 'Go to Bot Control →' };
+  } else if (!botState.running) {
+    nextAction = { text: 'The bot is stopped. Start it from the Bot Control Centre to begin scanning and paper trading.', link: '/bot-control', linkText: 'Start Paper Bot →' };
+  } else if (isPaused) {
+    nextAction = { text: 'The bot is paused. It is still scanning but not placing new paper orders.', link: '/bot-control', linkText: 'Resume Bot →' };
+  } else if (isRunning) {
+    nextAction = { text: 'The bot is running. Watch the activity feed below for real-time updates.', link: null };
+  }
 
   return (
     <div className="space-y-5">
-      {/* Bot Status Row */}
-      <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
-        {botCards.map(c => (
-          <div key={c.label} className="bg-card border border-border rounded-lg p-3">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{c.label}</span>
-            <div className={`text-sm font-bold font-mono mt-1.5 ${c.color}`}>{c.value}</div>
-          </div>
-        ))}
+      {beginnerMode && <OnboardingChecklist />}
+
+      {beginnerMode && (
+        <div className="bg-chart-3/10 border border-chart-3/20 rounded-lg p-3 flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 text-chart-3 shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground">
+            <span className="text-foreground font-medium">Welcome to Betfair Edge Lab.</span> This dashboard shows your bot's status, paper trading P/L, and recent activity.
+            All trades are <span className="text-chart-1 font-medium">simulated paper trades</span> — no real money is at risk. Live trading is <span className="text-chart-5 font-medium">locked</span>.
+          </p>
+        </div>
+      )}
+
+      {/* 8 Large Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        {cards.map(c => {
+          const Icon = c.icon;
+          return (
+            <div key={c.label} className={`bg-card border border-border rounded-lg p-4 ${c.bg}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{c.label}</span>
+                <Icon className={`h-4 w-4 ${c.color}`} />
+              </div>
+              <div className={`text-xl md:text-2xl font-bold font-mono ${c.color}`}>{c.value}</div>
+              <div className="text-[10px] text-muted-foreground mt-1">{c.sub}</div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Top Summary Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Mode</span>
-          <div className={`text-lg font-bold mt-2 ${emergencyStop ? 'text-chart-5' : 'text-chart-4'}`}>
-            {emergencyStop ? 'EMERGENCY STOP' : mode === 'paper' ? 'PAPER BOT' : mode === 'research' ? 'RESEARCH' : 'LIVE LOCKED'}
+      {/* What to do next */}
+      {nextAction && (
+        <div className="bg-card border border-border rounded-lg p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ArrowRight className="h-4 w-4 text-chart-3 shrink-0" />
+            <span className="text-xs text-foreground">{nextAction.text}</span>
           </div>
-          {demoMode && <div className="text-[10px] text-muted-foreground mt-1">Demo Data Active</div>}
+          {nextAction.link && (
+            <Link to={nextAction.link} className="text-xs font-bold text-chart-3 hover:underline shrink-0">
+              {nextAction.linkText}
+            </Link>
+          )}
         </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Bankroll</span>
-          <div className="text-2xl font-bold font-mono text-foreground mt-2">${bankrollStats.bankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">Starting $10,000</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Today's P/L</span>
-          <div className={`text-2xl font-bold font-mono mt-2 ${bankrollStats.todayPL >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
-            {bankrollStats.todayPL >= 0 ? '+' : ''}${bankrollStats.todayPL.toFixed(2)}
-          </div>
-          <div className={`text-[10px] mt-1 ${bankrollStats.todayPL >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{bankrollStats.roi}% today</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Open Exposure</span>
-          <div className="text-2xl font-bold font-mono text-foreground mt-2">${bankrollStats.openExposure.toFixed(2)}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">{((bankrollStats.openExposure / bankrollStats.bankroll) * 100).toFixed(1)}% of bank</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active Markets</span>
-          <div className="text-2xl font-bold font-mono text-foreground mt-2">{markets.filter(m => m.status === 'OPEN').length}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">{markets.filter(m => m.watched).length} watched</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Health</span>
-          <div className="flex items-center gap-2 mt-2">
-            <div className="h-2 w-2 rounded-full bg-chart-1 animate-pulse" />
-            <span className="text-lg font-bold text-chart-1">Healthy</span>
-          </div>
-          <div className="flex items-end gap-0.5 h-4 mt-1">
-            {[3, 5, 4, 6, 7, 5, 8, 6, 9, 7, 8, 10].map((h, i) => (
-              <div key={i} className="w-1 bg-chart-1/60 rounded-sm" style={{ height: `${h * 10}%` }} />
-            ))}
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* P/L Performance + Active Markets */}
+      {/* Last block reason */}
+      {lastBlockedCycle && (
+        <div className="bg-chart-5/10 border border-chart-5/20 rounded-lg p-4 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-chart-5 shrink-0 mt-0.5" />
+          <div>
+            <div className="text-xs font-bold text-chart-5">Last Trade Blocked</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{lastBlockedCycle.notes}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Signals + Recent Orders */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Panel title="P/L Performance">
-          <div className="p-4">
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={plData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                <XAxis dataKey="time" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(222 47% 9%)', border: '1px solid hsl(217 33% 17%)', borderRadius: '8px', fontSize: '12px' }}
-                  labelStyle={{ color: 'hsl(215 20% 55%)' }}
-                />
-                <Line type="monotone" dataKey="pl" stroke="hsl(263 70% 55%)" strokeWidth={2} dot={false} name="P/L $" />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-5 gap-2 mt-4 pt-4 border-t border-border">
-              {plMetrics.map(m => (
-                <div key={m.label} className="text-center">
-                  <div className={`text-sm font-bold font-mono ${m.trend === 'up' ? 'text-chart-1' : m.trend === 'down' ? 'text-chart-5' : 'text-foreground'}`}>{m.value}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">{m.label}</div>
+        <Panel title="Recent Signals" action={<Link to="/strategy" className="text-xs text-chart-3 hover:underline">View all →</Link>}>
+          {strategySignals.length === 0 ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">No signals yet. Start the bot to generate signals.</div>
+          ) : (
+            <div className="p-3 space-y-1.5">
+              {strategySignals.slice(0, 6).map(s => (
+                <div key={s.id} className="flex items-center justify-between text-xs py-2 border-b border-border/50 last:border-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Zap className="h-3 w-3 text-chart-3 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground truncate">{s.strategyName}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{s.reason}</div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <div className="font-mono text-chart-1">+{s.edgePercent?.toFixed(2)}%</div>
+                    <div className="text-[10px] text-muted-foreground">edge</div>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          )}
         </Panel>
 
-        <Panel title="Active Markets">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-xs">Market</TableHead>
-                <TableHead className="text-xs">Start</TableHead>
-                <TableHead className="text-xs">In-Play</TableHead>
-                <TableHead className="text-xs text-right">Runners</TableHead>
-                <TableHead className="text-xs text-right">Volume</TableHead>
-                <TableHead className="text-xs">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {markets.slice(0, 6).map(m => (
-                <TableRow key={m.id} className="border-border">
-                  <TableCell className="text-xs font-medium">{m.venue} {m.marketName.split(' ').slice(-1)[0]}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{new Date(m.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
-                  <TableCell className="text-xs">{m.inPlay ? <span className="text-chart-5 font-bold">YES</span> : <span className="text-muted-foreground">No</span>}</TableCell>
-                  <TableCell className="text-xs text-right font-mono">{m.numberOfRunners}</TableCell>
-                  <TableCell className="text-xs text-right font-mono">${(m.totalMatched / 1000).toFixed(1)}k</TableCell>
-                  <TableCell><StatusBadge status="ok">{m.status}</StatusBadge></TableCell>
-                </TableRow>
+        <Panel title="Recent Paper Orders" action={<Link to="/paper-trading" className="text-xs text-chart-3 hover:underline">View all →</Link>}>
+          {paperOrders.length === 0 ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">No paper orders yet. Start the bot to place simulated trades.</div>
+          ) : (
+            <div className="p-3 space-y-1.5">
+              {paperOrders.slice(0, 6).map(o => (
+                <div key={o.id} className="flex items-center justify-between text-xs py-2 border-b border-border/50 last:border-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <SideBadge side={o.side} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground truncate">{o.runnerName}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{o.strategyName} · {o.marketName}</div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    {o.result === 'pending' ? (
+                      <StatusBadge status="info">Pending</StatusBadge>
+                    ) : (
+                      <PLValue value={o.netProfit} />
+                    )}
+                    <div className="text-[10px] text-muted-foreground">@ {o.matchedOdds?.toFixed(2)}</div>
+                  </div>
+                </div>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+          )}
         </Panel>
       </div>
 
-      {/* Recent Paper Orders + Bot Activity Feed */}
+      {/* Bot Activity + Markets Watching */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <Panel title="Recent Paper Orders">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-xs">Time</TableHead>
-                <TableHead className="text-xs">Market</TableHead>
-                <TableHead className="text-xs">Runner</TableHead>
-                <TableHead className="text-xs">Side</TableHead>
-                <TableHead className="text-xs text-right">Odds</TableHead>
-                <TableHead className="text-xs text-right">Stake</TableHead>
-                <TableHead className="text-xs text-right">P/L</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paperOrders.slice(0, 6).map(o => (
-                <TableRow key={o.id} className="border-border">
-                  <TableCell className="text-xs text-muted-foreground">{new Date(o.created_date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
-                  <TableCell className="text-xs">{o.marketName}</TableCell>
-                  <TableCell className="text-xs">{o.runnerName}</TableCell>
-                  <TableCell><SideBadge side={o.side} /></TableCell>
-                  <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2)}</TableCell>
-                  <TableCell className="text-xs text-right font-mono">${o.matchedStake}</TableCell>
-                  <TableCell className="text-xs text-right"><PLValue value={o.netProfit} /></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Panel>
-
-        <Panel title="Bot Activity Feed" action={<Link to="/bot-control" className="text-xs text-chart-3 hover:underline flex items-center gap-1"><Bot className="h-3 w-3" /> View Bot</Link>}>
-          <div className="p-4 space-y-1 max-h-80 overflow-y-auto">
-            {botActivity.length === 0 && <div className="text-xs text-muted-foreground text-center py-8">No bot activity yet. Start the bot from the Bot Control Centre.</div>}
-            {botActivity.slice(0, 20).map(a => (
-              <div key={a.id} className="flex items-start gap-3 text-xs py-1.5 border-b border-border/50">
+        <Panel title="Bot Activity Feed" action={<Link to="/bot-control" className="text-xs text-chart-3 hover:underline flex items-center gap-1"><Bot className="h-3 w-3" /> Bot Control →</Link>}>
+          <div className="p-3 space-y-1 max-h-72 overflow-y-auto">
+            {botActivity.length === 0 && <div className="text-xs text-muted-foreground text-center py-8">No activity yet. Start the bot to see real-time updates.</div>}
+            {botActivity.slice(0, 15).map(a => (
+              <div key={a.id} className="flex items-start gap-2.5 text-xs py-1.5 border-b border-border/50 last:border-0">
                 <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-chart-2 mt-1.5" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-foreground">{a.action}</div>
@@ -195,86 +224,25 @@ export default function DashboardHome() {
             ))}
           </div>
         </Panel>
-      </div>
 
-      {/* Strategy Signals + Risk Status + Heatmap + Account */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-        <Panel title="Strategy Signals">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-xs">Strategy</TableHead>
-                <TableHead className="text-xs text-right">Edge</TableHead>
-                <TableHead className="text-xs text-right">EV</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {strategySignals.slice(0, 6).map(s => (
-                <TableRow key={s.id} className="border-border">
-                  <TableCell className="text-xs font-medium">{s.strategyName}</TableCell>
-                  <TableCell className="text-xs text-right font-mono text-chart-1">{s.edgePercent?.toFixed(2)}%</TableCell>
-                  <TableCell className="text-xs text-right font-mono text-chart-1">${s.expectedValue?.toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Panel>
-
-        <Panel title="Risk Status">
-          <div className="p-4 space-y-2.5">
-            {Object.entries(riskStatus).map(([key, check]) => (
-              <div key={key} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-chart-1" />
-                  <span className="text-muted-foreground">{check.label}</span>
+        <Panel title="Markets Being Watched" action={<Link to="/scanner" className="text-xs text-chart-3 hover:underline">Scanner →</Link>}>
+          <div className="p-3 space-y-1.5">
+            {watchedMarkets.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-8">No markets being watched. Use the Market Scanner to add markets.</div>
+            ) : (
+              watchedMarkets.slice(0, 6).map(m => (
+                <div key={m.id} className="flex items-center justify-between text-xs py-2 border-b border-border/50 last:border-0">
+                  <div className="min-w-0">
+                    <div className="font-medium text-foreground truncate">{m.venue} — {m.marketName.split(' ').slice(-1)[0]}</div>
+                    <div className="text-[10px] text-muted-foreground">{m.numberOfRunners} runners · ${(m.totalMatched / 1000).toFixed(1)}k matched</div>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <div className="font-mono text-muted-foreground">{new Date(m.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</div>
+                    {m.inPlay ? <StatusBadge status="danger">In-Play</StatusBadge> : <StatusBadge status="ok">Open</StatusBadge>}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-muted-foreground">{check.value}{typeof check.value === 'number' && check.value < 100 ? '%' : ''}</span>
-                  <StatusBadge status="ok">OK</StatusBadge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="Market Heatmap">
-          <div className="p-4">
-            <div className="flex h-24 rounded-lg overflow-hidden">
-              {heatmapBuckets.map(b => (
-                <div key={b.label} className={`${b.color} flex-1 flex flex-col items-center justify-center`}>
-                  <span className="text-lg font-bold text-background">{b.count}</span>
-                  <span className="text-[9px] font-bold text-background/70 uppercase">{b.label}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-between mt-3 text-[10px] text-muted-foreground">
-              <span>Liquidity: Very High → Very Low</span>
-            </div>
-          </div>
-        </Panel>
-
-        <Panel title="Account & System">
-          <div className="p-4 space-y-2.5 text-xs">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Betfair Account</span>
-              <div className="flex items-center gap-1.5"><div className="h-2 w-2 rounded-full bg-chart-1" /><span className="text-chart-1 font-semibold">Demo</span></div>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Last API Call</span>
-              <span className="font-mono">{new Date().toLocaleTimeString('en-AU', { hour12: false })}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Data Stream</span>
-              <span className="font-mono">Demo Data</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">App Version</span>
-              <span className="font-mono">v2.0.0</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Live Trading</span>
-              <StatusBadge status="danger">LOCKED</StatusBadge>
-            </div>
+              ))
+            )}
           </div>
         </Panel>
       </div>

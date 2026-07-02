@@ -24,6 +24,7 @@ export function AppProvider({ children }) {
   const [mode, setMode] = useState('research');
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [demoMode, setDemoMode] = useState(true);
+  const [beginnerMode, setBeginnerMode] = useState(true);
   const [apiConnected, setApiConnected] = useState(false);
   const [betfairAccount, setBetfairAccount] = useState(null);
   const [jurisdiction, setJurisdiction] = useState('AU');
@@ -224,6 +225,7 @@ export function AppProvider({ children }) {
     );
     marketsPassed = filtered.length;
     steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
+    if (steps[1].status === 'blocked') steps[1].reason = 'No markets passed your filters. Try lowering minimum liquidity or waiting for more markets to open.';
 
     const market = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : null;
 
@@ -234,6 +236,7 @@ export function AppProvider({ children }) {
       // Step 4: Check Strategies
       const enabled = getEnabledStrategies(s.settings);
       steps[3].status = enabled.length > 0 ? 'passed' : 'blocked';
+      if (steps[3].status === 'blocked') steps[3].reason = 'No strategies are enabled. Go to Settings to enable at least one strategy.';
 
       if (enabled.length > 0) {
         const strategyName = enabled[Math.floor(Math.random() * enabled.length)];
@@ -253,6 +256,7 @@ export function AppProvider({ children }) {
           const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
           if (!risk.passed) {
             steps[5].status = 'blocked';
+            steps[5].reason = risk.reasons[0];
             ordersBlocked = 1;
             riskBlockedReason = risk.reasons[0];
             notes.push(`Risk blocked: ${risk.reasons[0]}`);
@@ -290,12 +294,14 @@ export function AppProvider({ children }) {
               }
             } else {
               steps[6].status = 'blocked';
+              steps[6].reason = 'Bot is paused or auto paper trading is disabled.';
               steps[7].status = 'waiting';
               notes.push('Bot paused or auto trading disabled');
             }
           }
         } else {
           steps[4].status = 'failed';
+          steps[4].reason = 'No runners found for the selected market.';
           errors++;
           notes.push('No runners found');
         }
@@ -372,7 +378,7 @@ export function AppProvider({ children }) {
 
   const value = {
     mode, changeMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
-    demoMode, setDemoMode, apiConnected, setApiConnected, betfairAccount, setBetfairAccount,
+    demoMode, setDemoMode, beginnerMode, setBeginnerMode, apiConnected, setApiConnected, betfairAccount, setBetfairAccount,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     settings, updateSettings,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
