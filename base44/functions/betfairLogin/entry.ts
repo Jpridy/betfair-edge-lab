@@ -7,13 +7,23 @@ Deno.serve(async (req) => {
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const appKey = Deno.env.get("BETFAIR_APP_KEY");
-    const ssoid = Deno.env.get("BETFAIR_SSOID");
     const jurisdiction = Deno.env.get("BETFAIR_JURISDICTION") || "AU";
 
-    if (!appKey || !ssoid) {
+    if (!appKey) {
       return Response.json({
         status: 'error',
-        error: 'Betfair SSOID or App Key not configured. Set BETFAIR_SSOID and BETFAIR_APP_KEY as secrets.'
+        error: 'BETFAIR_APP_KEY not configured. Set it as an app secret.'
+      }, { status: 400 });
+    }
+
+    let body;
+    try { body = await req.json(); } catch { body = {}; }
+    const ssoid = body?.ssoid;
+
+    if (!ssoid) {
+      return Response.json({
+        status: 'error',
+        error: 'SSOID is required. Get it from your Betfair browser session cookies.'
       }, { status: 400 });
     }
 
@@ -30,26 +40,42 @@ Deno.serve(async (req) => {
 
     // Validate the SSOID by fetching account funds
     let accountFunds = null;
-    try {
-      const fundsRes = await fetch(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: '{}',
-      });
-      const fundsText = await fundsRes.text();
-      try { accountFunds = JSON.parse(fundsText); } catch { accountFunds = null; }
+    const fundsRes = await fetch(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: '{}',
+    });
+    const fundsText = await fundsRes.text();
 
-      if (fundsRes.status === 401 || (accountFunds && accountFunds.error)) {
-        return Response.json({
-          status: 'error',
-          error: 'SSOID is invalid or expired. Please get a new SSOID from your Betfair browser session.'
-        }, { status: 401 });
-      }
-    } catch (e) {
+    // Check for auth failures
+    if (fundsRes.status === 401 || fundsText.includes('UNAUTHORIZED') || fundsText.includes('INVALID_SESSION') || fundsText.includes('NO_SESSION')) {
       return Response.json({
         status: 'error',
-        error: `Failed to validate SSOID: ${e.message}`
-      }, { status: 502 });
+        error: 'SSOID is invalid or expired. Log into betfair.com again and get a fresh SSOID from your cookies.'
+      }, { status: 401 });
+    }
+
+    try {
+      accountFunds = JSON.parse(fundsText);
+      // If the API returned an error object, treat as invalid
+      if (accountFunds?.error) {
+        return Response.json({
+          status: 'error',
+          error: `Betfair API error: ${accountFunds.error}${accountFunds.errorCode ? ` (${accountFunds.errorCode})` : ''}`
+        }, { status: 401 });
+      }
+      // If we didn't get valid account data, something went wrong
+      if (!accountFunds || typeof accountFunds.availableToBetBalance === 'undefined') {
+        return Response.json({
+          status: 'error',
+          error: 'SSOID validation failed — unexpected response from Betfair. The SSOID may be invalid.'
+        }, { status: 401 });
+      }
+    } catch {
+      return Response.json({
+        status: 'error',
+        error: 'SSOID validation failed — Betfair returned a non-JSON response (HTTP ' + fundsRes.status + '). The SSOID may be invalid.'
+      }, { status: 401 });
     }
 
     // Get account details (currency, name)
