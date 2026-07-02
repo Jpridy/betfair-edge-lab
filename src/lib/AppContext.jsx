@@ -25,6 +25,7 @@ export function AppProvider({ children }) {
   const [emergencyStop, setEmergencyStop] = useState(false);
   const [demoMode, setDemoMode] = useState(true);
   const [apiConnected, setApiConnected] = useState(false);
+  const [betfairAccount, setBetfairAccount] = useState(null);
   const [jurisdiction, setJurisdiction] = useState('AU');
   const [notifications, setNotifications] = useState(3);
   const [settings, setSettings] = useState({
@@ -371,7 +372,7 @@ export function AppProvider({ children }) {
 
   const value = {
     mode, changeMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
-    demoMode, setDemoMode, apiConnected, setApiConnected,
+    demoMode, setDemoMode, apiConnected, setApiConnected, betfairAccount, setBetfairAccount,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     settings, updateSettings,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,

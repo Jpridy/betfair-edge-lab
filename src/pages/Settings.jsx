@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, RotateCcw, Save } from 'lucide-react';
+import BetfairConnection from '@/components/settings/BetfairConnection';
 
 export default function Settings() {
   const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings } = useApp();
@@ -154,16 +155,10 @@ export default function Settings() {
             </div>
           </Panel>
 
-          <Panel title="Betfair API Connection" className="mt-5">
+          <BetfairConnection />
+
+          <Panel title="Live Trading" className="mt-5">
             <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Connection Status</span>
-                <StatusBadge status="warning">Not Connected (Demo Mode)</StatusBadge>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Credentials</span>
-                <span className="text-xs text-muted-foreground">Stored as secrets (BETFAIR_USERNAME, BETFAIR_APP_KEY, etc.)</span>
-              </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Live Trading</span>
                 <StatusBadge status="danger">LOCKED — Disabled</StatusBadge>
