@@ -29,45 +29,45 @@ Deno.serve(async (req) => {
       return Response.json(config);
     }
 
-    // Step 1: Login — try direct first, then proxy
-    const loginTargetUrl = 'https://identitysso.betfair.com/api/login';
-    const loginBodyStr = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+    // Login requested — need proxy to bypass Cloudflare
+    if (!proxyUrl) {
+      return Response.json({
+        ...config,
+        status: 'error',
+        error: 'BETFAIR_PROXY_URL not configured. All Betfair endpoints are behind Cloudflare WAF and blocked from serverless IPs. Deploy a proxy (Cloudflare Worker recommended) and set the URL as the BETFAIR_PROXY_URL secret.',
+      });
+    }
+
+    // Helper: call Betfair through the proxy
+    async function callBetfair(targetUrl, headers, bodyStr) {
+      const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
+      const res = await fetch(proxyFetchUrl, {
+        method: 'POST',
+        headers,
+        body: bodyStr,
+      });
+      return res;
+    }
+
+    // Step 1: Login
+    const loginUrl = 'https://identitysso.betfair.com/api/login';
+    const loginBody = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
     const loginHeaders = {
       'X-Application': appKey,
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     };
 
-    // Try direct call first
-    let loginRes = await fetch(loginTargetUrl, {
-      method: 'POST',
-      headers: loginHeaders,
-      body: loginBodyStr,
-    });
-
-    let loginText = await loginRes.text();
-    let usedProxy = false;
-
-    // If blocked (HTML response), try through proxy
-    if ((loginText.includes('<!DOCTYPE') || loginText.includes('<html')) && proxyUrl) {
-      const loginProxyUrl = `${proxyUrl}?url=${encodeURIComponent(loginTargetUrl)}`;
-      loginRes = await fetch(loginProxyUrl, {
-        method: 'POST',
-        headers: loginHeaders,
-        body: loginBodyStr,
-      });
-      loginText = await loginRes.text();
-      usedProxy = true;
-    }
+    const loginRes = await callBetfair(loginUrl, loginHeaders, loginBody);
+    const loginText = await loginRes.text();
 
     if (loginText.includes('<!DOCTYPE') || loginText.includes('<html')) {
-      return Response.json({ ...config, status: 'error', error: `Login blocked. Direct: ${!usedProxy}. Response snippet: ${loginText.substring(0, 500)}` });
+      return Response.json({ ...config, status: 'error', error: 'Betfair login blocked by Cloudflare even through proxy. Ensure your proxy runs on a non-blocked network (Cloudflare Workers recommended).' });
     }
 
     let loginData;
     try { loginData = JSON.parse(loginText); } catch {
-      return Response.json({ ...config, status: 'error', error: `Betfair login returned unexpected response (HTTP ${loginRes.status})` });
+      return Response.json({ ...config, status: 'error', error: `Betfair login returned unexpected response (HTTP ${loginRes.status}): ${loginText.substring(0, 200)}` });
     }
 
     if (loginData.status !== 'SUCCESS' || !loginData.token) {
@@ -76,29 +76,25 @@ Deno.serve(async (req) => {
 
     const sessionToken = loginData.token;
 
-    // Helper: try direct, then proxy
+    // Step 2: Get account funds and details
     const accountHeaders = {
       'X-Authentication': sessionToken,
       'X-Application': appKey,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     };
 
-    async function fetchAccount(endpoint) {
-      const targetUrl = `${apiBase}/exchange/account/rest/v1.0/${endpoint}/`;
-      let res = await fetch(targetUrl, { method: 'POST', headers: accountHeaders, body: '{}' });
-      let text = await res.text();
-      if ((text.includes('<!DOCTYPE') || text.includes('<html')) && proxyUrl) {
-        const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
-        res = await fetch(proxyFetchUrl, { method: 'POST', headers: accountHeaders, body: '{}' });
-        text = await res.text();
-      }
-      try { return JSON.parse(text); } catch { return null; }
-    }
+    let funds = null;
+    try {
+      const fundsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, accountHeaders, '{}');
+      if (fundsRes.ok) funds = await fundsRes.json();
+    } catch {}
 
-    const funds = await fetchAccount('getAccountFunds');
-    const details = await fetchAccount('getAccountDetails');
+    let details = null;
+    try {
+      const detailsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, accountHeaders, '{}');
+      if (detailsRes.ok) details = await detailsRes.json();
+    } catch {}
 
     return Response.json({
       ...config,
