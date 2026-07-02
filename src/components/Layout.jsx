@@ -7,11 +7,12 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 
 const PAGE_TITLES = {
-  '/': { title: 'Home Dashboard', subtitle: 'Trading control room overview' },
+  '/': { title: 'Home Dashboard', subtitle: 'Bot control room overview' },
+  '/bot-control': { title: 'Bot Control Centre', subtitle: 'Automated bot control and monitoring' },
   '/scanner': { title: 'Market Scanner', subtitle: 'Horse racing market scanner with filters' },
   '/runner': { title: 'Runner View', subtitle: 'Detailed runner analysis and price ladder' },
-  '/strategy': { title: 'Strategy Lab', subtitle: 'Strategy modules and signal generation' },
-  '/paper-trading': { title: 'Paper Trading', subtitle: 'Simulated order lifecycle and tracking' },
+  '/strategy': { title: 'Strategy Research Hub', subtitle: 'Strategy modules and signal generation' },
+  '/paper-trading': { title: 'Paper Bot Orders', subtitle: 'Simulated order lifecycle and tracking' },
   '/backtesting': { title: 'Backtesting', subtitle: 'Historical data replay and simulation' },
   '/orders': { title: 'Orders', subtitle: 'Paper order history and management' },
   '/risk': { title: 'Risk Manager', subtitle: 'Risk checks and safety controls' },

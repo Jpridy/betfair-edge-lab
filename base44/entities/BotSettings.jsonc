@@ -1,0 +1,76 @@
+{
+  "name": "BotSettings",
+  "type": "object",
+  "properties": {
+    "botEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "botMode": {
+      "type": "string",
+      "enum": [
+        "research",
+        "paper",
+        "live_locked"
+      ],
+      "default": "research"
+    },
+    "scanIntervalSeconds": {
+      "type": "number",
+      "default": 10
+    },
+    "selectedStrategies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "autoPaperTradingEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "liveTradingLocked": {
+      "type": "boolean",
+      "default": true
+    },
+    "liveTradingEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "requireLiveConfirmationText": {
+      "type": "boolean",
+      "default": true
+    },
+    "confirmationText": {
+      "type": "string",
+      "default": "ENABLE LIVE TRADING"
+    },
+    "maxBotCyclesPerHour": {
+      "type": "number",
+      "default": 60
+    },
+    "stopOnApiError": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnDailyLoss": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnMaxDrawdown": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnLosingStreak": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnEmergency": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "botMode"
+  ]
+}

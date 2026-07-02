@@ -1,0 +1,53 @@
+{
+  "name": "BotCycle",
+  "type": "object",
+  "properties": {
+    "cycleNumber": {
+      "type": "number"
+    },
+    "botMode": {
+      "type": "string"
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "finishedAt": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "blocked",
+        "failed"
+      ]
+    },
+    "marketsScanned": {
+      "type": "number"
+    },
+    "marketsPassedFilters": {
+      "type": "number"
+    },
+    "signalsCreated": {
+      "type": "number"
+    },
+    "ordersCreated": {
+      "type": "number"
+    },
+    "ordersBlocked": {
+      "type": "number"
+    },
+    "errors": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "cycleNumber",
+    "botMode",
+    "status"
+  ]
+}

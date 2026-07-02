@@ -1,16 +1,17 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Radar, Eye, FlaskConical, FileText, History, ListOrdered, Shield, Settings, ScrollText, AlertOctagon, X } from 'lucide-react';
+import { Home, Radar, Eye, FlaskConical, FileText, History, ListOrdered, Shield, Settings, ScrollText, AlertOctagon, X, Bot } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { label: 'Home Dashboard', path: '/', icon: Home },
+  { label: 'Bot Control Centre', path: '/bot-control', icon: Bot },
   { label: 'Market Scanner', path: '/scanner', icon: Radar },
+  { label: 'Strategy Research Hub', path: '/strategy', icon: FlaskConical },
   { label: 'Runner View', path: '/runner', icon: Eye },
-  { label: 'Strategy Lab', path: '/strategy', icon: FlaskConical },
-  { label: 'Paper Trading', path: '/paper-trading', icon: FileText },
+  { label: 'Paper Bot Orders', path: '/paper-trading', icon: FileText },
   { label: 'Backtesting', path: '/backtesting', icon: History },
   { label: 'Orders', path: '/orders', icon: ListOrdered },
   { label: 'Risk Manager', path: '/risk', icon: Shield },
@@ -67,7 +68,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
           <div className="bg-sidebar-accent/50 rounded-lg p-3 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {mode === 'paper' ? 'Paper Mode' : mode === 'research' ? 'Research Mode' : 'Live Locked'}
+                {mode === 'paper' ? 'Paper Bot' : mode === 'research' ? 'Research' : 'Live Locked'}
               </span>
               {emergencyStop && <span className="text-[10px] font-bold text-destructive animate-pulse">STOPPED</span>}
             </div>

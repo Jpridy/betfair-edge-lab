@@ -1,0 +1,71 @@
+{
+  "name": "StrategyStats",
+  "type": "object",
+  "properties": {
+    "strategyName": {
+      "type": "string"
+    },
+    "totalSignals": {
+      "type": "number"
+    },
+    "totalPaperOrders": {
+      "type": "number"
+    },
+    "wins": {
+      "type": "number"
+    },
+    "losses": {
+      "type": "number"
+    },
+    "strikeRate": {
+      "type": "number"
+    },
+    "grossProfit": {
+      "type": "number"
+    },
+    "netProfit": {
+      "type": "number"
+    },
+    "roi": {
+      "type": "number"
+    },
+    "profitFactor": {
+      "type": "number"
+    },
+    "maxDrawdown": {
+      "type": "number"
+    },
+    "longestLosingStreak": {
+      "type": "number"
+    },
+    "averageOdds": {
+      "type": "number"
+    },
+    "averageStake": {
+      "type": "number"
+    },
+    "averageEdge": {
+      "type": "number"
+    },
+    "closingLineValue": {
+      "type": "number"
+    },
+    "statusLabel": {
+      "type": "string",
+      "enum": [
+        "promising",
+        "needs_more_data",
+        "unstable",
+        "risky",
+        "failing",
+        "disabled"
+      ]
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "strategyName"
+  ]
+}

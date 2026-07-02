@@ -10,8 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, RotateCcw, Save } from 'lucide-react';
 
 export default function Settings() {
-  const { settings, updateSettings, addAuditLog } = useApp();
+  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings } = useApp();
   const [local, setLocal] = useState(settings);
+  const [botLocal, setBotLocal] = useState(botSettings);
+  const [liveConfirmText, setLiveConfirmText] = useState('');
 
   const update = (key, value) => setLocal(prev => ({ ...prev, [key]: value }));
 
@@ -73,6 +75,7 @@ export default function Settings() {
           <TabsTrigger value="risk" className="text-xs">Risk Limits</TabsTrigger>
           <TabsTrigger value="strategy" className="text-xs">Strategy</TabsTrigger>
           <TabsTrigger value="api" className="text-xs">API & Data</TabsTrigger>
+          <TabsTrigger value="bot" className="text-xs">Bot</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -168,6 +171,41 @@ export default function Settings() {
               <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3 mt-3">
                 <div className="text-xs text-chart-4 font-bold">⚠ Live Trading is Disabled</div>
                 <div className="text-xs text-muted-foreground mt-1">Live trading requires: confirmation text "ENABLE LIVE TRADING", all risk checks passing, and Betfair API credentials configured. This will be enabled in a future version only.</div>
+              </div>
+            </div>
+          </Panel>
+        </TabsContent>
+
+        <TabsContent value="bot">
+          <Panel title="Bot Settings">
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Field label="Scan Interval (seconds)"><Input type="number" value={botLocal.scanIntervalSeconds} onChange={e => setBotLocal(prev => ({ ...prev, scanIntervalSeconds: +e.target.value }))} /></Field>
+                <Field label="Max Bot Cycles Per Hour"><Input type="number" value={botLocal.maxBotCyclesPerHour} onChange={e => setBotLocal(prev => ({ ...prev, maxBotCyclesPerHour: +e.target.value }))} /></Field>
+                <Field label="Live Confirmation Text"><Input value={liveConfirmText} onChange={e => setLiveConfirmText(e.target.value)} placeholder="ENABLE LIVE TRADING" /></Field>
+              </div>
+              <div className="pt-4 border-t border-border space-y-3">
+                <ToggleRow label="Enable Auto Paper Trading" checked={botLocal.autoPaperTradingEnabled} onChange={v => setBotLocal(prev => ({ ...prev, autoPaperTradingEnabled: v }))} />
+                <ToggleRow label="Stop on API Error" checked={botLocal.stopOnApiError} onChange={v => setBotLocal(prev => ({ ...prev, stopOnApiError: v }))} />
+                <ToggleRow label="Stop on Daily Loss" checked={botLocal.stopOnDailyLoss} onChange={v => setBotLocal(prev => ({ ...prev, stopOnDailyLoss: v }))} />
+                <ToggleRow label="Stop on Max Drawdown" checked={botLocal.stopOnMaxDrawdown} onChange={v => setBotLocal(prev => ({ ...prev, stopOnMaxDrawdown: v }))} />
+                <ToggleRow label="Stop on Losing Streak" checked={botLocal.stopOnLosingStreak} onChange={v => setBotLocal(prev => ({ ...prev, stopOnLosingStreak: v }))} />
+                <ToggleRow label="Stop on Emergency" checked={botLocal.stopOnEmergency} onChange={v => setBotLocal(prev => ({ ...prev, stopOnEmergency: v }))} />
+                <ToggleRow label="Require Live Confirmation Text" checked={botLocal.requireLiveConfirmationText} onChange={v => setBotLocal(prev => ({ ...prev, requireLiveConfirmationText: v }))} />
+                <ToggleRow label="Live Trading Locked" checked={botLocal.liveTradingLocked} onChange={v => setBotLocal(prev => ({ ...prev, liveTradingLocked: v }))} />
+              </div>
+              <div className="flex justify-end pt-4 border-t border-border">
+                <Button size="sm" onClick={() => updateBotSettings(botLocal)}><Save className="h-4 w-4 mr-1" /> Save Bot Settings</Button>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel title="Responsible Gambling" className="mt-5">
+            <div className="p-4 bg-chart-4/10 border border-chart-4/30 rounded-lg m-4">
+              <div className="text-xs font-bold text-chart-4">⚠ Responsible Gambling Warning</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                This application includes hard stop limits including daily loss limits, max drawdown stops, losing streak stops, and an emergency stop button.
+                Never bet more than you can afford to lose. Gambling can be addictive — seek help at 1800 858 858 (AU) or www.gamblinghelponline.org.au.
               </div>
             </div>
           </Panel>

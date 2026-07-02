@@ -18,6 +18,7 @@ import Orders from '@/pages/Orders';
 import RiskManager from '@/pages/RiskManager';
 import Settings from '@/pages/Settings';
 import LogsAudit from '@/pages/LogsAudit';
+import BotControlCentre from '@/pages/BotControlCentre';
 import { AppProvider } from '@/lib/AppContext';
 
 const AuthenticatedApp = () => {
@@ -45,6 +46,7 @@ const AuthenticatedApp = () => {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardHome />} />
+          <Route path="/bot-control" element={<BotControlCentre />} />
           <Route path="/scanner" element={<MarketScanner />} />
           <Route path="/runner" element={<RunnerView />} />
           <Route path="/strategy" element={<StrategyLab />} />

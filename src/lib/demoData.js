@@ -91,3 +91,29 @@ export const DEMO_AUDIT_LOGS = [
   { id: 'al6', action: 'Settings Updated', category: 'settings', severity: 'info', user: 'admin', details: 'Commission rate changed to 5%', timestamp: '2026-07-02T12:05:00Z' },
   { id: 'al7', action: 'API Health Check', category: 'api', severity: 'info', user: 'system', details: 'Betfair API responding normally, latency 120ms', timestamp: '2026-07-02T12:45:00Z' },
 ];
+
+export const DEMO_BOT_CYCLES = [
+  { id: 'bc1', cycleNumber: 42, botMode: 'paper', startedAt: '2026-07-02T12:44:50Z', finishedAt: '2026-07-02T12:44:51Z', status: 'completed', marketsScanned: 8, marketsPassedFilters: 5, signalsCreated: 1, ordersCreated: 1, ordersBlocked: 0, errors: 0, notes: 'Value Bet signal on Flemington R6' },
+  { id: 'bc2', cycleNumber: 41, botMode: 'paper', startedAt: '2026-07-02T12:44:40Z', finishedAt: '2026-07-02T12:44:41Z', status: 'blocked', marketsScanned: 8, marketsPassedFilters: 5, signalsCreated: 1, ordersCreated: 0, ordersBlocked: 1, errors: 0, notes: 'Risk blocked: Odds above maximum' },
+  { id: 'bc3', cycleNumber: 40, botMode: 'paper', startedAt: '2026-07-02T12:44:30Z', finishedAt: '2026-07-02T12:44:31Z', status: 'completed', marketsScanned: 8, marketsPassedFilters: 5, signalsCreated: 0, ordersCreated: 0, ordersBlocked: 0, errors: 0, notes: 'No signals generated' },
+  { id: 'bc4', cycleNumber: 39, botMode: 'paper', startedAt: '2026-07-02T12:44:20Z', finishedAt: '2026-07-02T12:44:21Z', status: 'completed', marketsScanned: 8, marketsPassedFilters: 5, signalsCreated: 1, ordersCreated: 1, ordersBlocked: 0, errors: 0, notes: 'Pre-Off Scalping signal on Randwick R6' },
+  { id: 'bc5', cycleNumber: 38, botMode: 'paper', startedAt: '2026-07-02T12:44:10Z', finishedAt: '2026-07-02T12:44:11Z', status: 'completed', marketsScanned: 8, marketsPassedFilters: 5, signalsCreated: 1, ordersCreated: 1, ordersBlocked: 0, errors: 0, notes: 'Fav/Outsider signal on Flemington R7' },
+];
+
+export const DEMO_STRATEGY_STATS = [
+  { id: 'ss1', strategyName: 'Value Bet', totalSignals: 156, totalPaperOrders: 89, wins: 56, losses: 33, strikeRate: 62.92, grossProfit: 1456, netProfit: 1245, roi: 12.45, profitFactor: 1.85, maxDrawdown: -450, longestLosingStreak: 5, averageOdds: 4.2, averageStake: 85, averageEdge: 6.8, closingLineValue: 2.1, statusLabel: 'promising', updatedAt: '2026-07-02T12:45:00Z' },
+  { id: 'ss2', strategyName: 'Pre-Off Scalping', totalSignals: 245, totalPaperOrders: 178, wins: 129, losses: 49, strikeRate: 72.47, grossProfit: 520, netProfit: 380, roi: 7.6, profitFactor: 2.12, maxDrawdown: -180, longestLosingStreak: 3, averageOdds: 2.8, averageStake: 50, averageEdge: 3.2, closingLineValue: 1.5, statusLabel: 'promising', updatedAt: '2026-07-02T12:45:00Z' },
+  { id: 'ss3', strategyName: 'Fav/Outsider', totalSignals: 78, totalPaperOrders: 45, wins: 22, losses: 23, strikeRate: 48.89, grossProfit: -120, netProfit: -180, roi: -4.0, profitFactor: 0.85, maxDrawdown: -320, longestLosingStreak: 6, averageOdds: 3.5, averageStake: 70, averageEdge: 2.1, closingLineValue: -0.8, statusLabel: 'failing', updatedAt: '2026-07-02T12:45:00Z' },
+  { id: 'ss4', strategyName: 'Steam/Drift', totalSignals: 34, totalPaperOrders: 12, wins: 7, losses: 5, strikeRate: 58.33, grossProfit: 85, netProfit: 62, roi: 5.2, profitFactor: 1.35, maxDrawdown: -95, longestLosingStreak: 2, averageOdds: 5.1, averageStake: 60, averageEdge: 4.5, closingLineValue: 0.5, statusLabel: 'needs_more_data', updatedAt: '2026-07-02T12:45:00Z' },
+];
+
+export const DEMO_BOT_ACTIVITY = [
+  { id: 'ba1', action: 'Paper order settled', details: 'Value Bet on 5. Starstruck - WON +$228.00', timestamp: '2026-07-02T12:44:51Z' },
+  { id: 'ba2', action: 'Paper order matched', details: 'BACK 5. Starstruck @ 3.40 x $100', timestamp: '2026-07-02T12:44:50Z' },
+  { id: 'ba3', action: 'Paper order submitted', details: 'Value Bet signal on Flemington R6', timestamp: '2026-07-02T12:44:50Z' },
+  { id: 'ba4', action: 'Signal created', details: 'Value Bet: edge 8.21%, EV $18.42', timestamp: '2026-07-02T12:44:50Z' },
+  { id: 'ba5', action: 'Market scanned', details: '8 markets scanned, 5 passed filters', timestamp: '2026-07-02T12:44:50Z' },
+  { id: 'ba6', action: 'Risk blocked', details: 'Odds above maximum (20.00)', timestamp: '2026-07-02T12:44:40Z' },
+  { id: 'ba7', action: 'Paper order settled', details: 'Pre-Off Scalping on 1. Golden Path - WON +$237.50', timestamp: '2026-07-02T12:44:20Z' },
+  { id: 'ba8', action: 'Paper order matched', details: 'BACK 1. Golden Path @ 6.00 x $50', timestamp: '2026-07-02T12:44:20Z' },
+];
