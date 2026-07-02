@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { DEMO_MARKETS, DEMO_RUNNERS, DEMO_PAPER_ORDERS, DEMO_STRATEGY_SIGNALS, DEMO_BANKROLL_STATS, DEMO_RISK_STATUS, DEMO_HEATMAP, DEMO_AUDIT_LOGS, DEMO_BACKTEST_RUNS, DEMO_PL_DATA, DEMO_BOT_CYCLES, DEMO_STRATEGY_STATS, DEMO_BOT_ACTIVITY } from '@/lib/demoData';
+import { base44 } from '@/api/base44Client';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 
 const AppContext = createContext(null);
@@ -23,10 +23,11 @@ const DEFAULT_BOT_SETTINGS = {
 export function AppProvider({ children }) {
   const [mode, setMode] = useState('research');
   const [emergencyStop, setEmergencyStop] = useState(false);
-  const [demoMode, setDemoMode] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
   const [beginnerMode, setBeginnerMode] = useState(true);
   const [apiConnected, setApiConnected] = useState(false);
   const [betfairAccount, setBetfairAccount] = useState(null);
+  const [betfairSessionToken, setBetfairSessionToken] = useState(null);
   const [jurisdiction, setJurisdiction] = useState('AU');
   const [notifications, setNotifications] = useState(3);
   const [settings, setSettings] = useState({
@@ -56,16 +57,25 @@ export function AppProvider({ children }) {
     outsiderSideEnabled: true,
   });
 
-  const [markets, setMarkets] = useState(DEMO_MARKETS);
-  const [runners, setRunners] = useState(DEMO_RUNNERS);
-  const [paperOrders, setPaperOrders] = useState(DEMO_PAPER_ORDERS);
-  const [strategySignals, setStrategySignals] = useState(DEMO_STRATEGY_SIGNALS);
-  const [bankrollStats, setBankrollStats] = useState(DEMO_BANKROLL_STATS);
-  const [riskStatus] = useState(DEMO_RISK_STATUS);
-  const [heatmap] = useState(DEMO_HEATMAP);
-  const [auditLogs, setAuditLogs] = useState(DEMO_AUDIT_LOGS);
-  const [backtestRuns, setBacktestRuns] = useState(DEMO_BACKTEST_RUNS);
-  const [plData] = useState(DEMO_PL_DATA);
+  const [markets, setMarkets] = useState([]);
+  const [runners, setRunners] = useState([]);
+  const [paperOrders, setPaperOrders] = useState([]);
+  const [strategySignals, setStrategySignals] = useState([]);
+  const [bankrollStats, setBankrollStats] = useState({
+    bankroll: 10000, todayPL: 0, totalPL: 0, openExposure: 0, roi: 0,
+    strikeRate: 0, maxDrawdown: 0, longestLosingStreak: 0, available: 10000, wins: 0, losses: 0,
+  });
+  const [riskStatus] = useState({
+    dailyLossLimit: { status: 'ok', value: 0, label: 'Daily Loss Limit' },
+    maxDrawdown: { status: 'ok', value: 0, label: 'Max Drawdown' },
+    openExposure: { status: 'ok', value: 0, label: 'Open Exposure' },
+    unmatchedOrders: { status: 'ok', value: 0, label: 'Unmatched Orders' },
+    apiHealth: { status: 'ok', value: 100, label: 'API Health' },
+  });
+  const [heatmap] = useState({ veryHigh: 0, high: 0, medium: 0, low: 0, veryLow: 0 });
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [backtestRuns, setBacktestRuns] = useState([]);
+  const [plData] = useState([]);
 
   // Bot state
   const [botState, setBotState] = useState({
@@ -81,9 +91,9 @@ export function AppProvider({ children }) {
     botPLToday: 0,
   });
   const [botSettings, setBotSettings] = useState(DEFAULT_BOT_SETTINGS);
-  const [botCycles, setBotCycles] = useState(DEMO_BOT_CYCLES);
-  const [strategyStats, setStrategyStats] = useState(DEMO_STRATEGY_STATS);
-  const [botActivity, setBotActivity] = useState(DEMO_BOT_ACTIVITY);
+  const [botCycles, setBotCycles] = useState([]);
+  const [strategyStats, setStrategyStats] = useState([]);
+  const [botActivity, setBotActivity] = useState([]);
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
@@ -376,9 +386,47 @@ export function AppProvider({ children }) {
     return () => clearInterval(timer);
   }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
 
+  // Betfair API — fetch live market data when connected
+  useEffect(() => {
+    if (!apiConnected) {
+      setMarkets([]);
+      setRunners([]);
+      setBetfairSessionToken(null);
+      setDemoMode(false);
+      return;
+    }
+    setDemoMode(false);
+    if (!betfairSessionToken) return;
+
+    let cancelled = false;
+
+    const fetchMarkets = async () => {
+      try {
+        const res = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
+        if (cancelled) return;
+        if (res.data?.status === 'success') {
+          setMarkets(res.data.markets);
+          setRunners(res.data.runners);
+        } else if (res.data?.sessionExpired) {
+          setApiConnected(false);
+          setBetfairSessionToken(null);
+          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
+        }
+      } catch (err) {
+        // Silent — will retry next poll
+      }
+    };
+
+    fetchMarkets();
+    const intervalMs = Math.max(5, settings.apiPollingInterval || 5) * 1000;
+    const timer = setInterval(fetchMarkets, intervalMs);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [apiConnected, betfairSessionToken, settings.apiPollingInterval]);
+
   const value = {
     mode, changeMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
-    demoMode, setDemoMode, beginnerMode, setBeginnerMode, apiConnected, setApiConnected, betfairAccount, setBetfairAccount,
+    demoMode, setDemoMode, beginnerMode, setBeginnerMode,
+    apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     settings, updateSettings,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,

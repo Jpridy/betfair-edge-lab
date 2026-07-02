@@ -29,7 +29,7 @@ export default function StatusStrip() {
     },
     {
       label: 'Data',
-      value: apiConnected ? 'API Connected' : 'Demo Data',
+      value: apiConnected ? 'API Connected' : 'Disconnected',
       icon: apiConnected ? Wifi : WifiOff,
       color: apiConnected ? 'text-chart-1' : 'text-chart-4',
       dot: apiConnected ? 'bg-chart-1' : 'bg-chart-4',

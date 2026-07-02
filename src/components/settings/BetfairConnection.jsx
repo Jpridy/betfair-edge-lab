@@ -8,7 +8,7 @@ import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle } from 'lucide-react'
 import { base44 } from '@/api/base44Client';
 
 export default function BetfairConnection() {
-  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, addAuditLog } = useApp();
+  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setDemoMode, addAuditLog } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -19,6 +19,8 @@ export default function BetfairConnection() {
       const res = await base44.functions.invoke('betfairLogin', {});
       if (res.data?.status === 'success') {
         setApiConnected(true);
+        setBetfairSessionToken(res.data.sessionToken);
+        setDemoMode(false);
         setBetfairAccount({
           username: res.data.username,
           jurisdiction: res.data.jurisdiction,
