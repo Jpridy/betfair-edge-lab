@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
+import { fetchBetfairMarkets } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 
 const AppContext = createContext(null);
@@ -402,12 +403,12 @@ export function AppProvider({ children }) {
 
     const fetchMarkets = async () => {
       try {
-        const res = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
+        const res = await fetchBetfairMarkets(betfairSessionToken);
         if (cancelled) return;
-        if (res.data?.status === 'success') {
-          setMarkets(res.data.markets);
-          setRunners(res.data.runners);
-        } else if (res.data?.sessionExpired) {
+        if (res.status === 'success') {
+          setMarkets(res.markets);
+          setRunners(res.runners);
+        } else if (res.sessionExpired) {
           setApiConnected(false);
           setBetfairSessionToken(null);
           addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');

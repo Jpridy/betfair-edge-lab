@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, KeyRound, ExternalLink } from 'lucide-react';
-import { base44 } from '@/api/base44Client';
+import { validateSsoid } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
   const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setDemoMode, addAuditLog } = useApp();
@@ -21,32 +21,28 @@ export default function BetfairConnection() {
     setLoading(true);
     setError('');
     try {
-      const res = await base44.functions.invoke('betfairLogin', { ssoid: ssoidInput.trim() });
-      if (res.data?.status === 'success') {
-        setApiConnected(true);
-        setBetfairSessionToken(res.data.sessionToken);
-        setDemoMode(false);
-        setBetfairAccount({
-          username: 'SSOID User',
-          jurisdiction: res.data.jurisdiction,
-          balance: res.data.balance,
-          exposure: res.data.exposure,
-          exposureLimit: res.data.exposureLimit,
-          discountRate: res.data.discountRate,
-          pointsBalance: res.data.pointsBalance,
-          currency: res.data.currency,
-          firstName: res.data.firstName,
-          lastName: res.data.lastName,
-          locale: res.data.locale,
-          connectedAt: new Date().toISOString(),
-        });
-        addAuditLog('Betfair Account Linked', 'api', 'info', `Connected via SSOID (${res.data.jurisdiction})`);
-      } else {
-        setError(res.data?.error || 'Connection failed');
-        addAuditLog('Betfair Login Failed', 'api', 'error', res.data?.error || 'Unknown error');
-      }
+      const account = await validateSsoid(ssoidInput.trim());
+      setApiConnected(true);
+      setBetfairSessionToken(account.sessionToken);
+      setDemoMode(false);
+      setBetfairAccount({
+        username: 'SSOID User',
+        jurisdiction: account.jurisdiction,
+        balance: account.balance,
+        exposure: account.exposure,
+        exposureLimit: account.exposureLimit,
+        discountRate: account.discountRate,
+        pointsBalance: account.pointsBalance,
+        currency: account.currency,
+        firstName: account.firstName,
+        lastName: account.lastName,
+        locale: account.locale,
+        connectedAt: new Date().toISOString(),
+      });
+      addAuditLog('Betfair Account Linked', 'api', 'info', `Connected via SSOID (${account.jurisdiction})`);
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Connection failed');
+      setError(err.message || 'Connection failed');
+      addAuditLog('Betfair Login Failed', 'api', 'error', err.message || 'Unknown error');
     } finally {
       setLoading(false);
     }
