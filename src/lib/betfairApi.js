@@ -24,6 +24,54 @@ export async function getBetfairConfig() {
 }
 
 /**
+ * Log in to Betfair using username and password.
+ * Makes a direct browser-to-Betfair login request (bypasses Cloudflare blocks
+ * on cloud server IPs by using the user's residential IP + browser TLS fingerprint).
+ * Returns account info on success, throws on failure.
+ */
+export async function loginWithCredentials(username, password) {
+  const config = await getBetfairConfig();
+
+  const loginUrl = 'https://identitysso.betfair.com/api/login';
+
+  let loginRes;
+  try {
+    loginRes = await fetch(loginUrl, {
+      method: 'POST',
+      headers: {
+        'X-Application': config.appKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+      },
+      body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`,
+    });
+  } catch (err) {
+    // Network/CORS error — browser blocked the request entirely
+    throw new Error('Unable to reach Betfair login from the browser. This may be a CORS or network restriction. Try the SSOID method instead.');
+  }
+
+  const loginText = await loginRes.text();
+
+  // If we get HTML back, it's a Cloudflare block or CORS redirect
+  if (loginText.includes('<!DOCTYPE') || loginText.includes('<html')) {
+    throw new Error('Betfair login endpoint blocked the browser request. Try using the SSOID method instead.');
+  }
+
+  let loginData;
+  try { loginData = JSON.parse(loginText); } catch {
+    throw new Error(`Betfair login returned an unexpected response (HTTP ${loginRes.status}).`);
+  }
+
+  if (loginData.status !== 'SUCCESS' || !loginData.token) {
+    const errMsg = loginData.error || 'Login failed';
+    throw new Error(`Betfair login failed: ${errMsg}`);
+  }
+
+  // Login succeeded — now validate the session token by fetching account funds
+  return await validateSsoid(loginData.token);
+}
+
+/**
  * Validate an SSOID by fetching account funds.
  * Returns account info if valid, throws if invalid.
  */

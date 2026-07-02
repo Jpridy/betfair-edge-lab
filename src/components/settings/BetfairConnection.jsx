@@ -4,29 +4,30 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, KeyRound, ExternalLink } from 'lucide-react';
-import { validateSsoid } from '@/lib/betfairApi';
+import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink } from 'lucide-react';
+import { loginWithCredentials } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
   const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setDemoMode, addAuditLog } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [ssoidInput, setSsoidInput] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
 
   const handleConnect = async () => {
-    if (!ssoidInput.trim()) {
-      setError('Please enter your Betfair SSOID');
+    if (!usernameInput.trim() || !passwordInput.trim()) {
+      setError('Please enter your Betfair username and password');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const account = await validateSsoid(ssoidInput.trim());
+      const account = await loginWithCredentials(usernameInput.trim(), passwordInput);
       setApiConnected(true);
       setBetfairSessionToken(account.sessionToken);
       setDemoMode(false);
       setBetfairAccount({
-        username: 'SSOID User',
+        username: usernameInput.trim(),
         jurisdiction: account.jurisdiction,
         balance: account.balance,
         exposure: account.exposure,
@@ -39,7 +40,8 @@ export default function BetfairConnection() {
         locale: account.locale,
         connectedAt: new Date().toISOString(),
       });
-      addAuditLog('Betfair Account Linked', 'api', 'info', `Connected via SSOID (${account.jurisdiction})`);
+      addAuditLog('Betfair Account Linked', 'api', 'info', `Connected as ${usernameInput.trim()} (${account.jurisdiction})`);
+      setPasswordInput('');
     } catch (err) {
       setError(err.message || 'Connection failed');
       addAuditLog('Betfair Login Failed', 'api', 'error', err.message || 'Unknown error');
@@ -52,7 +54,8 @@ export default function BetfairConnection() {
     setApiConnected(false);
     setBetfairAccount(null);
     setBetfairSessionToken(null);
-    setSsoidInput('');
+    setUsernameInput('');
+    setPasswordInput('');
     addAuditLog('Betfair Account Unlinked', 'api', 'warning', 'Betfair account disconnected');
   };
 
@@ -64,7 +67,7 @@ export default function BetfairConnection() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold text-foreground">Connect Your Betfair Account</div>
-                <div className="text-xs text-muted-foreground mt-1">Connect using your Betfair SSOID (session token from your browser).</div>
+                <div className="text-xs text-muted-foreground mt-1">Log in with your Betfair username and password.</div>
               </div>
               <StatusBadge status="warning">Not Connected</StatusBadge>
             </div>
@@ -82,7 +85,7 @@ export default function BetfairConnection() {
             <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Auth Method</span>
-                <span className="font-mono text-foreground">SSOID Key</span>
+                <span className="font-mono text-foreground">Username &amp; Password</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Required Secret</span>
@@ -90,34 +93,46 @@ export default function BetfairConnection() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="ssoid" className="text-xs font-medium">Betfair SSOID</Label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="bf-username" className="text-xs font-medium">Betfair Username</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="bf-username"
+                    type="text"
+                    placeholder="Your Betfair username"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    className="pl-9 text-sm"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bf-password" className="text-xs font-medium">Betfair Password</Label>
                 <Input
-                  id="ssoid"
+                  id="bf-password"
                   type="password"
-                  placeholder="Paste your SSOID here..."
-                  value={ssoidInput}
-                  onChange={(e) => setSsoidInput(e.target.value)}
-                  className="pl-9 font-mono text-sm"
+                  placeholder="Your Betfair password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="text-sm"
                   onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
                 />
               </div>
             </div>
 
-            <details className="bg-muted/20 border border-border rounded-lg p-3 text-xs text-muted-foreground">
-              <summary className="cursor-pointer font-semibold text-foreground">How to get your SSOID</summary>
-              <div className="mt-2 space-y-1.5 pl-2">
-                <div>1. Log in to <a href="https://www.betfair.com" target="_blank" rel="noopener noreferrer" className="text-chart-3 inline-flex items-center gap-0.5 hover:underline">betfair.com <ExternalLink className="h-3 w-3" /></a> in your browser</div>
-                <div>2. Open DevTools (press F12) → Application tab → Cookies → betfair.com</div>
-                <div>3. Find the cookie named <span className="font-mono text-chart-3">ssoid</span></div>
-                <div>4. Copy its value and paste it above</div>
-                <div className="text-muted-foreground/70 italic mt-2">The SSOID is your active session token. It expires when you log out of Betfair — just paste a new one to reconnect.</div>
+            <div className="bg-muted/20 border border-border rounded-lg p-3 text-xs text-muted-foreground">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-chart-4" />
+                <div>
+                  Your credentials are sent directly to Betfair from your browser and are never stored. If the login is blocked by CORS, use the <a href="https://www.betfair.com" target="_blank" rel="noopener noreferrer" className="text-chart-3 inline-flex items-center gap-0.5 hover:underline">SSOID method <ExternalLink className="h-3 w-3" /></a> instead.
+                </div>
               </div>
-            </details>
+            </div>
 
-            <Button onClick={handleConnect} disabled={loading || !ssoidInput.trim()} className="w-full h-11 font-medium">
+            <Button onClick={handleConnect} disabled={loading || !usernameInput.trim() || !passwordInput.trim()} className="w-full h-11 font-medium">
               {loading ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting to Betfair...</>
               ) : (
@@ -132,7 +147,7 @@ export default function BetfairConnection() {
                 <CheckCircle2 className="h-5 w-5 text-chart-1" />
                 <div>
                   <div className="text-sm font-semibold text-foreground">Betfair Account Connected</div>
-                  <div className="text-xs text-muted-foreground">Connected via SSOID{betfairAccount?.firstName ? ` — ${betfairAccount.firstName} ${betfairAccount.lastName}` : ''}</div>
+                  <div className="text-xs text-muted-foreground">Logged in as {betfairAccount?.username || 'Betfair user'}{betfairAccount?.firstName ? ` — ${betfairAccount.firstName} ${betfairAccount.lastName}` : ''}</div>
                 </div>
               </div>
               <StatusBadge status="ok">Connected</StatusBadge>
