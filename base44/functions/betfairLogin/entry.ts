@@ -29,34 +29,40 @@ Deno.serve(async (req) => {
       return Response.json(config);
     }
 
-    // Login requested — need proxy to bypass Cloudflare
-    if (!proxyUrl) {
-      return Response.json({
-        ...config,
-        status: 'error',
-        error: 'BETFAIR_PROXY_URL not configured. Deploy a Cloudflare Worker proxy and set the URL as the BETFAIR_PROXY_URL secret.',
-      });
-    }
-
-    // Step 1: Login through proxy
+    // Step 1: Login — try direct first, then proxy
     const loginTargetUrl = 'https://identitysso.betfair.com/api/login';
-    const loginProxyUrl = `${proxyUrl}?url=${encodeURIComponent(loginTargetUrl)}`;
     const loginBodyStr = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+    const loginHeaders = {
+      'X-Application': appKey,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    };
 
-    const loginRes = await fetch(loginProxyUrl, {
+    // Try direct call first
+    let loginRes = await fetch(loginTargetUrl, {
       method: 'POST',
-      headers: {
-        'X-Application': appKey,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
+      headers: loginHeaders,
       body: loginBodyStr,
     });
 
-    const loginText = await loginRes.text();
+    let loginText = await loginRes.text();
+    let usedProxy = false;
+
+    // If blocked (HTML response), try through proxy
+    if ((loginText.includes('<!DOCTYPE') || loginText.includes('<html')) && proxyUrl) {
+      const loginProxyUrl = `${proxyUrl}?url=${encodeURIComponent(loginTargetUrl)}`;
+      loginRes = await fetch(loginProxyUrl, {
+        method: 'POST',
+        headers: loginHeaders,
+        body: loginBodyStr,
+      });
+      loginText = await loginRes.text();
+      usedProxy = true;
+    }
 
     if (loginText.includes('<!DOCTYPE') || loginText.includes('<html')) {
-      return Response.json({ ...config, status: 'error', error: 'Betfair login blocked even through proxy. Check that the Cloudflare Worker is deployed correctly.' });
+      return Response.json({ ...config, status: 'error', error: `Login blocked. Direct: ${!usedProxy}. Response snippet: ${loginText.substring(0, 500)}` });
     }
 
     let loginData;
@@ -70,44 +76,29 @@ Deno.serve(async (req) => {
 
     const sessionToken = loginData.token;
 
-    // Step 2: Get account funds through proxy
-    const fundsTargetUrl = `${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`;
-    const fundsProxyUrl = `${proxyUrl}?url=${encodeURIComponent(fundsTargetUrl)}`;
+    // Helper: try direct, then proxy
+    const accountHeaders = {
+      'X-Authentication': sessionToken,
+      'X-Application': appKey,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    };
 
-    const fundsRes = await fetch(fundsProxyUrl, {
-      method: 'POST',
-      headers: {
-        'X-Authentication': sessionToken,
-        'X-Application': appKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: '{}',
-    });
-
-    let funds = null;
-    if (fundsRes.ok) {
-      try { funds = await fundsRes.json(); } catch {}
+    async function fetchAccount(endpoint) {
+      const targetUrl = `${apiBase}/exchange/account/rest/v1.0/${endpoint}/`;
+      let res = await fetch(targetUrl, { method: 'POST', headers: accountHeaders, body: '{}' });
+      let text = await res.text();
+      if ((text.includes('<!DOCTYPE') || text.includes('<html')) && proxyUrl) {
+        const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
+        res = await fetch(proxyFetchUrl, { method: 'POST', headers: accountHeaders, body: '{}' });
+        text = await res.text();
+      }
+      try { return JSON.parse(text); } catch { return null; }
     }
 
-    // Step 3: Get account details through proxy
-    const detailsTargetUrl = `${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`;
-    const detailsProxyUrl = `${proxyUrl}?url=${encodeURIComponent(detailsTargetUrl)}`;
-
-    let details = null;
-    try {
-      const detailsRes = await fetch(detailsProxyUrl, {
-        method: 'POST',
-        headers: {
-          'X-Authentication': sessionToken,
-          'X-Application': appKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: '{}',
-      });
-      if (detailsRes.ok) details = await detailsRes.json();
-    } catch {}
+    const funds = await fetchAccount('getAccountFunds');
+    const details = await fetchAccount('getAccountDetails');
 
     return Response.json({
       ...config,
