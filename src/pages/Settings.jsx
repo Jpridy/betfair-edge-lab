@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw, Trash2 } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import { calculateCommission, getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
 
@@ -220,23 +219,13 @@ export default function Settings() {
                 </div>
               </div>
               <div className="flex justify-end">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4 mr-1" /> Reset All Paper Trading</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Reset all paper trading?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will permanently delete all paper orders, signals, bot cycles, and reset bankroll P/L, strategy stats, and daily counters. The bankroll will return to your starting balance of ${settings.paperBankroll || settings.bankroll}. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={resetAllPaperTrading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes, reset everything</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button variant="destructive" size="sm" onClick={() => {
+                  if (window.confirm('This will permanently delete ALL paper orders, signals, bot cycles, and reset bankroll P/L, strategy stats, and daily counters. Bankroll returns to starting balance. This cannot be undone. Are you sure?')) {
+                    resetAllPaperTrading();
+                  }
+                }}>
+                  <Trash2 className="h-4 w-4 mr-1" /> Reset All Paper Trading
+                </Button>
               </div>
             </div>
           </Panel>
