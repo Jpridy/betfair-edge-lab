@@ -278,6 +278,65 @@ export function AppProvider({ children }) {
     addToBotActivity('Paper-only mode forced', 'Live trading disabled system-wide');
   };
 
+  const resetAllPaperTrading = () => {
+    setPaperOrders([]);
+    setRejectedOrders([]);
+    setStrategySignals([]);
+    setBotCycles([]);
+    setBotActivity([]);
+    setBankrollStats(prev => ({
+      ...prev,
+      todayPL: 0,
+      weeklyPL: 0,
+      totalPL: 0,
+      paperBankroll: settings.paperBankroll || settings.bankroll,
+      available: settings.paperBankroll || settings.bankroll,
+      openPaperExposure: 0,
+      openLiveExposure: 0,
+      commissionPaid: 0,
+      maxDrawdown: 0,
+      wins: 0,
+      losses: 0,
+    }));
+    setStrategyStats(prev => prev.map(stat => ({
+      ...stat,
+      totalPaperOrders: 0,
+      wins: 0,
+      losses: 0,
+      strikeRate: 0,
+      grossProfit: 0,
+      netProfit: 0,
+      roi: 0,
+      profitFactor: 0,
+      maxDrawdown: 0,
+      longestLosingStreak: 0,
+      averageOdds: 0,
+      averageStake: 0,
+      averageEdge: 0,
+      closingLineValue: 0,
+      updatedAt: new Date().toISOString(),
+    })));
+    setBotState(prev => ({
+      ...prev,
+      cycleNumber: 0,
+      signalsToday: 0,
+      ordersToday: 0,
+      ordersBlockedToday: 0,
+      botPLToday: 0,
+    }));
+    setSyncState(prev => ({
+      ...prev,
+      marketsScannedToday: 0,
+      runnersScannedToday: 0,
+      signalsGeneratedToday: 0,
+      ordersCreatedToday: 0,
+      ordersRejectedToday: 0,
+      lastRejectedReason: null,
+    }));
+    addAuditLog('Paper Trading Reset', 'system', 'critical', 'All paper orders, signals, bot cycles, bankroll P/L, strategy stats, and daily counters reset to zero.');
+    addToBotActivity('Paper trading reset', 'All paper trading data cleared and bankroll reset to starting balance');
+  };
+
   // ── Mode Management ──
   const changeMode = (newMode) => {
     if (newMode === 'live_locked') return;
@@ -799,6 +858,7 @@ export function AppProvider({ children }) {
     strategyLibrary,
     // Emergency controls
     cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
+    resetAllPaperTrading,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

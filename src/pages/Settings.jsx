@@ -7,12 +7,13 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw } from 'lucide-react';
+import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import { calculateCommission, getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
 
 export default function Settings() {
-  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected } = useApp();
+  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected, resetAllPaperTrading } = useApp();
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
   const [liveConfirmText, setLiveConfirmText] = useState('');
@@ -207,6 +208,36 @@ export default function Settings() {
             <div className="p-4 flex items-center justify-between">
               <div className="text-xs text-muted-foreground">Manually reset daily P/L counters and trade statistics.</div>
               <Button variant="outline" size="sm" onClick={handleResetDaily}><RotateCcw className="h-4 w-4 mr-1" /> Reset Daily Stats</Button>
+            </div>
+          </Panel>
+
+          <Panel title="Reset All Paper Trading" className="mt-5">
+            <div className="p-4 space-y-3">
+              <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3">
+                <div className="text-xs font-bold text-chart-5 flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> This will permanently clear ALL paper trading data</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Deletes all paper orders, rejected orders, strategy signals, bot cycles, and activity logs. Resets bankroll P/L to zero, strategy stats to baseline, and daily counters to zero. Bankroll returns to your starting balance. This cannot be undone.
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4 mr-1" /> Reset All Paper Trading</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Reset all paper trading?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all paper orders, signals, bot cycles, and reset bankroll P/L, strategy stats, and daily counters. The bankroll will return to your starting balance of ${settings.paperBankroll || settings.bankroll}. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={resetAllPaperTrading} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes, reset everything</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </div>
           </Panel>
         </TabsContent>
