@@ -1,22 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
+import { exportToCSV } from '@/lib/csvExport';
 
 export default function Orders() {
   const { paperOrders } = useApp();
   const [statusFilter, setStatusFilter] = useState('all');
   const [sideFilter, setSideFilter] = useState('all');
+  const [strategyFilter, setStrategyFilter] = useState('all');
+  const [resultFilter, setResultFilter] = useState('all');
   const [search, setSearch] = useState('');
+
+  const strategies = useMemo(
+    () => [...new Set(paperOrders.map(o => o.strategyName).filter(Boolean))].sort(),
+    [paperOrders]
+  );
 
   const filtered = paperOrders.filter(o => {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (sideFilter !== 'all' && o.side !== sideFilter) return false;
+    if (strategyFilter !== 'all' && o.strategyName !== strategyFilter) return false;
+    if (resultFilter !== 'all' && o.result !== resultFilter) return false;
     if (search && !o.runnerName?.toLowerCase().includes(search.toLowerCase()) && !o.marketName?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  const handleExportCSV = () => {
+    const columns = [
+      { key: 'created_date', label: 'Time' },
+      { key: 'strategyName', label: 'Strategy' },
+      { key: 'marketName', label: 'Market' },
+      { key: 'runnerName', label: 'Runner' },
+      { key: 'side', label: 'Side' },
+      { key: 'requestedOdds', label: 'Req Odds' },
+      { key: 'matchedOdds', label: 'Match Odds' },
+      { key: 'matchedStake', label: 'Stake' },
+      { key: 'status', label: 'Status' },
+      { key: 'result', label: 'Result' },
+      { key: 'grossProfit', label: 'Gross' },
+      { key: 'commission', label: 'Commission' },
+      { key: 'netProfit', label: 'Net P/L' },
+    ];
+    exportToCSV(`paper-orders-${new Date().toISOString().slice(0, 10)}.csv`, filtered, columns);
+  };
 
   const totalStake = filtered.reduce((sum, o) => sum + (o.matchedStake || 0), 0);
   const totalPL = filtered.reduce((sum, o) => sum + (o.netProfit || 0), 0);
@@ -69,7 +100,32 @@ export default function Orders() {
               </SelectContent>
             </Select>
           </div>
+          <div className="w-48">
+            <Select value={strategyFilter} onValueChange={setStrategyFilter}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Strategies</SelectItem>
+                {strategies.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-40">
+            <Select value={resultFilter} onValueChange={setResultFilter}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Results</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="won">Won</SelectItem>
+                <SelectItem value="lost">Lost</SelectItem>
+                <SelectItem value="void">Void</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Input placeholder="Search runner or market..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 text-xs" />
+          <div className="flex-1" />
+          <Button variant="outline" size="sm" onClick={handleExportCSV} className="h-9">
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
         </div>
       </Panel>
 

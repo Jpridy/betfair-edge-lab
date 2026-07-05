@@ -3,6 +3,7 @@ import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import GlobalStopRules from '@/components/risk/GlobalStopRules';
 
 const RISK_RULES = [
   { key: 'maxStake', label: 'Maximum Stake Per Bet', getValue: (s) => `$${s.maxStake}`, check: true },
@@ -66,6 +67,9 @@ export default function RiskManager() {
           ))}
         </div>
       </Panel>
+
+      {/* Global Stop Rules */}
+      <GlobalStopRules />
 
       {/* Risk Rules */}
       <Panel title="Risk Rules — Checked Before Every Order">
