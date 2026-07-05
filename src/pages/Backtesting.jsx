@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { Play, Loader2, History, TrendingUp, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { Play, Loader2, History, TrendingUp, AlertTriangle, CheckCircle2, XCircle, ShieldAlert } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function Backtesting() {
   const { settings, addBacktestRun, backtestRuns } = useApp();
@@ -20,6 +21,13 @@ export default function Backtesting() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
+  const [stakeType, setStakeType] = useState('flat');
+  const [commissionRate, setCommissionRate] = useState(settings.commissionRate * 100);
+  const [minOddsRange, setMinOddsRange] = useState(settings.minOdds);
+  const [maxOddsRange, setMaxOddsRange] = useState(settings.maxOdds);
+  const [marketType, setMarketType] = useState('all');
+  const [minLiquidity, setMinLiquidity] = useState(settings.minimumLiquidity);
+  const [timeWindow, setTimeWindow] = useState('5min-30sec');
 
   const toggleStrategy = (name) => {
     setSelectedStrategies(prev =>
@@ -99,6 +107,62 @@ export default function Backtesting() {
             <div>
               <Label className="text-xs">Starting Bankroll</Label>
               <Input type="number" value={startingBankroll} onChange={e => setStartingBankroll(+e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Stake Type</Label>
+              <Select value={stakeType} onValueChange={setStakeType}>
+                <SelectTrigger className="h-9 mt-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="flat">Flat ($ per bet)</SelectItem>
+                  <SelectItem value="percentage">Percentage of bankroll</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Commission Rate (%)</Label>
+              <Input type="number" step="0.1" value={commissionRate} onChange={e => setCommissionRate(+e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Market Type</Label>
+              <Select value={marketType} onValueChange={setMarketType}>
+                <SelectTrigger className="h-9 mt-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="WIN">Win</SelectItem>
+                  <SelectItem value="PLACE">Place</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Min Odds</Label>
+              <Input type="number" step="0.1" value={minOddsRange} onChange={e => setMinOddsRange(+e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Max Odds</Label>
+              <Input type="number" step="0.1" value={maxOddsRange} onChange={e => setMaxOddsRange(+e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Min Liquidity ($)</Label>
+              <Input type="number" value={minLiquidity} onChange={e => setMinLiquidity(+e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Time Before Start Window</Label>
+              <Select value={timeWindow} onValueChange={setTimeWindow}>
+                <SelectTrigger className="h-9 mt-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10min-30sec">10min – 30sec</SelectItem>
+                  <SelectItem value="5min-30sec">5min – 30sec</SelectItem>
+                  <SelectItem value="3min-30sec">3min – 30sec</SelectItem>
+                  <SelectItem value="any">Any time</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
+            <ShieldAlert className="h-4 w-4 text-chart-4 shrink-0 mt-0.5" />
+            <div>
+              <span className="text-chart-4 font-medium">Warning:</span> Backtest results are not live proof. Strategy must still pass paper trading validation (200+ settled trades, positive CLV, profit factor &gt; 1.20) before live mode can be enabled.
             </div>
           </div>
 

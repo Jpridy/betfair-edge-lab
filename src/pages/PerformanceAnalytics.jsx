@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Target, Percent, Activity, BarChart3 } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { DEMO_EQUITY_CURVE, DEMO_MONTHLY_GROWTH, DEMO_WINLOSS_DISTRIBUTION, DEMO_DRAWDOWN_CURVE } from '@/lib/demoData';
+import { getAuditData } from '@/lib/strategyAuditData';
+import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 
 const COLORS = ['hsl(142 71% 45%)', 'hsl(0 72% 51%)', 'hsl(263 70% 55%)', 'hsl(199 89% 48%)'];
 
@@ -62,11 +64,14 @@ export default function PerformanceAnalytics() {
       </div>
 
       <Tabs defaultValue="equity">
-        <TabsList className="bg-card border border-border">
+        <TabsList className="bg-card border border-border flex-wrap">
           <TabsTrigger value="equity" className="text-xs">Equity Curve</TabsTrigger>
           <TabsTrigger value="growth" className="text-xs">Monthly Growth</TabsTrigger>
           <TabsTrigger value="winloss" className="text-xs">Win/Loss Distribution</TabsTrigger>
           <TabsTrigger value="drawdown" className="text-xs">Drawdown</TabsTrigger>
+          <TabsTrigger value="clv" className="text-xs">CLV Over Time</TabsTrigger>
+          <TabsTrigger value="profit" className="text-xs">Profit Breakdown</TabsTrigger>
+          <TabsTrigger value="strikerate" className="text-xs">Strike Rate</TabsTrigger>
           <TabsTrigger value="compare" className="text-xs">Strategy Comparison</TabsTrigger>
         </TabsList>
 
@@ -248,6 +253,136 @@ export default function PerformanceAnalytics() {
               </div>
             </div>
           </Panel>
+        </TabsContent>
+
+        {/* CLV Over Time */}
+        <TabsContent value="clv">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {DEMO_STRATEGY_LIBRARY.filter(s => s.status !== 'archived').map(s => {
+              const audit = getAuditData(s.name);
+              if (!audit?.clvHistory) return null;
+              return (
+                <Panel key={s.id} title={`${s.name} — CLV Over Time`}>
+                  <div className="p-4">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={audit.clvHistory}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                        <XAxis dataKey="week" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                        <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `${v}%`} />
+                        <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`${v}%`, 'CLV']} />
+                        <ReferenceLine y={0} stroke="hsl(215 20% 55%)" strokeDasharray="3 3" />
+                        <Line type="monotone" dataKey="clv" stroke={audit.closingLineValue >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <div className="text-center text-[10px] text-muted-foreground mt-2">Avg CLV: {audit.closingLineValue >= 0 ? '+' : ''}{audit.closingLineValue.toFixed(1)}%</div>
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        {/* Profit Breakdown */}
+        <TabsContent value="profit">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <Panel title="Profit by Strategy">
+              <div className="p-4">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={strategyStats.map(s => ({ name: s.strategyName, profit: s.netProfit }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                    <XAxis dataKey="name" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Net P/L']} />
+                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                    <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                      {strategyStats.map((s, i) => <Cell key={i} fill={s.netProfit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+
+            <Panel title="Profit by Odds Range (Value Bet)">
+              <div className="p-4">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={getAuditData('Value Bet')?.profitByOddsRange || []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                    <XAxis dataKey="range" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
+                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                    <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                      {(getAuditData('Value Bet')?.profitByOddsRange || []).map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+
+            <Panel title="Profit by Time Before Start (Value Bet)">
+              <div className="p-4">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={getAuditData('Value Bet')?.profitByTimeWindow || []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                    <XAxis dataKey="window" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
+                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                    <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                      {(getAuditData('Value Bet')?.profitByTimeWindow || []).map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+
+            <Panel title="Profit by Venue (Value Bet)">
+              <div className="p-4">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={[
+                    { venue: 'Flemington', profit: 485 },
+                    { venue: 'Hawkesbury', profit: 320 },
+                    { venue: 'Ballarat', profit: 180 },
+                    { venue: 'Other', profit: 260 },
+                  ]}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                    <XAxis dataKey="venue" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
+                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                    <Bar dataKey="profit" radius={[4, 4, 0, 0]} fill="hsl(263 70% 55%)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Panel>
+          </div>
+        </TabsContent>
+
+        {/* Strike Rate Over Time */}
+        <TabsContent value="strikerate">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {DEMO_STRATEGY_LIBRARY.filter(s => s.status !== 'archived').map(s => {
+              const audit = getAuditData(s.name);
+              if (!audit?.strikeRateHistory) return null;
+              return (
+                <Panel key={s.id} title={`${s.name} — Strike Rate Over Time`}>
+                  <div className="p-4">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={audit.strikeRateHistory}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                        <XAxis dataKey="week" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                        <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `${v}%`} />
+                        <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`${v}%`, 'Strike Rate']} />
+                        <ReferenceLine y={50} stroke="hsl(215 20% 55%)" strokeDasharray="3 3" label={{ value: '50%', fill: 'hsl(215 20% 55%)', fontSize: 10 }} />
+                        <Line type="monotone" dataKey="rate" stroke="hsl(199 89% 48%)" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <div className="text-center text-[10px] text-muted-foreground mt-2">Current: {audit.strikeRate.toFixed(1)}%</div>
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
         </TabsContent>
 
         {/* Strategy Comparison */}
