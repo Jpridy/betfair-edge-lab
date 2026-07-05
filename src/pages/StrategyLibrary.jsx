@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity } from 'lucide-react';
+import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download } from 'lucide-react';
 import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { generateStrategyDocument } from '@/lib/strategyDocument';
 
 const CATEGORY_ICONS = {
   'Value Betting': Target,
@@ -103,6 +104,10 @@ export default function StrategyLibrary() {
               {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={generateStrategyDocument}>
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Download Document</span>
+          </Button>
           <div className="flex gap-1">
             <Button variant={view === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setView('grid')}>
               <BookOpen className="h-4 w-4" />
