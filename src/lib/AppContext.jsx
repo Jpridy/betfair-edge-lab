@@ -284,13 +284,15 @@ export function AppProvider({ children }) {
     setStrategySignals([]);
     setBotCycles([]);
     setBotActivity([]);
+    const startingBankroll = settings.paperBankroll || settings.bankroll;
     setBankrollStats(prev => ({
       ...prev,
+      bankroll: startingBankroll,
       todayPL: 0,
       weeklyPL: 0,
       totalPL: 0,
-      paperBankroll: settings.paperBankroll || settings.bankroll,
-      available: settings.paperBankroll || settings.bankroll,
+      paperBankroll: startingBankroll,
+      available: startingBankroll,
       openPaperExposure: 0,
       openLiveExposure: 0,
       commissionPaid: 0,
