@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -7,10 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff, Filter } from 'lucide-react';
+import { Eye, EyeOff, Filter, ExternalLink } from 'lucide-react';
 
 export default function MarketScanner() {
   const { markets, runners, toggleWatchMarket } = useApp();
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({
     eventType: 'Horse Racing',
     country: 'all',
@@ -168,7 +170,7 @@ export default function MarketScanner() {
             {filtered.map(m => {
               const rd = getRunnerData(m.id);
               return (
-                <TableRow key={m.id} className="border-border">
+                <TableRow key={m.id} className="border-border cursor-pointer hover:bg-muted/30" onClick={() => navigate(`/runner?market=${m.id}`)}>
                   <TableCell className="text-xs text-muted-foreground">{new Date(m.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
                   <TableCell className="text-xs font-medium">{m.venue} — {m.eventName}</TableCell>
                   <TableCell className="text-xs">{m.marketName}</TableCell>
@@ -180,9 +182,12 @@ export default function MarketScanner() {
                   <TableCell><StatusBadge status="ok">{m.status}</StatusBadge></TableCell>
                   <TableCell className="text-xs">{m.inPlay ? <span className="text-chart-5 font-bold">YES</span> : <span className="text-muted-foreground">No</span>}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{getTimeToStart(m.startTime)}</TableCell>
-                  <TableCell>
+                  <TableCell className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => toggleWatchMarket(m.id)}>
                       {m.watched ? <Eye className="h-3.5 w-3.5 text-primary" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => navigate(`/runner?market=${m.id}`)}>
+                      <ExternalLink className="h-3.5 w-3.5 text-chart-3" />
                     </Button>
                   </TableCell>
                 </TableRow>

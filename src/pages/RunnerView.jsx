@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Gauge } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft } from 'lucide-react';
 
 // Generate synthetic price history for a runner
 function generatePriceHistory(basePrice) {
@@ -44,9 +45,17 @@ function generateLadder(bestBack, bestLay) {
 
 export default function RunnerView() {
   const { markets, runners } = useApp();
-  const [selectedMarket, setSelectedMarket] = useState(markets[0]?.id || '');
+  const [searchParams] = useSearchParams();
+  const marketParam = searchParams.get('market');
+  const [selectedMarket, setSelectedMarket] = useState(marketParam || markets[0]?.id || '');
   const marketRunners = useMemo(() => runners.filter(r => r.marketId === selectedMarket), [runners, selectedMarket]);
   const [selectedRunner, setSelectedRunner] = useState(marketRunners[0]?.id || '');
+
+  React.useEffect(() => {
+    if (marketParam && markets.find(m => m.id === marketParam)) {
+      setSelectedMarket(marketParam);
+    }
+  }, [marketParam, markets]);
 
   React.useEffect(() => {
     if (marketRunners.length > 0 && !marketRunners.find(r => r.id === selectedRunner)) {
@@ -72,6 +81,11 @@ export default function RunnerView() {
 
   return (
     <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <Link to="/scanner" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+          <ArrowLeft className="h-3 w-3" /> Back to Scanner
+        </Link>
+      </div>
       <div className="flex flex-wrap gap-4">
         <div className="w-64">
           <label className="text-xs text-muted-foreground mb-1 block">Market</label>
