@@ -11,11 +11,29 @@
       ],
       "default": "paper"
     },
+    "defaultCommissionRate": {
+      "type": "number",
+      "default": 0.05
+    },
+    "useMarketBaseRate": {
+      "type": "boolean",
+      "default": true
+    },
+    "manualCommissionRate": {
+      "type": "number"
+    },
+    "commissionSource": {
+      "type": "string"
+    },
     "commissionRate": {
       "type": "number",
       "default": 0.05
     },
     "bankroll": {
+      "type": "number",
+      "default": 10000
+    },
+    "paperBankroll": {
       "type": "number",
       "default": 10000
     },
@@ -31,9 +49,17 @@
       "type": "number",
       "default": 5
     },
+    "maxLayLiability": {
+      "type": "number",
+      "default": 1500
+    },
     "dailyLossLimit": {
       "type": "number",
       "default": 500
+    },
+    "weeklyLossLimit": {
+      "type": "number",
+      "default": 2500
     },
     "maxMarketExposure": {
       "type": "number",
@@ -43,9 +69,17 @@
       "type": "number",
       "default": 10
     },
+    "maxUnmatchedOrders": {
+      "type": "number",
+      "default": 10
+    },
     "maxTradesPerMarket": {
       "type": "number",
       "default": 5
+    },
+    "maxTradesPerRunner": {
+      "type": "number",
+      "default": 1
     },
     "maxTradesPerDay": {
       "type": "number",
@@ -87,6 +121,10 @@
       "type": "boolean",
       "default": false
     },
+    "persistApproved": {
+      "type": "boolean",
+      "default": false
+    },
     "selectedJurisdiction": {
       "type": "string",
       "default": "AU"
@@ -94,6 +132,18 @@
     "apiPollingInterval": {
       "type": "number",
       "default": 5
+    },
+    "marketRefreshInterval": {
+      "type": "number",
+      "default": 10
+    },
+    "dataFreshnessLimit": {
+      "type": "number",
+      "default": 30
+    },
+    "streamApiEnabled": {
+      "type": "boolean",
+      "default": false
     },
     "strategyValueBetEnabled": {
       "type": "boolean",
@@ -104,6 +154,10 @@
       "default": true
     },
     "strategyFavOutsiderEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "strategySteamDriftEnabled": {
       "type": "boolean",
       "default": true
     },
@@ -118,6 +172,14 @@
     "outsiderSideEnabled": {
       "type": "boolean",
       "default": true
+    },
+    "forcedPaperOnlyMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "dailyDepositReminderEnabled": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

@@ -8,8 +8,14 @@
     "betfairSelectionId": {
       "type": "string"
     },
+    "selectionId": {
+      "type": "string"
+    },
     "runnerName": {
       "type": "string"
+    },
+    "handicap": {
+      "type": "number"
     },
     "status": {
       "type": "string",
@@ -17,8 +23,61 @@
         "ACTIVE",
         "REMOVED",
         "WINNER",
-        "LOSER"
+        "LOSER",
+        "HIDDEN",
+        "PLACED"
       ]
+    },
+    "adjustmentFactor": {
+      "type": "number"
+    },
+    "lastPriceTraded": {
+      "type": "number"
+    },
+    "totalMatched": {
+      "type": "number"
+    },
+    "availableToBack": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "availableToLay": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "tradedVolume": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        }
+      }
     },
     "bestBackPrice": {
       "type": "number"
@@ -35,10 +94,22 @@
     "lastTradedPrice": {
       "type": "number"
     },
-    "tradedVolume": {
+    "tradedVolumeAmount": {
+      "type": "number"
+    },
+    "spreadTicks": {
       "type": "number"
     },
     "impliedProbability": {
+      "type": "number"
+    },
+    "modelProbability": {
+      "type": "number"
+    },
+    "edge": {
+      "type": "number"
+    },
+    "clvEstimate": {
       "type": "number"
     },
     "favouriteRank": {
@@ -51,6 +122,20 @@
     "isOutsider": {
       "type": "boolean",
       "default": false
+    },
+    "strategySignalStatus": {
+      "type": "string",
+      "enum": [
+        "none",
+        "active",
+        "executed",
+        "expired",
+        "blocked",
+        "rejected"
+      ]
+    },
+    "rejectedSignalReason": {
+      "type": "string"
     }
   },
   "required": [

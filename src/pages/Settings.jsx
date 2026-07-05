@@ -7,14 +7,17 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Upload, RotateCcw, Save } from 'lucide-react';
+import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw } from 'lucide-react';
 import BetfairConnection from '@/components/settings/BetfairConnection';
+import { calculateCommission, getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
 
 export default function Settings() {
-  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings } = useApp();
+  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected } = useApp();
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
   const [liveConfirmText, setLiveConfirmText] = useState('');
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResults, setTestResults] = useState(null);
 
   const update = (key, value) => setLocal(prev => ({ ...prev, [key]: value }));
 
@@ -54,10 +57,20 @@ export default function Settings() {
     addAuditLog('Daily Stats Reset', 'settings', 'warning', 'Daily P/L and trade counters manually reset');
   };
 
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    const results = await testBetfairConnection();
+    setTestResults(results);
+    setTestingConnection(false);
+  };
+
+  // Commission warnings for current settings
+  const commWarnings = getCommissionWarnings({ marketBaseRate: 0.05 }, local);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">Configure all trading parameters, risk limits, and strategy toggles.</div>
+        <div className="text-sm text-muted-foreground">Configure commission model, risk limits, Betfair connection, and strategy toggles.</div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExport}><Download className="h-4 w-4 mr-1" /> Export JSON</Button>
           <label>
@@ -70,23 +83,81 @@ export default function Settings() {
         </div>
       </div>
 
-      <Tabs defaultValue="general">
-        <TabsList className="bg-card border border-border">
+      <Tabs defaultValue="commission">
+        <TabsList className="bg-card border border-border flex-wrap">
+          <TabsTrigger value="commission" className="text-xs">Commission</TabsTrigger>
           <TabsTrigger value="general" className="text-xs">General</TabsTrigger>
           <TabsTrigger value="risk" className="text-xs">Risk Limits</TabsTrigger>
           <TabsTrigger value="strategy" className="text-xs">Strategy</TabsTrigger>
-          <TabsTrigger value="api" className="text-xs">API & Data</TabsTrigger>
+          <TabsTrigger value="betfair" className="text-xs">Betfair Connection</TabsTrigger>
           <TabsTrigger value="bot" className="text-xs">Bot</TabsTrigger>
+          <TabsTrigger value="compliance" className="text-xs">Compliance</TabsTrigger>
         </TabsList>
+
+        {/* ── Commission Model ── */}
+        <TabsContent value="commission">
+          <Panel title="Commission Model — Market Base Rate">
+            <div className="p-4 space-y-4">
+              <div className="bg-chart-3/10 border border-chart-3/30 rounded-lg p-3 text-xs text-muted-foreground">
+                <span className="text-chart-3 font-medium">Betfair Exchange Commission:</span> Commission is calculated only on net market winnings, using the Market Base Rate for each market. Do not hard-code 5% — markets can have different rates.
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Field label="Default Commission Rate (%)">
+                  <Input type="number" step="0.1" value={(local.defaultCommissionRate || 0.05) * 100} onChange={e => update('defaultCommissionRate', +e.target.value / 100)} />
+                </Field>
+                <Field label="Manual Override Commission Rate (%)">
+                  <Input type="number" step="0.1" value={(local.manualCommissionRate || 0) * 100} placeholder="Leave empty for no override" onChange={e => update('manualCommissionRate', e.target.value ? +e.target.value / 100 : null)} />
+                </Field>
+                <Field label="Commission Source">
+                  <div className="pt-2 text-xs text-muted-foreground">
+                    {local.manualCommissionRate ? 'Manual Override' : local.useMarketBaseRate ? 'Market Base Rate (with fallback)' : 'Default Fallback Rate'}
+                  </div>
+                </Field>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <ToggleRow label="Use market-specific Market Base Rate where available" checked={local.useMarketBaseRate !== false} onChange={v => update('useMarketBaseRate', v)} />
+              </div>
+
+              {/* Commission Warnings */}
+              <div className="space-y-2 pt-3 border-t border-border">
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Commission Warnings</div>
+                {commWarnings.length === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-chart-1">
+                    <CheckCircle2 className="h-4 w-4" /> Commission configuration is valid.
+                  </div>
+                ) : (
+                  commWarnings.map((w, i) => (
+                    <div key={i} className={`flex items-start gap-2 text-xs p-2 rounded ${w.level === 'critical' ? 'bg-chart-5/10 text-chart-5' : w.level === 'warning' ? 'bg-chart-4/10 text-chart-4' : 'bg-chart-3/10 text-chart-3'}`}>
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {w.message}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Live Mode Commission Check */}
+              <div className={`rounded-lg p-3 border ${isCommissionValidForLive({ marketBaseRate: 0.05 }, local) ? 'bg-chart-1/10 border-chart-1/30' : 'bg-chart-5/10 border-chart-5/30'}`}>
+                <div className="text-xs font-bold">
+                  {isCommissionValidForLive({ marketBaseRate: 0.05 }, local) ? '✓ Commission calculation valid for live mode' : '✗ Live mode blocked: Commission calculation invalid'}
+                </div>
+                {!isCommissionValidForLive({ marketBaseRate: 0.05 }, local) && (
+                  <div className="text-xs text-muted-foreground mt-1">Market Base Rate required before live use. Set a default commission rate or enable Market Base Rate.</div>
+                )}
+              </div>
+            </div>
+          </Panel>
+        </TabsContent>
 
         <TabsContent value="general">
           <Panel title="General Settings">
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Field label="Commission Rate (%)"><Input type="number" step="0.1" value={local.commissionRate * 100} onChange={e => update('commissionRate', +e.target.value / 100)} /></Field>
               <Field label="Starting Bankroll ($)"><Input type="number" value={local.bankroll} onChange={e => update('bankroll', +e.target.value)} /></Field>
+              <Field label="Paper Bankroll ($)"><Input type="number" value={local.paperBankroll || local.bankroll} onChange={e => update('paperBankroll', +e.target.value)} /></Field>
               <Field label="Base Stake ($)"><Input type="number" value={local.baseStake} onChange={e => update('baseStake', +e.target.value)} /></Field>
               <Field label="Max Stake ($)"><Input type="number" value={local.maxStake} onChange={e => update('maxStake', +e.target.value)} /></Field>
               <Field label="Max Stake % of Bankroll"><Input type="number" value={local.maxStakePercent} onChange={e => update('maxStakePercent', +e.target.value)} /></Field>
+              <Field label="Max Lay Liability ($)"><Input type="number" value={local.maxLayLiability || 1500} onChange={e => update('maxLayLiability', +e.target.value)} /></Field>
               <Field label="Jurisdiction">
                 <Select value={local.selectedJurisdiction || 'AU'} onValueChange={v => update('selectedJurisdiction', v)}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
@@ -107,26 +178,32 @@ export default function Settings() {
           <Panel title="Risk Limits">
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="Daily Loss Limit ($)"><Input type="number" value={local.dailyLossLimit} onChange={e => update('dailyLossLimit', +e.target.value)} /></Field>
+              <Field label="Weekly Loss Limit ($)"><Input type="number" value={local.weeklyLossLimit || local.dailyLossLimit * 5} onChange={e => update('weeklyLossLimit', +e.target.value)} /></Field>
               <Field label="Max Market Exposure ($)"><Input type="number" value={local.maxMarketExposure} onChange={e => update('maxMarketExposure', +e.target.value)} /></Field>
               <Field label="Max Open Orders"><Input type="number" value={local.maxOpenOrders} onChange={e => update('maxOpenOrders', +e.target.value)} /></Field>
+              <Field label="Max Unmatched Orders"><Input type="number" value={local.maxUnmatchedOrders || local.maxOpenOrders} onChange={e => update('maxUnmatchedOrders', +e.target.value)} /></Field>
               <Field label="Max Trades Per Market"><Input type="number" value={local.maxTradesPerMarket} onChange={e => update('maxTradesPerMarket', +e.target.value)} /></Field>
+              <Field label="Max Trades Per Runner"><Input type="number" value={local.maxTradesPerRunner || 1} onChange={e => update('maxTradesPerRunner', +e.target.value)} /></Field>
               <Field label="Max Trades Per Day"><Input type="number" value={local.maxTradesPerDay} onChange={e => update('maxTradesPerDay', +e.target.value)} /></Field>
-              <Field label="Min Liquidity (£)"><Input type="number" value={local.minimumLiquidity} onChange={e => update('minimumLiquidity', +e.target.value)} /></Field>
-              <Field label="Min Traded Volume (£)"><Input type="number" value={local.minimumTradedVolume} onChange={e => update('minimumTradedVolume', +e.target.value)} /></Field>
+              <Field label="Min Liquidity ($)"><Input type="number" value={local.minimumLiquidity} onChange={e => update('minimumLiquidity', +e.target.value)} /></Field>
+              <Field label="Min Traded Volume ($)"><Input type="number" value={local.minimumTradedVolume} onChange={e => update('minimumTradedVolume', +e.target.value)} /></Field>
               <Field label="Minimum Odds"><Input type="number" step="0.1" value={local.minOdds} onChange={e => update('minOdds', +e.target.value)} /></Field>
               <Field label="Maximum Odds"><Input type="number" step="0.1" value={local.maxOdds} onChange={e => update('maxOdds', +e.target.value)} /></Field>
               <Field label="Time Window Start (sec before start)"><Input type="number" value={local.defaultTimeWindowStartSeconds} onChange={e => update('defaultTimeWindowStartSeconds', +e.target.value)} /></Field>
               <Field label="Time Window End (sec before start)"><Input type="number" value={local.defaultTimeWindowEndSeconds} onChange={e => update('defaultTimeWindowEndSeconds', +e.target.value)} /></Field>
               <Field label="Minimum Paper Trades Before Live Review"><Input type="number" value={local.minimumPaperTrades || 200} onChange={e => update('minimumPaperTrades', +e.target.value)} /></Field>
-              <Field label="Weekly Loss Limit ($)"><Input type="number" value={local.weeklyLossLimit || settings.dailyLossLimit * 5} onChange={e => update('weeklyLossLimit', +e.target.value)} /></Field>
               <div className="flex items-center gap-3 pt-6">
                 <Switch checked={local.allowInPlay} onCheckedChange={v => update('allowInPlay', v)} />
                 <Label className="text-sm">Allow In-Play Trading</Label>
               </div>
+              <div className="flex items-center gap-3 pt-6">
+                <Switch checked={local.persistApproved || false} onCheckedChange={v => update('persistApproved', v)} />
+                <Label className="text-sm">Admin Approve PERSIST for Pre-Off</Label>
+              </div>
             </div>
           </Panel>
 
-          <Panel title="Responsible Gambling" className="mt-5">
+          <Panel title="Daily Reset" className="mt-5">
             <div className="p-4 flex items-center justify-between">
               <div className="text-xs text-muted-foreground">Manually reset daily P/L counters and trade statistics.</div>
               <Button variant="outline" size="sm" onClick={handleResetDaily}><RotateCcw className="h-4 w-4 mr-1" /> Reset Daily Stats</Button>
@@ -137,39 +214,124 @@ export default function Settings() {
         <TabsContent value="strategy">
           <Panel title="Strategy Toggles">
             <div className="p-4 space-y-4">
-              <ToggleRow label="Value Betting Strategy" checked={local.strategyValueBetEnabled} onChange={v => update('strategyValueBetEnabled', v)} />
-              <ToggleRow label="Pre-Off Scalping Strategy" checked={local.strategyScalpingEnabled} onChange={v => update('strategyScalpingEnabled', v)} />
-              <ToggleRow label="Favourite/Outsider Strategy" checked={local.strategyFavOutsiderEnabled} onChange={v => update('strategyFavOutsiderEnabled', v)} />
-              <ToggleRow label="Cross-Market Watcher" checked={local.strategyCrossMarketEnabled} onChange={v => update('strategyCrossMarketEnabled', v)} />
+              <ToggleRow label="Value Bet Strategy (Promising — Paper Testing)" checked={local.strategyValueBetEnabled} onChange={v => update('strategyValueBetEnabled', v)} />
+              <ToggleRow label="Pre-Off Scalping Strategy (Promising — Paper Testing)" checked={local.strategyScalpingEnabled} onChange={v => update('strategyScalpingEnabled', v)} />
+              <ToggleRow label="Fav/Outsider Strategy (Failing — Locked)" checked={local.strategyFavOutsiderEnabled} onChange={v => update('strategyFavOutsiderEnabled', v)} />
+              <ToggleRow label="Steam/Drift Strategy (Needs More Data — Paper Only)" checked={local.strategySteamDriftEnabled || local.strategyCrossMarketEnabled} onChange={v => update('strategySteamDriftEnabled', v)} />
               <div className="pt-4 border-t border-border">
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Side Toggles (Fav/Outsider)</div>
-                <ToggleRow label="Favourite Side Enabled" checked={local.favouriteSideEnabled} onChange={v => update('favouriteSideEnabled', v)} />
-                <ToggleRow label="Outsider Side Enabled" checked={local.outsiderSideEnabled} onChange={v => update('outsiderSideEnabled', v)} />
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Archived Strategies (Disabled)</div>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div>• In-Play Front Runner — Archived (no signal generation, no orders, greyed out)</div>
+                  <div>• Cross-Market Arbitrage — Archived (no signal generation, no orders, greyed out)</div>
+                </div>
               </div>
             </div>
           </Panel>
         </TabsContent>
 
-        <TabsContent value="api">
-          <Panel title="API & Data Settings">
-            <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Field label="API Polling Interval (seconds)"><Input type="number" value={local.apiPollingInterval} onChange={e => update('apiPollingInterval', +e.target.value)} /></Field>
-              <Field label="Data Feed Freshness Limit (seconds)"><Input type="number" value={local.dataFreshnessLimit || 30} onChange={e => update('dataFreshnessLimit', +e.target.value)} /></Field>
-              <Field label="Market Refresh Interval (seconds)"><Input type="number" value={local.marketRefreshInterval || 10} onChange={e => update('marketRefreshInterval', +e.target.value)} /></Field>
+        {/* ── Betfair Connection ── */}
+        <TabsContent value="betfair">
+          <Panel title="Betfair Exchange Connection">
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Field label="App Key">
+                  <div className="text-xs font-mono pt-2">{betfairConnection.appKey ? '••••••••••••' : 'Not configured'}</div>
+                </Field>
+                <Field label="Session Token Status">
+                  <div className="pt-2"><StatusBadge status={betfairConnection.sessionTokenStatus === 'connected' ? 'ok' : 'danger'}>{betfairConnection.sessionTokenStatus}</StatusBadge></div>
+                </Field>
+                <Field label="Login Status">
+                  <div className="pt-2"><StatusBadge status={betfairConnection.loginStatus === 'connected' ? 'ok' : 'danger'}>{betfairConnection.loginStatus}</StatusBadge></div>
+                </Field>
+                <Field label="API Environment">
+                  <Select value={betfairConnection.apiEnvironment} onValueChange={v => updateBetfairConnection({ apiEnvironment: v })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="production">Production</SelectItem>
+                      <SelectItem value="integration">Integration (Test)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Jurisdiction">
+                  <Select value={betfairConnection.jisdiction || 'AU'} onValueChange={v => updateBetfairConnection({ jurisdiction: v })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AU">Australia</SelectItem>
+                      <SelectItem value="UK">United Kingdom</SelectItem>
+                      <SelectItem value="ES">Spain</SelectItem>
+                      <SelectItem value="IT">Italy</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Market Data Refresh Rate (seconds)">
+                  <Input type="number" value={betfairConnection.marketDataRefreshRate} onChange={e => updateBetfairConnection({ marketDataRefreshRate: +e.target.value })} />
+                </Field>
+                <Field label="Data Freshness Limit (seconds)">
+                  <Input type="number" value={betfairConnection.dataFreshnessLimit} onChange={e => updateBetfairConnection({ dataFreshnessLimit: +e.target.value })} />
+                </Field>
+                <Field label="Commission Source">
+                  <div className="pt-2 text-xs text-muted-foreground">{local.useMarketBaseRate ? 'Market Base Rate' : 'Default Fallback'}</div>
+                </Field>
+                <Field label="Default Market Base Rate Fallback (%)">
+                  <Input type="number" step="0.1" value={(local.defaultCommissionRate || 0.05) * 100} onChange={e => update('defaultCommissionRate', +e.target.value / 100)} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm">Stream API Enabled</Label>
+                    <div className="text-xs text-muted-foreground mt-1">Exchange Stream API for real-time updates</div>
+                  </div>
+                  <Switch checked={betfairConnection.streamApiEnabled} onCheckedChange={v => updateBetfairConnection({ streamApiEnabled: v })} />
+                </div>
+                <Field label="Stream Connection Status">
+                  <div className="pt-2"><StatusBadge status={betfairConnection.streamConnectionStatus === 'connected' ? 'ok' : 'neutral'}>{betfairConnection.streamConnectionStatus}</StatusBadge></div>
+                </Field>
+                <Field label="Last Market Sync Time">
+                  <div className="text-xs font-mono pt-2">{betfairConnection.lastMarketSyncTime ? new Date(betfairConnection.lastMarketSyncTime).toLocaleTimeString('en-AU') : 'Never'}</div>
+                </Field>
+                <Field label="Last Order Sync Time">
+                  <div className="text-xs font-mono pt-2">{betfairConnection.lastOrderSyncTime ? new Date(betfairConnection.lastOrderSyncTime).toLocaleTimeString('en-AU') : 'Never'}</div>
+                </Field>
+              </div>
+
+              {/* Connection Test */}
+              <div className="pt-3 border-t border-border">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Connection Test</div>
+                  <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testingConnection}>
+                    {testingConnection ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Wifi className="h-4 w-4 mr-1" />}
+                    Test Betfair Connection
+                  </Button>
+                </div>
+                {testResults && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <TestResult label="Login/Session" passed={testResults.loginValid} />
+                    <TestResult label="App Key" passed={testResults.appKeyPresent} />
+                    <TestResult label="Market Data" passed={testResults.marketDataAccess} />
+                    <TestResult label="Account Funds" passed={testResults.accountFundsAvailable} />
+                    <TestResult label="Current Orders" passed={testResults.currentOrdersAvailable} />
+                    <TestResult label="Stream Connection" passed={testResults.streamAvailable} />
+                  </div>
+                )}
+              </div>
             </div>
           </Panel>
 
           <BetfairConnection />
 
-          <Panel title="Live Trading" className="mt-5">
+          <Panel title="Live Trading Lockout" className="mt-5">
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Live Trading</span>
+                <span className="text-muted-foreground">Live Trading Status</span>
                 <StatusBadge status="danger">LOCKED — Disabled</StatusBadge>
               </div>
-              <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3 mt-3">
-                <div className="text-xs text-chart-4 font-bold">⚠ Live Trading is Disabled</div>
-                <div className="text-xs text-muted-foreground mt-1">Live trading requires: confirmation text "ENABLE LIVE TRADING", all risk checks passing, and Betfair API credentials configured. This will be enabled in a future version only.</div>
+              <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3 mt-3">
+                <div className="text-xs text-chart-5 font-bold flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Live Trading is Hard-Locked</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Live mode is blocked until ALL of the following pass: strategy status is Green, admin approval, 200+ settled paper trades, positive ROI, positive CLV, profit factor &gt; 1.20, drawdown within limit, data quality Clean, commission calculation valid, Betfair connection healthy, Risk Manager allows, persistence type approved, and user confirms live betting warning modal.
+                </div>
               </div>
             </div>
           </Panel>
@@ -198,13 +360,35 @@ export default function Settings() {
               </div>
             </div>
           </Panel>
+        </TabsContent>
 
-          <Panel title="Responsible Gambling" className="mt-5">
-            <div className="p-4 bg-chart-4/10 border border-chart-4/30 rounded-lg m-4">
-              <div className="text-xs font-bold text-chart-4">⚠ Responsible Gambling Warning</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                This application includes hard stop limits including daily loss limits, max drawdown stops, losing streak stops, and an emergency stop button.
-                Never bet more than you can afford to lose. Gambling can be addictive — seek help at 1800 858 858 (AU) or www.gamblinghelponline.org.au.
+        {/* ── Responsible Gambling & Compliance ── */}
+        <TabsContent value="compliance">
+          <Panel title="Responsible Use & Compliance">
+            <div className="p-4 space-y-4">
+              <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-4 space-y-2">
+                <div className="text-sm font-bold text-chart-4 flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Responsible Gambling Warning</div>
+                <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
+                  <li>This tool is for personal strategy research unless proper permissions are in place.</li>
+                  <li>Live betting can lose real money — never bet more than you can afford to lose.</li>
+                  <li>Paper results do not guarantee live results. Slippage, latency, and liquidity differ in live markets.</li>
+                  <li>Automation must remain locked until validation passes (200+ settled trades, positive CLV, profit factor &gt; 1.20).</li>
+                  <li>You are responsible for Betfair account compliance, including terms of service and jurisdictional regulations.</li>
+                  <li>Never share your Betfair app key or session token.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-3">
+                <ToggleRow label="Forced Paper-Only Mode (locks out live trading entirely)" checked={local.forcedPaperOnlyMode || false} onChange={v => update('forcedPaperOnlyMode', v)} />
+                <ToggleRow label="Daily Deposit/Loss Reminder" checked={local.dailyDepositReminderEnabled || false} onChange={v => update('dailyDepositReminderEnabled', v)} />
+              </div>
+
+              <div className="bg-card border border-border rounded-lg p-4">
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Support Resources</div>
+                <div className="text-xs text-muted-foreground">
+                  Gambling help: 1800 858 858 (AU) · www.gamblinghelponline.org.au<br />
+                  For platform or billing issues, contact Base44 support.
+                </div>
               </div>
             </div>
           </Panel>
@@ -228,6 +412,15 @@ function ToggleRow({ label, checked, onChange }) {
     <div className="flex items-center justify-between py-1">
       <Label className="text-sm">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
+function TestResult({ label, passed }) {
+  return (
+    <div className={`flex items-center gap-2 text-xs p-2 rounded ${passed ? 'bg-chart-1/10 text-chart-1' : 'bg-chart-5/10 text-chart-5'}`}>
+      {passed ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+      {label}: {passed ? '✓' : '✗'}
     </div>
   );
 }

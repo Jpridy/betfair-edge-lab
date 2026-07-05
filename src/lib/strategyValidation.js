@@ -156,11 +156,11 @@ export function reconcileMetrics(audit) {
     errors.push('Profit factor cannot be calculated — missing gross loss data');
   }
 
-  // Commission check
-  if (audit.grossProfit > 0 && audit.commissionPaid !== undefined) {
-    const expectedComm = audit.grossProfit * 0.05;
+  // Commission check — uses Market Base Rate, not fixed 5%
+  if (audit.grossProfit > 0 && audit.commissionPaid !== undefined && audit.commissionRateUsed !== undefined) {
+    const expectedComm = audit.grossProfit * audit.commissionRateUsed;
     if (Math.abs(expectedComm - audit.commissionPaid) > 1.0) {
-      errors.push('Commission not applied correctly (expected 5%)');
+      errors.push('Commission not applied correctly (does not match Market Base Rate)');
     }
   }
 
@@ -177,7 +177,12 @@ export function checkLiveLockout(strategy, audit, settings, adminState = {}) {
 
   // Archived = always locked
   if (strategy.status === 'archived') {
-    return { locked: true, reasons: ['Strategy is archived'] };
+    return { locked: true, reasons: ['Live locked: strategy is archived.'] };
+  }
+
+  // Fav/Outsider is failing — always locked
+  if (strategy.name === 'Fav/Outsider' || strategy.validationStatus === 'failing') {
+    return { locked: true, reasons: ['Live locked: Fav/Outsider is failing.'] };
   }
 
   // Status must be green
@@ -193,45 +198,70 @@ export function checkLiveLockout(strategy, audit, settings, adminState = {}) {
 
   // Sample size
   if (audit.totalPaperOrders < MIN_SAMPLE_SIZE) {
-    reasons.push(`Only ${audit.totalPaperOrders} paper trades (min ${MIN_SAMPLE_SIZE} required)`);
+    reasons.push(`Live locked: minimum ${MIN_SAMPLE_SIZE} settled paper trades required (current: ${audit.totalPaperOrders}).`);
   }
 
   // Net ROI positive after commission
   if (audit.netProfit <= 0) {
-    reasons.push('Net ROI is not positive after commission');
+    reasons.push('Live locked: net ROI is not positive after commission.');
   }
 
   // CLV positive
   if (audit.closingLineValue <= 0) {
-    reasons.push('Closing Line Value is not positive');
+    reasons.push('Live locked: strategy has negative CLV.');
   }
 
   // Profit factor
   if (audit.profitFactor < MIN_PROFIT_FACTOR) {
-    reasons.push(`Profit factor ${audit.profitFactor.toFixed(2)} below ${MIN_PROFIT_FACTOR}`);
+    reasons.push(`Live locked: profit factor ${audit.profitFactor.toFixed(2)} below ${MIN_PROFIT_FACTOR}.`);
   }
 
   // Drawdown
   const drawdownLimit = settings?.bankroll * MAX_DRAWDOWN_PERCENT / 100 || 1000;
   if (audit.maxDrawdown < -drawdownLimit) {
-    reasons.push('Current drawdown exceeds stop threshold');
+    reasons.push('Live locked: drawdown exceeds allowed limit.');
   }
 
   // Data errors
   const dq = computeDataQuality(strategy, audit);
   if (dq.status !== 'clean') {
-    reasons.push(`Data quality is "${dq.label}" — must be Clean`);
+    reasons.push(`Live locked: data quality is "${dq.label}" — must be Clean.`);
   }
 
   // Metric reconciliation
   const recon = reconcileMetrics(audit);
   if (!recon.valid) {
-    reasons.push('Has unresolved metric reconciliation warnings');
+    reasons.push('Live locked: has unresolved metric reconciliation warnings.');
+  }
+
+  // Commission calculation must be valid
+  if (!adminState.commissionValid) {
+    reasons.push('Live locked: Market Base Rate missing — commission calculation invalid.');
+  }
+
+  // Betfair connection must be healthy
+  if (!adminState.betfairConnected) {
+    reasons.push('Live locked: Betfair session disconnected.');
+  }
+
+  // Risk Manager must allow it
+  if (!adminState.riskManagerAllows) {
+    reasons.push('Live locked: Risk Manager does not allow live trading.');
+  }
+
+  // Persistence type must be approved (for pre-off strategies using PERSIST)
+  if (strategy.persistenceType === 'PERSIST' && !settings?.persistApproved && !strategy.allowInPlay) {
+    reasons.push('Live locked: pre-off strategy uses PERSIST without admin approval.');
+  }
+
+  // In-play check
+  if (strategy.allowInPlay && !settings?.allowInPlay) {
+    reasons.push('Live locked: in-play betting is disabled.');
   }
 
   // User confirmation
   if (!adminState.userConfirmed) {
-    reasons.push('User has not confirmed live mode via warning modal');
+    reasons.push('User has not confirmed live mode via warning modal.');
   }
 
   return { locked: reasons.length > 0, reasons };

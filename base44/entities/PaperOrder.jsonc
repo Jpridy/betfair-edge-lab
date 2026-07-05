@@ -8,6 +8,9 @@
     "marketId": {
       "type": "string"
     },
+    "selectionId": {
+      "type": "string"
+    },
     "runnerId": {
       "type": "string"
     },
@@ -16,6 +19,12 @@
     },
     "marketName": {
       "type": "string"
+    },
+    "venue": {
+      "type": "string"
+    },
+    "raceNumber": {
+      "type": "number"
     },
     "side": {
       "type": "string",
@@ -28,8 +37,120 @@
       "type": "string",
       "enum": [
         "LIMIT",
-        "MARKET"
+        "LIMIT_ON_CLOSE",
+        "MARKET_ON_CLOSE"
       ]
+    },
+    "size": {
+      "type": "number"
+    },
+    "price": {
+      "type": "number"
+    },
+    "persistenceType": {
+      "type": "string",
+      "enum": [
+        "LAPSE",
+        "PERSIST",
+        "MARKET_ON_CLOSE"
+      ]
+    },
+    "customerRef": {
+      "type": "string"
+    },
+    "customerStrategyRef": {
+      "type": "string"
+    },
+    "handicap": {
+      "type": "number"
+    },
+    "paper_mode": {
+      "type": "boolean",
+      "default": true
+    },
+    "liveMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "betfairBetId": {
+      "type": "string"
+    },
+    "requested_size": {
+      "type": "number"
+    },
+    "matched_size": {
+      "type": "number"
+    },
+    "remaining_size": {
+      "type": "number"
+    },
+    "average_price_matched": {
+      "type": "number"
+    },
+    "requested_price": {
+      "type": "number"
+    },
+    "matched_price": {
+      "type": "number"
+    },
+    "placed_date": {
+      "type": "string"
+    },
+    "matched_date": {
+      "type": "string"
+    },
+    "settled_date": {
+      "type": "string"
+    },
+    "lapse_reason": {
+      "type": "string"
+    },
+    "cancel_reason": {
+      "type": "string"
+    },
+    "rejection_reason": {
+      "type": "string"
+    },
+    "failed_validation_field": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "execution_complete",
+        "executable",
+        "matched",
+        "partially_matched",
+        "unmatched",
+        "cancelled",
+        "lapsed",
+        "voided",
+        "settled",
+        "rejected",
+        "error"
+      ]
+    },
+    "simulatedMatchedSize": {
+      "type": "number"
+    },
+    "simulatedAveragePrice": {
+      "type": "number"
+    },
+    "simulatedStatus": {
+      "type": "string"
+    },
+    "simulatedSettlement": {
+      "type": "string"
+    },
+    "simulatedCommission": {
+      "type": "number"
+    },
+    "simulatedCLV": {
+      "type": "number"
+    },
+    "simulatedSlippage": {
+      "type": "number"
     },
     "requestedOdds": {
       "type": "number"
@@ -43,19 +164,14 @@
     "matchedStake": {
       "type": "number"
     },
-    "status": {
-      "type": "string",
-      "enum": [
-        "signal_created",
-        "risk_checked",
-        "submitted",
-        "matched",
-        "partially_matched",
-        "unmatched",
-        "cancelled",
-        "lapsed",
-        "failed"
-      ]
+    "commissionRateUsed": {
+      "type": "number"
+    },
+    "commissionSource": {
+      "type": "string"
+    },
+    "commission_calculation_status": {
+      "type": "string"
     },
     "expectedValue": {
       "type": "number"
@@ -77,6 +193,35 @@
     },
     "netProfit": {
       "type": "number"
+    },
+    "closingOdds": {
+      "type": "number"
+    },
+    "clv": {
+      "type": "number"
+    },
+    "slippage": {
+      "type": "number"
+    },
+    "entryReason": {
+      "type": "string"
+    },
+    "exitReason": {
+      "type": "string"
+    },
+    "warningFlags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "paperSimulationQuality": {
+      "type": "string",
+      "enum": [
+        "Basic",
+        "Good",
+        "High"
+      ]
     }
   },
   "required": [

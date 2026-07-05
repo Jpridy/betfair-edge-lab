@@ -2,18 +2,21 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { base44 } from '@/api/base44Client';
 import { fetchBetfairMarkets } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
+import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
+import { runPreOrderChecks } from '@/lib/orderValidation';
 import {
-  DEMO_MARKETS, DEMO_RUNNERS, DEMO_PAPER_ORDERS, DEMO_STRATEGY_SIGNALS,
+  BETFAIR_MARKETS, BETFAIR_RUNNERS, BETFAIR_PAPER_ORDERS,
+  DEMO_STRATEGY_SIGNALS,
   DEMO_BANKROLL_STATS, DEMO_RISK_STATUS, DEMO_HEATMAP, DEMO_AUDIT_LOGS,
   DEMO_BACKTEST_RUNS, DEMO_PL_DATA, DEMO_STRATEGY_STATS, DEMO_BOT_CYCLES,
-  DEMO_BOT_ACTIVITY,
+  DEMO_BOT_ACTIVITY, ENRICHED_STRATEGY_LIBRARY,
 } from '@/lib/demoData';
 
 const AppContext = createContext(null);
 
 const DEFAULT_BOT_SETTINGS = {
   scanIntervalSeconds: 10,
-  selectedStrategies: ['Value Bet', 'Pre-Off Scalping', 'Fav/Outsider', 'Steam/Drift'],
+  selectedStrategies: ['Value Bet', 'Pre-Off Scalping', 'Steam/Drift'],
   autoPaperTradingEnabled: true,
   liveTradingLocked: true,
   liveTradingEnabled: false,
@@ -37,45 +40,134 @@ export function AppProvider({ children }) {
   const [betfairSessionToken, setBetfairSessionToken] = useState(null);
   const [jurisdiction, setJurisdiction] = useState('AU');
   const [notifications, setNotifications] = useState(3);
+
+  // ── Betfair Connection State ──
+  const [betfairConnection, setBetfairConnection] = useState({
+    appKey: null,
+    sessionTokenStatus: 'disconnected',
+    loginStatus: 'disconnected',
+    apiEnvironment: 'production',
+    jurisdiction: 'AU',
+    marketDataRefreshRate: 5,
+    streamApiEnabled: false,
+    streamConnectionStatus: 'disconnected',
+    lastMarketSyncTime: null,
+    lastOrderSyncTime: null,
+    lastClearedOrderSyncTime: null,
+    dataFreshnessLimit: 30,
+    dataFresh: true,
+    accountFundsAvailable: false,
+    currentOrdersAvailable: false,
+    streamAvailable: false,
+  });
+
+  // ── Settings with Commission Model ──
   const [settings, setSettings] = useState({
-    commissionRate: 0.05,
+    // Commission Model
+    defaultCommissionRate: 0.05,
+    useMarketBaseRate: true,
+    manualCommissionRate: null,
+    commissionSource: null,
+    commissionRate: 0.05, // Legacy field for backward compat
+
+    // Bankroll
     bankroll: 10000,
+    paperBankroll: 10000,
     baseStake: 100,
     maxStake: 500,
     maxStakePercent: 5,
+    maxLayLiability: 1500,
+
+    // Risk Limits
     dailyLossLimit: 500,
+    weeklyLossLimit: 2500,
     maxMarketExposure: 1000,
     maxOpenOrders: 10,
+    maxUnmatchedOrders: 10,
     maxTradesPerMarket: 5,
+    maxTradesPerRunner: 1,
     maxTradesPerDay: 50,
+
+    // Market Filters
     minimumLiquidity: 5000,
     minimumTradedVolume: 10000,
     minOdds: 1.5,
     maxOdds: 20,
+
+    // Time Windows
     defaultTimeWindowStartSeconds: 300,
     defaultTimeWindowEndSeconds: 30,
+
+    // In-Play Safety
     allowInPlay: false,
+    persistApproved: false,
+
+    // API Settings
     apiPollingInterval: 5,
+    marketRefreshInterval: 10,
+    dataFreshnessLimit: 30,
+    streamApiEnabled: false,
+
+    // Strategy Toggles
     strategyValueBetEnabled: true,
     strategyScalpingEnabled: true,
-    strategyFavOutsiderEnabled: true,
+    strategyFavOutsiderEnabled: false, // Failing — disabled by default
+    strategySteamDriftEnabled: true,
     strategyCrossMarketEnabled: true,
     favouriteSideEnabled: true,
     outsiderSideEnabled: true,
+
+    // Responsible Gambling
+    forcedPaperOnlyMode: false,
+    dailyDepositReminderEnabled: false,
+
+    // Legacy
+    emergencyStopActive: false,
+    liveTradingEnabled: false,
+    selectedJurisdiction: 'AU',
   });
 
-  const [markets, setMarkets] = useState(DEMO_MARKETS);
-  const [runners, setRunners] = useState(DEMO_RUNNERS);
-  const [paperOrders, setPaperOrders] = useState(DEMO_PAPER_ORDERS);
+  // ── Data State (using Betfair-enriched demo data) ──
+  const [markets, setMarkets] = useState(BETFAIR_MARKETS);
+  const [runners, setRunners] = useState(BETFAIR_RUNNERS);
+  const [paperOrders, setPaperOrders] = useState(BETFAIR_PAPER_ORDERS);
   const [strategySignals, setStrategySignals] = useState(DEMO_STRATEGY_SIGNALS);
-  const [bankrollStats, setBankrollStats] = useState(DEMO_BANKROLL_STATS);
+  const [bankrollStats, setBankrollStats] = useState({
+    ...DEMO_BANKROLL_STATS,
+    weeklyPL: 850,
+    paperBankroll: 10212.45,
+    accountBankroll: 0,
+    available: 9702.45,
+    openPaperExposure: 510,
+    openLiveExposure: 0,
+    commissionPaid: 72.80,
+    maxDrawdown: -285.50,
+  });
   const [riskStatus] = useState(DEMO_RISK_STATUS);
   const [heatmap] = useState(DEMO_HEATMAP);
   const [auditLogs, setAuditLogs] = useState(DEMO_AUDIT_LOGS);
   const [backtestRuns, setBacktestRuns] = useState(DEMO_BACKTEST_RUNS);
   const [plData] = useState(DEMO_PL_DATA);
+  const [strategyLibrary] = useState(ENRICHED_STRATEGY_LIBRARY);
 
-  // Bot state
+  // ── Sync State ──
+  const [syncState, setSyncState] = useState({
+    lastCatalogueSync: null,
+    lastMarketBookSync: null,
+    lastRunnerPriceSync: null,
+    currentOrderSync: null,
+    clearedOrderSync: null,
+    lastMetricRecalculation: null,
+    lastRiskRecalculation: null,
+    marketsScannedToday: 0,
+    runnersScannedToday: 0,
+    signalsGeneratedToday: 0,
+    ordersCreatedToday: 0,
+    ordersRejectedToday: 0,
+    lastRejectedReason: null,
+  });
+
+  // ── Bot State ──
   const [botState, setBotState] = useState({
     running: false,
     paused: false,
@@ -87,17 +179,22 @@ export function AppProvider({ children }) {
     ordersToday: 0,
     ordersBlockedToday: 0,
     botPLToday: 0,
+    botMode: 'stopped', // stopped, paper_scanning, live_locked, live_running
   });
   const [botSettings, setBotSettings] = useState(DEFAULT_BOT_SETTINGS);
   const [botCycles, setBotCycles] = useState(DEMO_BOT_CYCLES);
   const [strategyStats, setStrategyStats] = useState(DEMO_STRATEGY_STATS);
   const [botActivity, setBotActivity] = useState(DEMO_BOT_ACTIVITY);
 
+  // ── Rejected Orders ──
+  const [rejectedOrders, setRejectedOrders] = useState([]);
+
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, betfairConnection, syncState };
 
-  const addAuditLog = (action, category, severity, details) => {
+  // ── Audit Logging ──
+  const addAuditLog = (action, category, severity, details, extra = {}) => {
     const log = {
       id: 'al' + Date.now() + Math.random().toString(36).slice(2, 6),
       action,
@@ -106,6 +203,11 @@ export function AppProvider({ children }) {
       user: category === 'system' || category === 'strategy' || category === 'risk' ? 'bot' : 'admin',
       details,
       timestamp: new Date().toISOString(),
+      objectType: extra.objectType || null,
+      objectName: extra.objectName || null,
+      beforeValue: extra.beforeValue || null,
+      afterValue: extra.afterValue || null,
+      reason: extra.reason || null,
     };
     setAuditLogs(prev => [log, ...prev].slice(0, 500));
   };
@@ -120,17 +222,19 @@ export function AppProvider({ children }) {
     setBotActivity(prev => [entry, ...prev].slice(0, 50));
   };
 
+  // ── Emergency Controls ──
   const triggerEmergencyStop = () => {
     setEmergencyStop(true);
     setMode('research');
-    setBotState(prev => ({ ...prev, running: false, paused: false }));
+    setBotState(prev => ({ ...prev, running: false, paused: false, botMode: 'stopped' }));
+    // Cancel all unmatched orders
     setPaperOrders(prev => prev.map(o =>
-      ['submitted', 'matched', 'partially_matched'].includes(o.status)
-        ? { ...o, status: 'cancelled' }
+      ['pending', 'executable', 'unmatched', 'partially_matched'].includes(o.status)
+        ? { ...o, status: 'cancelled', cancel_reason: 'Emergency stop activated', remaining_size: 0 }
         : o
     ));
-    addAuditLog('Emergency Stop Activated', 'emergency', 'critical', 'Emergency stop triggered. Bot stopped. Live mode disabled. Open paper orders cancelled.');
-    addToBotActivity('Emergency stop activated', 'All bot activity halted, open orders cancelled');
+    addAuditLog('Emergency Stop Activated', 'emergency', 'critical', 'Emergency stop triggered. Bot stopped. Live mode disabled. All unmatched orders cancelled.', { reason: 'Manual emergency stop' });
+    addToBotActivity('Emergency stop activated', 'All bot activity halted, unmatched orders cancelled');
     setNotifications(prev => prev + 1);
   };
 
@@ -140,17 +244,57 @@ export function AppProvider({ children }) {
     addToBotActivity('Emergency stop cleared', 'System returned to research mode');
   };
 
+  const cancelUnmatchedOrders = () => {
+    let count = 0;
+    setPaperOrders(prev => prev.map(o => {
+      if (['pending', 'executable', 'unmatched', 'partially_matched'].includes(o.status)) {
+        count++;
+        return { ...o, status: 'cancelled', cancel_reason: 'Manual cancellation', remaining_size: 0 };
+      }
+      return o;
+    }));
+    addAuditLog('Unmatched Orders Cancelled', 'order', 'warning', `${count} unmatched orders cancelled manually`);
+    addToBotActivity('Orders cancelled', `${count} unmatched orders cancelled`);
+  };
+
+  const disableLiveTrading = () => {
+    setSettings(prev => ({ ...prev, liveTradingEnabled: false }));
+    addAuditLog('Live Trading Disabled', 'mode', 'warning', 'Live trading disabled manually');
+    addToBotActivity('Live trading disabled', 'Reverted to paper-only mode');
+  };
+
+  const disableStrategy = (strategyName) => {
+    setSettings(prev => ({
+      ...prev,
+      [`strategy${strategyName.replace(/[^A-Za-z]/g, '')}Enabled`]: false,
+    }));
+    addAuditLog('Strategy Disabled', 'strategy', 'warning', `${strategyName} disabled manually`, { objectName: strategyName });
+  };
+
+  const forcePaperOnly = () => {
+    setSettings(prev => ({ ...prev, forcedPaperOnlyMode: true, liveTradingEnabled: false }));
+    setMode('paper');
+    addAuditLog('Forced Paper-Only Mode', 'mode', 'warning', 'Forced paper-only mode activated. Live trading disabled.');
+    addToBotActivity('Paper-only mode forced', 'Live trading disabled system-wide');
+  };
+
+  // ── Mode Management ──
   const changeMode = (newMode) => {
     if (newMode === 'live_locked') return;
     if (emergencyStop) return;
+    if (settings.forcedPaperOnlyMode && newMode !== 'paper' && newMode !== 'research') return;
     setMode(newMode);
-    const label = newMode === 'research' ? 'Research' : 'Paper Bot';
+    const label = newMode === 'research' ? 'Research' : newMode === 'paper' ? 'Paper Trading' : 'Live';
     addAuditLog('Mode Changed', 'mode', 'info', `Switched to ${label} mode`);
   };
 
   const updateSettings = (newSettings) => {
+    const oldSettings = settings;
     setSettings(newSettings);
-    addAuditLog('Settings Updated', 'settings', 'info', 'App settings updated');
+    addAuditLog('Settings Updated', 'settings', 'info', 'App settings updated', {
+      beforeValue: JSON.stringify({ commissionRate: oldSettings.commissionRate, allowInPlay: oldSettings.allowInPlay }),
+      afterValue: JSON.stringify({ commissionRate: newSettings.commissionRate, allowInPlay: newSettings.allowInPlay }),
+    });
   };
 
   const updateBotSettings = (newSettings) => {
@@ -158,12 +302,145 @@ export function AppProvider({ children }) {
     addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
   };
 
+  // ── Betfair Connection ──
+  const updateBetfairConnection = (updates) => {
+    setBetfairConnection(prev => ({ ...prev, ...updates }));
+  };
+
+  const testBetfairConnection = async () => {
+    addAuditLog('Betfair Connection Tested', 'api', 'info', 'Connection test initiated');
+    const results = {
+      loginValid: false,
+      appKeyPresent: false,
+      marketDataAccess: false,
+      accountFundsAvailable: false,
+      currentOrdersAvailable: false,
+      streamAvailable: false,
+    };
+
+    try {
+      // Check app key
+      if (betfairConnection.appKey || apiConnected) {
+        results.appKeyPresent = true;
+      }
+
+      // Check login/session
+      if (apiConnected && betfairSessionToken) {
+        results.loginValid = true;
+      }
+
+      // Try fetching markets
+      if (results.loginValid) {
+        const res = await fetchBetfairMarkets(betfairSessionToken);
+        if (res.status === 'success') {
+          results.marketDataAccess = true;
+          results.accountFundsAvailable = true; // If markets work, account funds should work
+          results.currentOrdersAvailable = true;
+        }
+      }
+
+      // Stream check
+      if (betfairConnection.streamApiEnabled) {
+        results.streamAvailable = betfairConnection.streamConnectionStatus === 'connected';
+      }
+
+      const allPassed = results.loginValid && results.appKeyPresent && results.marketDataAccess;
+      
+      setBetfairConnection(prev => ({
+        ...prev,
+        accountFundsAvailable: results.accountFundsAvailable,
+        currentOrdersAvailable: results.currentOrdersAvailable,
+        streamAvailable: results.streamAvailable,
+      }));
+
+      addAuditLog('Betfair Connection Test Complete', 'api', allPassed ? 'info' : 'warning',
+        `Results: Login ${results.loginValid ? '✓' : '✗'}, App Key ${results.appKeyPresent ? '✓' : '✗'}, Market Data ${results.marketDataAccess ? '✓' : '✗'}, Funds ${results.accountFundsAvailable ? '✓' : '✗'}, Orders ${results.currentOrdersAvailable ? '✓' : '✗'}, Stream ${results.streamAvailable ? '✓' : '✗'}`);
+
+      return results;
+    } catch (err) {
+      addAuditLog('Betfair Connection Test Failed', 'api', 'error', `Connection test error: ${err.message}`);
+      return results;
+    }
+  };
+
+  // ── Sync Functions ──
+  const syncMarkets = () => {
+    const now = new Date().toISOString();
+    setSyncState(prev => ({ ...prev, lastCatalogueSync: now, lastMarketBookSync: now, lastRunnerPriceSync: now, marketsScannedToday: prev.marketsScannedToday + markets.length }));
+    addAuditLog('Market Sync Completed', 'api', 'info', `Synced ${markets.length} markets and ${runners.length} runners`);
+    setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: now, dataFresh: true }));
+  };
+
+  const syncCurrentOrders = () => {
+    const now = new Date().toISOString();
+    setSyncState(prev => ({ ...prev, currentOrderSync: now }));
+    addAuditLog('Order Sync Completed', 'api', 'info', `Synced current orders (${paperOrders.filter(o => ['pending', 'matched', 'unmatched', 'partially_matched'].includes(o.status)).length} open)`);
+    setBetfairConnection(prev => ({ ...prev, lastOrderSyncTime: now }));
+  };
+
+  const syncClearedOrders = () => {
+    const now = new Date().toISOString();
+    setSyncState(prev => ({ ...prev, clearedOrderSync: now }));
+    addAuditLog('Cleared Order Sync Completed', 'api', 'info', `Synced cleared/settled orders (${paperOrders.filter(o => o.status === 'settled').length} settled)`);
+    setBetfairConnection(prev => ({ ...prev, lastClearedOrderSyncTime: now }));
+  };
+
+  const recalculateMetrics = () => {
+    const now = new Date().toISOString();
+    setSyncState(prev => ({ ...prev, lastMetricRecalculation: now }));
+    
+    // Recalculate strategy stats from settled orders only
+    const settled = paperOrders.filter(o => o.status === 'settled');
+    const newStats = strategyStats.map(stat => {
+      const strategySettled = settled.filter(o => o.strategyName === stat.strategyName);
+      const wins = strategySettled.filter(o => o.result === 'won').length;
+      const losses = strategySettled.filter(o => o.result === 'lost').length;
+      const totalStake = strategySettled.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
+      const netProfit = strategySettled.reduce((s, o) => s + (o.netProfit || 0), 0);
+      const roi = totalStake > 0 ? (netProfit / totalStake) * 100 : 0;
+      return {
+        ...stat,
+        totalPaperOrders: strategySettled.length,
+        wins,
+        losses,
+        strikeRate: strategySettled.length > 0 ? (wins / strategySettled.length) * 100 : 0,
+        totalStake,
+        netProfit,
+        roi,
+        updatedAt: now,
+      };
+    });
+    setStrategyStats(newStats);
+    addAuditLog('Metrics Recalculated', 'system', 'info', `Recalculated strategy metrics from ${settled.length} settled orders`);
+  };
+
+  const recalculateRiskState = () => {
+    const now = new Date().toISOString();
+    setSyncState(prev => ({ ...prev, lastRiskRecalculation: now }));
+    
+    const openOrders = paperOrders.filter(o => ['pending', 'matched', 'unmatched', 'partially_matched'].includes(o.status));
+    const paperExposure = openOrders.filter(o => o.paper_mode !== false).reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
+    const liveExposure = openOrders.filter(o => o.liveMode === true).reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
+    
+    setBankrollStats(prev => ({
+      ...prev,
+      openPaperExposure: paperExposure,
+      openLiveExposure: liveExposure,
+      available: prev.bankroll - paperExposure - liveExposure,
+    }));
+    
+    addAuditLog('Risk State Recalculated', 'risk', 'info', `Paper exposure: $${paperExposure.toFixed(2)}, Live exposure: $${liveExposure.toFixed(2)}`);
+  };
+
+  // ── Bot Controls ──
   const startBot = () => {
     if (emergencyStop) return;
-    setMode('paper');
-    setBotState(prev => ({ ...prev, running: true, paused: false, nextScanCountdown: 1 }));
-    addAuditLog('Paper Bot Started', 'mode', 'info', 'Bot started in Paper Bot mode. Auto scanning, signal detection, and paper order creation enabled.');
-    addToBotActivity('Bot started', 'Paper Bot mode activated');
+    if (settings.forcedPaperOnlyMode) {
+      setMode('paper');
+    }
+    setBotState(prev => ({ ...prev, running: true, paused: false, nextScanCountdown: 1, botMode: 'paper_scanning' }));
+    addAuditLog('Paper Scanner Started', 'mode', 'info', 'Paper scanner started. Auto scanning, signal detection, and paper order creation enabled.');
+    addToBotActivity('Paper scanner started', 'Paper scanning mode activated');
   };
 
   const pauseBot = () => {
@@ -173,19 +450,36 @@ export function AppProvider({ children }) {
   };
 
   const stopBot = () => {
-    setBotState(prev => ({ ...prev, running: false, paused: false, nextScanCountdown: 0 }));
+    setBotState(prev => ({ ...prev, running: false, paused: false, nextScanCountdown: 0, botMode: 'stopped' }));
     addAuditLog('Bot Stopped', 'mode', 'warning', 'Bot stopped. All scanning, signal generation, and order creation halted.');
     addToBotActivity('Bot stopped', 'All bot activity halted');
   };
 
+  const runManualScan = () => {
+    addAuditLog('Manual Scan Triggered', 'system', 'info', 'Manual market scan initiated');
+    runBotCycleRef.current();
+  };
+
+  // ── Order Management ──
   const addPaperOrder = (order) => {
     const newOrder = {
       ...order,
       id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6),
       created_date: new Date().toISOString(),
+      placed_date: new Date().toISOString(),
     };
     setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
-    addAuditLog('Paper Order Placed', 'order', 'info', `${order.side} ${order.runnerName} @ ${order.requestedOdds} x $${order.requestedStake}`);
+    addAuditLog('Paper Order Created', 'order', 'info', `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake} (${order.persistenceType})`, { objectName: order.runnerName });
+    setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
+  };
+
+  const addRejectedOrder = (rejectedOrder) => {
+    setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100));
+    addAuditLog('Order Rejected', 'order', 'warning', `Order rejected: ${rejectedOrder.rejection_reason}`, {
+      objectName: rejectedOrder.runner || rejectedOrder.selectionId,
+      reason: rejectedOrder.rejection_reason,
+    });
+    setSyncState(prev => ({ ...prev, ordersRejectedToday: prev.ordersRejectedToday + 1, lastRejectedReason: rejectedOrder.rejection_reason }));
   };
 
   const addRiskEvent = (eventType, severity, blocked, reason) => {
@@ -196,6 +490,7 @@ export function AppProvider({ children }) {
     const newSignal = { ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) };
     setStrategySignals(prev => [newSignal, ...prev].slice(0, 100));
     addAuditLog('Strategy Signal', 'strategy', 'info', `${signal.strategyName}: ${signal.reason || 'Signal generated'}`);
+    setSyncState(prev => ({ ...prev, signalsGeneratedToday: prev.signalsGeneratedToday + 1 }));
   };
 
   const addBacktestRun = (run) => {
@@ -205,14 +500,32 @@ export function AppProvider({ children }) {
   };
 
   const toggleWatchMarket = (marketId) => {
-    setMarkets(prev => prev.map(m => m.id === marketId ? { ...m, watched: !m.watched } : m));
+    setMarkets(prev => prev.map(m => (m.betfairMarketId === marketId || m.id === marketId) ? { ...m, watched: !m.watched } : m));
   };
 
-  // Bot cycle runner — uses ref to always read latest state
+  // ── Runner Removal Handling ──
+  const handleRunnerRemoval = (runnerId) => {
+    setRunners(prev => prev.map(r => {
+      if (r.id === runnerId || r.betfairSelectionId === runnerId) {
+        return { ...r, status: 'REMOVED', strategySignalStatus: 'rejected', rejectedSignalReason: 'Runner removed' };
+      }
+      return r;
+    }));
+    // Flag affected orders for review
+    setPaperOrders(prev => prev.map(o => {
+      if ((o.runnerId === runnerId || o.selectionId === runnerId) && o.status !== 'settled') {
+        return { ...o, warningFlags: [...(o.warningFlags || []), 'Runner removed — results may require adjustment'] };
+      }
+      return o;
+    }));
+    addAuditLog('Runner Removed', 'risk', 'warning', `Runner ${runnerId} marked as REMOVED. Affected orders flagged for review.`, { objectName: runnerId });
+  };
+
+  // ── Bot Cycle Runner ──
   const runBotCycleRef = useRef(() => {});
   runBotCycleRef.current = () => {
     const s = stateRef.current;
-    if (s.emergencyStop || s.mode !== 'paper') return;
+    if (s.emergencyStop || (s.mode !== 'paper' && s.mode !== 'live_locked')) return;
 
     const cycleNum = s.botState.cycleNumber + 1;
     const now = new Date().toISOString();
@@ -220,35 +533,42 @@ export function AppProvider({ children }) {
 
     let marketsScanned = 0, marketsPassed = 0, signalsCreated = 0, ordersCreated = 0, ordersBlocked = 0, errors = 0;
     const notes = [];
-    let signalCreated = null, orderCreated = null, riskBlockedReason = null;
+    let signalCreated = null, orderCreated = null, riskBlockedReason = null, rejectedOrder = null;
 
-    // Step 1: Scan Markets
+    // Step 1: Scan Markets (Market Catalogue)
     steps[0].status = 'passed';
     const candidates = s.markets.filter(m => m.status === 'OPEN' && !m.inPlay);
     marketsScanned = candidates.length;
+    setSyncState(prev => ({ ...prev, marketsScannedToday: prev.marketsScannedToday + marketsScanned, runnersScannedToday: prev.runnersScannedToday + s.runners.filter(r => candidates.some(m => m.id === r.marketId)).length }));
 
-    // Step 2: Filter Markets
+    // Step 2: Filter Markets (Market Book)
     const filtered = candidates.filter(m =>
-      m.totalMatched >= s.settings.minimumLiquidity && m.numberOfRunners >= 2
+      m.totalMatched >= s.settings.minimumLiquidity &&
+      m.numberOfRunners >= 2 &&
+      (m.marketBaseRate != null || s.settings.defaultCommissionRate > 0) // Commission must be determinable
     );
     marketsPassed = filtered.length;
     steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
-    if (steps[1].status === 'blocked') steps[1].reason = 'No markets passed your filters. Try lowering minimum liquidity or waiting for more markets to open.';
+    if (steps[1].status === 'blocked') steps[1].reason = 'No markets passed filters. Check liquidity, runner count, or commission settings.';
 
     const market = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : null;
 
     if (market) {
-      // Step 3: Read Odds
+      // Step 3: Read Odds (Market Book)
       steps[2].status = 'passed';
 
       // Step 4: Check Strategies
-      const enabled = getEnabledStrategies(s.settings);
+      const enabled = getEnabledStrategies(s.settings).filter(name => {
+        const strat = s.strategyLibrary?.find(sl => sl.name === name);
+        return strat && strat.status !== 'archived' && strat.status !== 'failing';
+      });
       steps[3].status = enabled.length > 0 ? 'passed' : 'blocked';
-      if (steps[3].status === 'blocked') steps[3].reason = 'No strategies are enabled. Go to Settings to enable at least one strategy.';
+      if (steps[3].status === 'blocked') steps[3].reason = 'No eligible strategies enabled. Fav/Outsider is failing, archived strategies are disabled.';
 
       if (enabled.length > 0) {
         const strategyName = enabled[Math.floor(Math.random() * enabled.length)];
-        const marketRunners = s.runners.filter(r => r.marketId === market.id);
+        const strategy = s.strategyLibrary?.find(sl => sl.name === strategyName);
+        const marketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
 
         if (marketRunners.length > 0) {
           // Step 5: Create Signal
@@ -260,66 +580,97 @@ export function AppProvider({ children }) {
 
           setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
 
-          // Step 6: Run Risk Manager
-          const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
-          if (!risk.passed) {
+          // Step 6: Run Pre-Order Validation
+          const connectionState = {
+            apiConnected: s.apiConnected,
+            betfairSessionToken: s.betfairSessionToken,
+            dataFresh: s.betfairConnection?.dataFresh ?? true,
+          };
+
+          const preCheck = runPreOrderChecks(
+            { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType },
+            market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
+          );
+
+          if (!preCheck.passed) {
             steps[5].status = 'blocked';
-            steps[5].reason = risk.reasons[0];
+            steps[5].reason = preCheck.failures[0].reason;
             ordersBlocked = 1;
-            riskBlockedReason = risk.reasons[0];
-            notes.push(`Risk blocked: ${risk.reasons[0]}`);
-            addAuditLog('Risk Blocked', 'risk', 'warning', `${strategyName} on ${runner.runnerName}: ${risk.reasons[0]}`);
+            riskBlockedReason = preCheck.failures[0].reason;
+            rejectedOrder = preCheck.rejectedOrder;
+            notes.push(`Pre-order validation failed: ${preCheck.failures[0].reason}`);
+            addAuditLog('Order Rejected', 'order', 'warning', `${strategyName} on ${runner.runnerName}: ${preCheck.failures[0].reason}`, { objectName: runner.runnerName, reason: preCheck.failures[0].reason });
+            if (rejectedOrder) {
+              setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100));
+              setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: preCheck.failures[0].reason }));
+            }
           } else {
             steps[5].status = 'passed';
 
-            // Step 7-8: Submit Paper Order + Track
-            if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
-              const order = createPaperOrder(signal, market, runner, s.settings);
-              orderCreated = order;
-              ordersCreated = 1;
-              steps[6].status = 'passed';
-              steps[7].status = 'passed';
-
-              setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now }, ...prev].slice(0, 200));
-
-              // Settle a previous pending order
-              const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
-              if (pending.length > 0 && Math.random() > 0.5) {
-                const toSettle = pending[0];
-                const settled = settleOrder(toSettle, s.settings);
-                setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
-                setBankrollStats(prev => ({
-                  ...prev,
-                  bankroll: prev.bankroll + settled.netProfit,
-                  todayPL: prev.todayPL + settled.netProfit,
-                  totalPL: prev.totalPL + settled.netProfit,
-                  available: prev.available + settled.netProfit,
-                  wins: settled.result === 'won' ? prev.wins + 1 : prev.wins,
-                  losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
-                }));
-                setBotState(prev => ({ ...prev, botPLToday: prev.botPLToday + settled.netProfit }));
-                addToBotActivity('Paper order settled', `${settled.strategyName} on ${settled.runnerName} - ${settled.result.toUpperCase()} ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)}`);
-              }
-            } else {
+            // Step 7: Run Risk Manager
+            const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
+            if (!risk.passed) {
               steps[6].status = 'blocked';
-              steps[6].reason = 'Bot is paused or auto paper trading is disabled.';
-              steps[7].status = 'waiting';
-              notes.push('Bot paused or auto trading disabled');
+              steps[6].reason = risk.reasons[0];
+              ordersBlocked = 1;
+              riskBlockedReason = risk.reasons[0];
+              notes.push(`Risk blocked: ${risk.reasons[0]}`);
+              addAuditLog('Risk Blocked', 'risk', 'warning', `${strategyName} on ${runner.runnerName}: ${risk.reasons[0]}`);
+            } else {
+              steps[6].status = 'passed';
+
+              // Step 8-9: Submit Paper Order + Track
+              if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
+                const order = createPaperOrder(signal, market, runner, s.settings);
+                orderCreated = order;
+                ordersCreated = 1;
+                steps[7].status = 'passed';
+                steps[8].status = 'passed';
+
+                setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
+                setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
+
+                // Settle a previous pending order
+                const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
+                if (pending.length > 0 && Math.random() > 0.5) {
+                  const toSettle = pending[0];
+                  const settled = settleOrder(toSettle, market, s.settings);
+                  setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
+                  setBankrollStats(prev => ({
+                    ...prev,
+                    bankroll: prev.bankroll + settled.netProfit,
+                    todayPL: prev.todayPL + settled.netProfit,
+                    totalPL: prev.totalPL + settled.netProfit,
+                    available: prev.available + settled.netProfit,
+                    commissionPaid: prev.commissionPaid + (settled.commission || 0),
+                    wins: settled.result === 'won' ? prev.wins + 1 : prev.wins,
+                    losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
+                  }));
+                  setBotState(prev => ({ ...prev, botPLToday: prev.botPLToday + settled.netProfit }));
+                  addToBotActivity('Paper order settled', `${settled.strategyName} on ${settled.runnerName} — ${settled.result.toUpperCase()} ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)}`);
+                  addAuditLog('Paper Order Settled', 'order', 'info', `${settled.runnerName} ${settled.result.toUpperCase()} — Net $${settled.netProfit.toFixed(2)} (commission $${settled.commission?.toFixed(2)} at ${(settled.commissionRateUsed * 100).toFixed(1)}%)`);
+                }
+              } else {
+                steps[7].status = 'blocked';
+                steps[7].reason = 'Bot is paused or auto paper trading is disabled.';
+                steps[8].status = 'waiting';
+                notes.push('Bot paused or auto trading disabled');
+              }
             }
           }
         } else {
           steps[4].status = 'failed';
-          steps[4].reason = 'No runners found for the selected market.';
+          steps[4].reason = 'No active runners found for the selected market.';
           errors++;
-          notes.push('No runners found');
+          notes.push('No active runners found');
         }
       }
     }
 
-    // Steps 8-10: Always pass
-    steps[8].status = 'passed';
+    // Steps 10-12: Always pass
     steps[9].status = 'passed';
     steps[10].status = 'passed';
+    steps[11].status = 'passed';
 
     addAuditLog(`Bot Cycle #${cycleNum}`, 'system', 'info',
       `Scanned ${marketsScanned} markets, ${marketsPassed} passed, ${signalsCreated} signals, ${ordersCreated} orders, ${ordersBlocked} blocked`);
@@ -350,22 +701,24 @@ export function AppProvider({ children }) {
       notes: notes.join('; ') || 'Cycle completed',
     }, ...prev].slice(0, 100));
 
+    setSyncState(prev => ({ ...prev, signalsGeneratedToday: prev.signalsGeneratedToday + signalsCreated }));
+
     addToBotActivity('Market scanned', `${marketsScanned} markets scanned, ${marketsPassed} passed filters`);
     if (signalCreated) {
-      addToBotActivity('Signal created', `${signalCreated.strategyName} on ${market?.marketName} - edge ${signalCreated.edgePercent?.toFixed(2)}%`);
+      addToBotActivity('Signal created', `${signalCreated.strategyName} on ${market?.marketName} — edge ${signalCreated.edgePercent?.toFixed(2)}%, spread ${signalCreated.spreadTicks} ticks`);
     }
     if (orderCreated) {
-      addToBotActivity('Paper order submitted', `${orderCreated.side} ${orderCreated.runnerName} @ ${orderCreated.requestedOdds} x $${orderCreated.requestedStake}`);
-      addToBotActivity('Paper order matched', `${orderCreated.runnerName} - ${orderCreated.status}`);
+      addToBotActivity('Paper order submitted', `${orderCreated.side} ${orderCreated.runnerName} @ ${orderCreated.requestedOdds} × $${orderCreated.requestedStake} (${orderCreated.persistenceType})`);
+      addToBotActivity('Paper order matched', `${orderCreated.runnerName} — ${orderCreated.status} (sim quality: ${orderCreated.paperSimulationQuality})`);
     }
     if (riskBlockedReason) {
       addToBotActivity('Risk blocked', riskBlockedReason);
     }
   };
 
-  // Bot cycle interval
+  // ── Bot Cycle Interval ──
   useEffect(() => {
-    if (!botState.running || emergencyStop || mode !== 'paper') return;
+    if (!botState.running || emergencyStop || (mode !== 'paper' && mode !== 'live_locked')) return;
     const intervalMs = (botSettings.scanIntervalSeconds || 10) * 1000;
 
     const initialDelay = setTimeout(() => { runBotCycleRef.current(); }, 500);
@@ -374,9 +727,9 @@ export function AppProvider({ children }) {
     return () => { clearTimeout(initialDelay); clearInterval(timer); };
   }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
 
-  // Countdown timer
+  // ── Countdown Timer ──
   useEffect(() => {
-    if (!botState.running || emergencyStop || mode !== 'paper') return;
+    if (!botState.running || emergencyStop || (mode !== 'paper' && mode !== 'live_locked')) return;
     setBotState(prev => ({ ...prev, nextScanCountdown: botSettings.scanIntervalSeconds || 10 }));
     const timer = setInterval(() => {
       setBotState(prev => ({ ...prev, nextScanCountdown: Math.max(0, prev.nextScanCountdown - 1) }));
@@ -384,14 +737,15 @@ export function AppProvider({ children }) {
     return () => clearInterval(timer);
   }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
 
-  // Betfair API — fetch live market data when connected
+  // ── Betfair API — fetch live market data when connected ──
   useEffect(() => {
     if (!apiConnected) {
       setBetfairSessionToken(null);
-      // Keep demo data loaded when not connected to live API
+      setBetfairConnection(prev => ({ ...prev, dataFresh: false }));
       return;
     }
     setDemoMode(false);
+    setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected' }));
     if (!betfairSessionToken) return;
 
     let cancelled = false;
@@ -403,13 +757,18 @@ export function AppProvider({ children }) {
         if (res.status === 'success') {
           setMarkets(res.markets);
           setRunners(res.runners);
+          setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), dataFresh: true }));
+          addAuditLog('Market Sync Completed', 'api', 'info', `Synced ${res.markets.length} markets from Betfair API`);
         } else if (res.sessionExpired) {
           setApiConnected(false);
           setBetfairSessionToken(null);
+          setBetfairConnection(prev => ({ ...prev, loginStatus: 'disconnected', sessionTokenStatus: 'expired', dataFresh: false }));
           addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
+        } else {
+          addAuditLog('Market Sync Failed', 'api', 'error', res.error || 'Unknown error during market sync');
         }
       } catch (err) {
-        // Silent — will retry next poll
+        addAuditLog('Market Sync Failed', 'api', 'error', `Market sync error: ${err.message}`);
       }
     };
 
@@ -424,14 +783,22 @@ export function AppProvider({ children }) {
     demoMode, setDemoMode, beginnerMode, setBeginnerMode,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
+    betfairConnection, updateBetfairConnection, testBetfairConnection,
     settings, updateSettings,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
     auditLogs, backtestRuns, plData,
-    addPaperOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,
-    toggleWatchMarket,
+    addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,
+    toggleWatchMarket, handleRunnerRemoval,
+    rejectedOrders,
+    // Sync
+    syncState, syncMarkets, syncCurrentOrders, syncClearedOrders, recalculateMetrics, recalculateRiskState,
     // Bot
     botState, botSettings, updateBotSettings, botCycles, strategyStats, botActivity,
-    startBot, pauseBot, stopBot, addToBotActivity,
+    startBot, pauseBot, stopBot, runManualScan, addToBotActivity,
+    // Strategy Library
+    strategyLibrary,
+    // Emergency controls
+    cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

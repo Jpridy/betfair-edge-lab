@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff, Filter, ExternalLink } from 'lucide-react';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { Eye, EyeOff, Filter, ExternalLink, AlertTriangle } from 'lucide-react';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { calculateSpreadTicks } from '@/lib/tickLadder';
 
 export default function MarketScanner() {
   const { markets, runners, toggleWatchMarket } = useApp();
@@ -53,10 +54,11 @@ export default function MarketScanner() {
 
   const getRunnerData = (marketId) => {
     const marketRunners = runners.filter(r => r.marketId === marketId);
-    if (marketRunners.length === 0) return { bestBack: null, bestLay: null, spread: null };
+    if (marketRunners.length === 0) return { bestBack: null, bestLay: null, spread: null, spreadTicks: 0 };
     const bestBack = Math.min(...marketRunners.map(r => r.bestBackPrice));
     const bestLay = Math.max(...marketRunners.map(r => r.bestLayPrice));
-    return { bestBack, bestLay, spread: bestLay - bestBack };
+    const spreadTicks = calculateSpreadTicks(bestBack, bestLay);
+    return { bestBack, bestLay, spread: bestLay - bestBack, spreadTicks };
   };
 
   const getTimeToStart = (startTime) => {
@@ -79,13 +81,25 @@ export default function MarketScanner() {
   };
 
   const getEligibleStrategies = (market) => {
-    return DEMO_STRATEGY_LIBRARY.filter(s => {
-      if (s.status === 'archived') return false;
-      if (market.inPlay && !s.timeWindow?.includes('In-Play')) return false;
+    return ENRICHED_STRATEGY_LIBRARY.filter(s => {
+      if (s.status === 'archived' || s.validationStatus === 'archived') return false;
+      if (s.validationStatus === 'failing') return false; // Fav/Outsider is failing
+      if (market.inPlay && !s.allowInPlay) return false;
       if (market.totalMatched < s.minLiquidity) return false;
       if (!s.marketTypes?.includes(market.marketType)) return false;
       return true;
     }).map(s => s.name);
+  };
+
+  const getMarketWarnings = (market) => {
+    const warnings = [];
+    if (market.status === 'SUSPENDED') warnings.push('Market SUSPENDED');
+    if (market.status === 'CLOSED') warnings.push('Market CLOSED');
+    if (market.inPlay) warnings.push('Market is in-play');
+    if (market.marketBaseRate == null) warnings.push('Market Base Rate missing');
+    if (market.totalMatched < (filters.minLiquidity || 5000)) warnings.push('Low liquidity');
+    if (market.numberOfActiveRunners < 2) warnings.push('Insufficient active runners');
+    return warnings;
   };
 
   return (
@@ -170,7 +184,7 @@ export default function MarketScanner() {
         </div>
       </Panel>
 
-      <Panel title={`Scanned Markets (${filtered.length})`}>
+      <Panel title={`Market Catalogue — Scanned Markets (${filtered.length})`}>
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
@@ -180,25 +194,30 @@ export default function MarketScanner() {
               <TableHead className="text-xs">Market ID</TableHead>
               <TableHead className="text-xs">Market Name</TableHead>
               <TableHead className="text-xs text-right">Runners</TableHead>
+              <TableHead className="text-xs text-right">Active</TableHead>
               <TableHead className="text-xs text-right">Best Back</TableHead>
               <TableHead className="text-xs text-right">Best Lay</TableHead>
-              <TableHead className="text-xs text-right">Spread</TableHead>
+              <TableHead className="text-xs text-right">Spread (ticks)</TableHead>
               <TableHead className="text-xs text-right">Traded Vol</TableHead>
-              <TableHead className="text-xs">Liquidity</TableHead>
+              <TableHead className="text-xs text-right">MBR %</TableHead>
+              <TableHead className="text-xs text-right">Bet Delay</TableHead>
+              <TableHead className="text-xs">BSP</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">In-Play</TableHead>
               <TableHead className="text-xs text-right">Time to Start</TableHead>
               <TableHead className="text-xs">Eligible Strategies</TableHead>
+              <TableHead className="text-xs">Warnings</TableHead>
               <TableHead className="text-xs">Watch</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={16} className="text-center text-xs text-muted-foreground py-8">No markets match your filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={20} className="text-center text-xs text-muted-foreground py-8">No markets match your filters.</TableCell></TableRow>
             ) : filtered.map(m => {
               const rd = getRunnerData(m.id);
               const liq = getLiquidityStatus(m.totalMatched, filters.minLiquidity);
               const eligible = getEligibleStrategies(m);
+              const warnings = getMarketWarnings(m);
               return (
                 <TableRow key={m.id} className="border-border cursor-pointer hover:bg-muted/30" onClick={() => navigate(`/runner?market=${m.id}`)}>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(m.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
@@ -207,12 +226,17 @@ export default function MarketScanner() {
                   <TableCell className="text-xs font-mono text-muted-foreground">{m.betfairMarketId}</TableCell>
                   <TableCell className="text-xs max-w-[200px] truncate">{m.marketName}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{m.numberOfRunners}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-muted-foreground">{m.numberOfActiveRunners || m.numberOfRunners}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-chart-3">{rd.bestBack?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-chart-5">{rd.bestLay?.toFixed(2) || '—'}</TableCell>
-                  <TableCell className="text-xs text-right font-mono">{rd.spread?.toFixed(2) || '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{rd.spreadTicks || 0}</TableCell>
                   <TableCell className="text-xs text-right font-mono">${(m.totalMatched / 1000).toFixed(1)}k</TableCell>
-                  <TableCell><StatusBadge status={liq.status}>{liq.label}</StatusBadge></TableCell>
-                  <TableCell><StatusBadge status="ok">{m.status}</StatusBadge></TableCell>
+                  <TableCell className="text-xs text-right font-mono">
+                    {m.marketBaseRate != null ? `${(m.marketBaseRate * 100).toFixed(1)}%` : <span className="text-chart-5">Missing</span>}
+                  </TableCell>
+                  <TableCell className="text-xs text-right font-mono">{m.betDelay || 0}s</TableCell>
+                  <TableCell className="text-xs">{m.bspMarket ? <StatusBadge status="ok">BSP</StatusBadge> : <span className="text-muted-foreground">—</span>}</TableCell>
+                  <TableCell><StatusBadge status={m.status === 'OPEN' ? 'ok' : m.status === 'SUSPENDED' ? 'warning' : 'danger'}>{m.status}</StatusBadge></TableCell>
                   <TableCell className="text-xs">{m.inPlay ? <span className="text-chart-5 font-bold">YES</span> : <span className="text-muted-foreground">No</span>}</TableCell>
                   <TableCell className="text-xs text-right font-mono whitespace-nowrap">{getTimeToStart(m.startTime)}</TableCell>
                   <TableCell className="text-xs">
@@ -221,6 +245,17 @@ export default function MarketScanner() {
                         <span key={s} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-chart-2/10 text-chart-2 border border-chart-2/20">{s}</span>
                       ))}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {warnings.length === 0 ? (
+                      <span className="text-chart-1">✓</span>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        {warnings.map((w, i) => (
+                          <span key={i} className="text-[9px] text-chart-4 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />{w}</span>
+                        ))}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => toggleWatchMarket(m.id)}>

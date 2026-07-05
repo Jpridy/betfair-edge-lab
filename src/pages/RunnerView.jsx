@@ -5,10 +5,12 @@ import { useApp } from '@/lib/AppContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft, Plus, FileText, Target } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft, Plus, FileText, Target, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { calculateSpreadTicks, generatePriceLadder, getSpreadQuality, getNextTickUp, getNextTickDown } from '@/lib/tickLadder';
+import { runPreOrderChecks } from '@/lib/orderValidation';
 
 // Generate synthetic price history for a runner
 function generatePriceHistory(basePrice) {
@@ -22,29 +24,17 @@ function generatePriceHistory(basePrice) {
   return data;
 }
 
-// Generate ladder around current price
+// Generate ladder using Betfair tick ladder
 function generateLadder(bestBack, bestLay) {
-  const center = (bestBack + bestLay) / 2;
-  const ladder = [];
-  for (let i = 8; i >= 1; i--) {
-    const price = parseFloat((center + i * 0.1).toFixed(2));
-    ladder.push({
-      price,
-      backSize: i === 1 ? 1250 : Math.floor(Math.random() * 800 + 100),
-      laySize: i === 1 ? 890 : Math.floor(Math.random() * 600 + 50),
-      isCurrent: i === 1,
-    });
-  }
-  for (let i = 1; i <= 8; i++) {
-    const price = parseFloat((center - i * 0.1).toFixed(2));
-    ladder.push({
-      price,
-      backSize: i === 1 ? 1100 : Math.floor(Math.random() * 700 + 100),
-      laySize: i === 1 ? 750 : Math.floor(Math.random() * 500 + 50),
-      isCurrent: i === 1,
-    });
-  }
-  return ladder.sort((a, b) => b.price - a.price);
+  if (!bestBack || !bestLay || bestBack <= 0 || bestLay <= 0) return [];
+  const ladder = generatePriceLadder(bestBack, bestLay, 6);
+  return ladder.map(row => ({
+    price: row.price,
+    backSize: row.type === 'back' ? Math.floor(Math.random() * 800 + 100) : 0,
+    laySize: row.type === 'lay' ? Math.floor(Math.random() * 600 + 50) : 0,
+    isCurrent: row.level === 0,
+    type: row.type,
+  })).sort((a, b) => b.price - a.price);
 }
 
 export default function RunnerView() {
@@ -73,14 +63,27 @@ export default function RunnerView() {
   const runner = runners.find(r => r.id === selectedRunner);
   const market = markets.find(m => m.id === selectedMarket);
   const priceHistory = useMemo(() => runner ? generatePriceHistory(runner.lastTradedPrice) : [], [runner?.id, runner?.lastTradedPrice]);
-  const ladder = useMemo(() => runner ? generateLadder(runner.bestBackPrice, runner.bestLayPrice) : [], [runner?.id]);
+  const ladder = useMemo(() => runner ? generateLadder(runner.bestBackPrice, runner.bestLayPrice) : [], [runner?.id, runner?.bestBackPrice, runner?.bestLayPrice]);
 
   if (!runner) {
     return <Panel><div className="p-8 text-center text-muted-foreground text-sm">No runners available for this market.</div></Panel>;
   }
 
   const spread = runner.bestLayPrice - runner.bestBackPrice;
+  const spreadTicks = runner.spreadTicks || calculateSpreadTicks(runner.bestBackPrice, runner.bestLayPrice);
+  const spreadQuality = getSpreadQuality(spreadTicks);
   const overround = market ? runners.filter(r => r.marketId === selectedMarket).reduce((sum, r) => sum + (1 / r.bestBackPrice), 0) * 100 - 100 : 0;
+
+  // Runner warnings
+  const runnerWarnings = [];
+  if (runner.status === 'REMOVED') runnerWarnings.push({ level: 'critical', msg: 'Runner removed. Results may require adjustment.' });
+  if (runner.status !== 'ACTIVE' && runner.status !== 'WINNER' && runner.status !== 'LOSER') runnerWarnings.push({ level: 'warning', msg: `Runner inactive (${runner.status})` });
+  if (!runner.bestBackPrice || runner.bestBackPrice <= 0) runnerWarnings.push({ level: 'warning', msg: 'No back price available' });
+  if (!runner.bestLayPrice || runner.bestLayPrice <= 0) runnerWarnings.push({ level: 'warning', msg: 'No lay price available' });
+  if (spreadTicks > 5) runnerWarnings.push({ level: 'warning', msg: `Spread too wide (${spreadTicks} ticks)` });
+  if (runner.bestBackSize < 50) runnerWarnings.push({ level: 'warning', msg: `Insufficient available back size ($${runner.bestBackSize?.toFixed(2)})` });
+  if (runner.bestLaySize < 50) runnerWarnings.push({ level: 'warning', msg: `Insufficient available lay size ($${runner.bestLaySize?.toFixed(2)})` });
+  if (market && market.totalMatched < (settings.minimumLiquidity || 5000)) runnerWarnings.push({ level: 'warning', msg: 'Liquidity below strategy minimum' });
 
   // Model probability (synthetic — based on implied prob adjusted for form factors)
   const modelProbability = runner.impliedProbability * (1 + (Math.random() - 0.45) * 0.1);
@@ -88,11 +91,13 @@ export default function RunnerView() {
   const fairOdds = 100 / modelProbability;
   const clvEstimate = ((runner.lastTradedPrice - runner.bestBackPrice) / runner.bestBackPrice) * 100;
 
-  // Strategy suitability
-  const suitableStrategies = DEMO_STRATEGY_LIBRARY.filter(s => {
-    if (s.status === 'archived') return false;
+  // Strategy suitability — uses enriched strategy library with Betfair fields
+  const suitableStrategies = ENRICHED_STRATEGY_LIBRARY.filter(s => {
+    if (s.status === 'archived' || s.validationStatus === 'archived') return false;
+    if (s.validationStatus === 'failing') return false;
     if (market && !s.marketTypes?.includes(market.marketType)) return false;
     if (market && market.totalMatched < s.minLiquidity) return false;
+    if (market && market.inPlay && !s.allowInPlay) return false;
     if (s.minEdge && Math.abs(edge) < s.minEdge * 0.5) return false;
     return true;
   });
@@ -103,16 +108,37 @@ export default function RunnerView() {
 
   const handleCreatePaperOrder = () => {
     if (emergencyStop || mode === 'live_locked') return;
+    const price = paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
     const order = {
       strategyName: paperForm.strategy,
       marketId: selectedMarket,
+      betfairMarketId: market?.betfairMarketId || selectedMarket,
+      selectionId: runner.betfairSelectionId || runner.selectionId,
       runnerId: selectedRunner,
       runnerName: runner.runnerName,
       marketName: market?.marketName || 'Unknown',
+      venue: market?.venue || '',
+      raceNumber: market?.raceNumber || 0,
       side: paperForm.side,
       orderType: 'LIMIT',
-      requestedOdds: paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice,
-      matchedOdds: paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice,
+      size: paperForm.stake,
+      price: price,
+      persistenceType: paperForm.persistenceType || 'LAPSE',
+      customerRef: 'BEL' + Date.now().toString(36).toUpperCase(),
+      customerStrategyRef: 'BEL_' + paperForm.strategy.toUpperCase().replace(/[^A-Z]/g, ''),
+      handicap: runner.handicap || 0,
+      paper_mode: true,
+      liveMode: false,
+      requested_size: paperForm.stake,
+      matched_size: paperForm.stake,
+      remaining_size: 0,
+      average_price_matched: price,
+      requested_price: price,
+      matched_price: price,
+      placed_date: new Date().toISOString(),
+      matched_date: new Date().toISOString(),
+      requestedOdds: price,
+      matchedOdds: price,
       requestedStake: paperForm.stake,
       matchedStake: paperForm.stake,
       status: 'matched',
@@ -121,9 +147,15 @@ export default function RunnerView() {
       grossProfit: 0,
       commission: 0,
       netProfit: 0,
+      commissionRateUsed: market?.marketBaseRate || settings.defaultCommissionRate || 0.05,
+      commissionSource: market?.marketBaseRate ? 'market_base_rate' : 'default_fallback',
+      commission_calculation_status: market?.marketBaseRate ? 'ok' : 'using_default',
+      entryReason: `${paperForm.strategy} signal — edge ${edge.toFixed(2)}%`,
+      warningFlags: [],
+      paperSimulationQuality: 'High',
     };
     addPaperOrder(order);
-    addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${order.matchedOdds} × $${paperForm.stake} (${paperForm.strategy})`);
+    addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${price} × $${paperForm.stake} (${paperForm.persistenceType || 'LAPSE'})`, { objectName: runner.runnerName });
     setShowPaperForm(false);
     navigate('/orders');
   };
@@ -166,14 +198,14 @@ export default function RunnerView() {
 
       {/* Paper Order Form */}
       {showPaperForm && (
-        <Panel title="Create Paper Order">
-          <div className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Panel title="Create Paper Order (Betfair Exchange Structure)">
+          <div className="p-4 grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Strategy</label>
               <Select value={paperForm.strategy} onValueChange={v => setPaperForm({...paperForm, strategy: v})}>
                 <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {DEMO_STRATEGY_LIBRARY.filter(s => s.status !== 'archived').map(s => (
+                  {ENRICHED_STRATEGY_LIBRARY.filter(s => s.status !== 'archived' && s.validationStatus !== 'failing' && s.validationStatus !== 'archived').map(s => (
                     <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -184,8 +216,8 @@ export default function RunnerView() {
               <Select value={paperForm.side} onValueChange={v => setPaperForm({...paperForm, side: v})}>
                 <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BACK">BACK @ {runner.bestBackPrice.toFixed(2)}</SelectItem>
-                  <SelectItem value="LAY">LAY @ {runner.bestLayPrice.toFixed(2)}</SelectItem>
+                  <SelectItem value="BACK">BACK @ {runner.bestBackPrice?.toFixed(2)}</SelectItem>
+                  <SelectItem value="LAY">LAY @ {runner.bestLayPrice?.toFixed(2)}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -193,13 +225,29 @@ export default function RunnerView() {
               <label className="text-xs text-muted-foreground mb-1 block">Stake ($)</label>
               <Input type="number" value={paperForm.stake} onChange={e => setPaperForm({...paperForm, stake: +e.target.value})} className="h-9 text-xs" />
             </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Persistence Type</label>
+              <Select value={paperForm.persistenceType || 'LAPSE'} onValueChange={v => setPaperForm({...paperForm, persistenceType: v})}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LAPSE">LAPSE (cancel at jump)</SelectItem>
+                  <SelectItem value="PERSIST">PERSIST (keep in-play)</SelectItem>
+                  <SelectItem value="MARKET_ON_CLOSE">MARKET_ON_CLOSE (BSP)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-end gap-2">
               <Button size="sm" onClick={handleCreatePaperOrder} disabled={emergencyStop || paperForm.stake > settings.maxStake}>
                 Submit & Go to Orders
               </Button>
             </div>
             {paperForm.stake > settings.maxStake && (
-              <div className="md:col-span-4 text-xs text-chart-5">Stake exceeds max (${settings.maxStake})</div>
+              <div className="md:col-span-5 text-xs text-chart-5">Stake exceeds max (${settings.maxStake})</div>
+            )}
+            {paperForm.persistenceType === 'PERSIST' && (
+              <div className="md:col-span-5 text-xs text-chart-4 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> PERSIST may leave unmatched bets active in-play. Use only if intentionally approved.
+              </div>
             )}
           </div>
         </Panel>
@@ -219,8 +267,8 @@ export default function RunnerView() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Spread (ticks)</span>
-          <div className="text-2xl font-bold font-mono text-foreground mt-1">{spread.toFixed(2)}</div>
-          <div className="text-[10px] text-muted-foreground">{((spread / runner.bestBackPrice) * 100).toFixed(2)}%</div>
+          <div className="text-2xl font-bold font-mono text-foreground mt-1">{spreadTicks}</div>
+          <div className="text-[10px] text-muted-foreground">{spreadQuality.label}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Back Size</span>
@@ -238,6 +286,36 @@ export default function RunnerView() {
           <div className="text-[10px] text-muted-foreground">Total matched</div>
         </div>
       </div>
+
+      {/* Runner Warnings */}
+      {runnerWarnings.length > 0 && (
+        <Panel title="Runner Warnings">
+          <div className="p-4 space-y-2">
+            {runnerWarnings.map((w, i) => (
+              <div key={i} className={`flex items-start gap-2 text-xs p-2 rounded ${w.level === 'critical' ? 'bg-chart-5/10 text-chart-5' : 'bg-chart-4/10 text-chart-4'}`}>
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {w.msg}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Betfair Runner Identity */}
+      <Panel title="Betfair Runner Data">
+        <div className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-xs">
+          <div><span className="text-muted-foreground">Selection ID</span><div className="font-mono font-semibold mt-0.5">{runner.betfairSelectionId || runner.selectionId || '—'}</div></div>
+          <div><span className="text-muted-foreground">Runner Name</span><div className="font-semibold mt-0.5">{runner.runnerName}</div></div>
+          <div><span className="text-muted-foreground">Status</span><div className="mt-0.5"><StatusBadge status={runner.status === 'ACTIVE' ? 'ok' : runner.status === 'REMOVED' ? 'danger' : 'warning'}>{runner.status}</StatusBadge></div></div>
+          <div><span className="text-muted-foreground">Handicap</span><div className="font-mono mt-0.5">{runner.handicap ?? 0}</div></div>
+          <div><span className="text-muted-foreground">Adjustment Factor</span><div className="font-mono mt-0.5">{runner.adjustmentFactor ?? '—'}</div></div>
+          <div><span className="text-muted-foreground">Last Price Traded</span><div className="font-mono mt-0.5">{runner.lastPriceTraded?.toFixed(2) || '—'}</div></div>
+          <div><span className="text-muted-foreground">Total Matched</span><div className="font-mono mt-0.5">${runner.totalMatched?.toLocaleString() || '0'}</div></div>
+          <div><span className="text-muted-foreground">Available to Back</span><div className="font-mono mt-0.5">{runner.availableToBack?.length || 0} levels</div></div>
+          <div><span className="text-muted-foreground">Available to Lay</span><div className="font-mono mt-0.5">{runner.availableToLay?.length || 0} levels</div></div>
+          <div><span className="text-muted-foreground">Signal Status</span><div className="mt-0.5"><StatusBadge status={runner.strategySignalStatus === 'active' ? 'ok' : runner.strategySignalStatus === 'rejected' ? 'danger' : 'neutral'}>{runner.strategySignalStatus || 'none'}</StatusBadge></div></div>
+          {runner.rejectedSignalReason && <div className="col-span-2"><span className="text-muted-foreground">Rejected Reason</span><div className="text-chart-5 mt-0.5">{runner.rejectedSignalReason}</div></div>}
+        </div>
+      </Panel>
 
       {/* Model Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">

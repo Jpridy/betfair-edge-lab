@@ -362,6 +362,154 @@ export const DEMO_DRAWDOWN_CURVE = [
 // accurate descriptions of how each works on the exchange
 // ============================================================================
 
+// ============================================================================
+// BETFAIR EXCHANGE FIELD ENRICHMENT
+// Adds all Betfair API fields to demo markets, runners, and paper orders.
+// Commission uses Market Base Rate (not fixed 5%) — some markets have it
+// missing to demonstrate commission warnings.
+// ============================================================================
+
+function enrichMarket(m) {
+  const raceNumberMatch = m.marketName?.match(/R(\d+)/i);
+  const raceNumber = raceNumberMatch ? parseInt(raceNumberMatch[1]) : 0;
+  const activeRunners = m.numberOfRunners; // Will be adjusted if removed runners exist
+  return {
+    ...m,
+    eventTypeId: '7',
+    eventId: m.betfairMarketId,
+    competitionId: null,
+    marketId: m.betfairMarketId,
+    raceNumber,
+    country: m.country || 'AU',
+    timezone: 'Australia/Sydney',
+    marketStartTime: m.startTime,
+    numberOfWinners: 1,
+    numberOfActiveRunners: activeRunners,
+    betDelay: 1,
+    bspMarket: true,
+    turnInPlayEnabled: true,
+    marketBaseRate: m.marketBaseRate !== undefined ? m.marketBaseRate : (Math.random() > 0.15 ? 0.05 : null), // 85% have MBR, 15% missing for demo
+    eligibleStrategies: [],
+    warningFlags: [],
+  };
+}
+
+function enrichRunner(r) {
+  const availableToBack = r.bestBackPrice > 0
+    ? [{ price: r.bestBackPrice, size: r.bestBackSize }]
+    : [];
+  const availableToLay = r.bestLayPrice > 0
+    ? [{ price: r.bestLayPrice, size: r.bestLaySize }]
+    : [];
+
+  // Calculate spread in ticks
+  let spreadTicks = 0;
+  if (r.bestBackPrice > 0 && r.bestLayPrice > 0) {
+    let low = r.bestBackPrice;
+    let high = r.bestLayPrice;
+    let ticks = 0;
+    let current = low;
+    const tickRanges = [
+      { min: 1.01, max: 2.00, step: 0.01 },
+      { min: 2.00, max: 3.00, step: 0.02 },
+      { min: 3.00, max: 4.00, step: 0.05 },
+      { min: 4.00, max: 6.00, step: 0.10 },
+      { min: 6.00, max: 10.00, step: 0.20 },
+      { min: 10.00, max: 20.00, step: 0.50 },
+      { min: 20.00, max: 30.00, step: 1.00 },
+      { min: 30.00, max: 50.00, step: 2.00 },
+      { min: 50.00, max: 100.00, step: 5.00 },
+      { min: 100.00, max: 1000.00, step: 10.00 },
+    ];
+    const getStep = (p) => {
+      for (const range of tickRanges) {
+        if (p >= range.min && p < range.max) return range.step;
+      }
+      return 10;
+    };
+    while (current < high - 0.001 && ticks < 100) {
+      const step = getStep(current);
+      current = Math.round((current + step) * 100) / 100;
+      ticks++;
+    }
+    spreadTicks = ticks;
+  }
+
+  return {
+    ...r,
+    selectionId: r.betfairSelectionId,
+    handicap: 0,
+    adjustmentFactor: null,
+    lastPriceTraded: r.lastTradedPrice,
+    totalMatched: r.tradedVolume,
+    availableToBack,
+    availableToLay,
+    tradedVolume: r.tradedVolume > 0 ? [{ price: r.lastTradedPrice, size: r.tradedVolume }] : [],
+    spreadTicks,
+    modelProbability: null,
+    edge: null,
+    clvEstimate: null,
+    strategySignalStatus: 'none',
+    rejectedSignalReason: null,
+  };
+}
+
+function enrichPaperOrder(o) {
+  const isMatched = o.status === 'matched' || o.status === 'settled';
+  return {
+    ...o,
+    selectionId: o.runnerId,
+    handicap: 0,
+    size: o.requestedStake,
+    price: o.requestedOdds,
+    orderType: 'LIMIT',
+    persistenceType: 'LAPSE',
+    customerRef: 'BEL' + o.id.toUpperCase(),
+    customerStrategyRef: 'BEL_' + o.strategyName.toUpperCase().replace(/[^A-Z]/g, ''),
+    paper_mode: true,
+    liveMode: false,
+    betfairBetId: null,
+    requested_size: o.requestedStake,
+    matched_size: isMatched ? o.matchedStake : 0,
+    remaining_size: isMatched ? 0 : o.requestedStake,
+    average_price_matched: isMatched ? o.matchedOdds : 0,
+    requested_price: o.requestedOdds,
+    matched_price: isMatched ? o.matchedOdds : null,
+    placed_date: o.created_date,
+    matched_date: isMatched ? o.created_date : null,
+    settled_date: o.status === 'settled' ? o.created_date : null,
+    lapse_reason: o.status === 'lapsed' ? 'Market turned in-play' : null,
+    cancel_reason: o.status === 'cancelled' ? 'User cancelled' : null,
+    rejection_reason: o.status === 'rejected' ? 'Failed pre-order validation' : null,
+    commissionRateUsed: 0.05,
+    commissionSource: 'market_base_rate',
+    commission_calculation_status: 'ok',
+    closingOdds: isMatched ? o.matchedOdds * 0.98 : null,
+    clv: isMatched ? (o.matchedOdds - o.matchedOdds * 0.98) / (o.matchedOdds * 0.98) * 100 : 0,
+    slippage: 0,
+    entryReason: `${o.strategyName} signal`,
+    exitReason: o.status === 'settled' ? 'Race settled' : null,
+    warningFlags: [],
+    paperSimulationQuality: 'High',
+  };
+}
+
+// Enrich all demo data with Betfair fields
+const ENRICHED_MARKETS = DEMO_MARKETS.map(enrichMarket);
+const ENRICHED_RUNNERS = DEMO_RUNNERS.map(enrichRunner);
+const ENRICHED_PAPER_ORDERS = DEMO_PAPER_ORDERS.map(enrichPaperOrder);
+
+// Override the original exports with enriched versions
+// (We export new names and also update the originals)
+export const BETFAIR_MARKETS = ENRICHED_MARKETS;
+export const BETFAIR_RUNNERS = ENRICHED_RUNNERS;
+export const BETFAIR_PAPER_ORDERS = ENRICHED_PAPER_ORDERS;
+
+// ============================================================================
+// STRATEGY LIBRARY — Real Betfair racing trading strategies with
+// accurate descriptions of how each works on the exchange
+// ============================================================================
+
 export const DEMO_STRATEGY_LIBRARY = [
   {
     id: 'sl1',
@@ -460,3 +608,96 @@ export const DEMO_STRATEGY_LIBRARY = [
     lastRun: '2026-04-20T14:00:00+10:00',
   },
 ];
+
+// ============================================================================
+// STRATEGY BETFAIR ENRICHMENT
+// Adds Betfair-specific fields: allowInPlay, timeWindowStart/End,
+// persistenceType, side restrictions, and correct status labels.
+// ============================================================================
+
+const STRATEGY_BETFAIR_FIELDS = {
+  'Value Bet': {
+    allowInPlay: false,
+    timeWindowStart: 600,
+    timeWindowEnd: 30,
+    persistenceType: 'LAPSE',
+    sideRestriction: 'BACK',
+    requiresCommission: true,
+    requiresCLV: true,
+    paperOnly: true,
+    validationStatus: 'promising',
+    statusLabel: 'Promising — Paper Testing',
+  },
+  'Pre-Off Scalping': {
+    allowInPlay: false,
+    timeWindowStart: 300,
+    timeWindowEnd: 30,
+    persistenceType: 'LAPSE',
+    sideRestriction: 'BOTH',
+    requiresCommission: true,
+    requiresCLV: false,
+    requiresSlippage: true,
+    requiresTightSpread: true,
+    paperOnly: true,
+    validationStatus: 'promising',
+    statusLabel: 'Promising — Paper Testing',
+  },
+  'Fav/Outsider': {
+    allowInPlay: false,
+    timeWindowStart: 300,
+    timeWindowEnd: 30,
+    persistenceType: 'LAPSE',
+    sideRestriction: 'BOTH',
+    requiresCommission: true,
+    requiresCLV: true,
+    paperOnly: true,
+    validationStatus: 'failing',
+    statusLabel: 'Failing — Locked',
+    status: 'failing',
+  },
+  'Steam/Drift': {
+    allowInPlay: false,
+    timeWindowStart: 600,
+    timeWindowEnd: 30,
+    persistenceType: 'LAPSE',
+    sideRestriction: 'BOTH',
+    requiresCommission: true,
+    requiresCLV: false,
+    requiresPriceMovement: true,
+    paperOnly: true,
+    validationStatus: 'needs_more_data',
+    statusLabel: 'Needs More Data — Paper Only',
+  },
+  'In-Play Front Runner': {
+    allowInPlay: true,
+    timeWindowStart: 0,
+    timeWindowEnd: 0,
+    persistenceType: 'PERSIST',
+    sideRestriction: 'BOTH',
+    requiresCommission: true,
+    requiresCLV: false,
+    paperOnly: true,
+    validationStatus: 'archived',
+    statusLabel: 'Archived — Disabled',
+    status: 'archived',
+  },
+  'Cross-Market Arbitrage': {
+    allowInPlay: false,
+    timeWindowStart: 600,
+    timeWindowEnd: 0,
+    persistenceType: 'LAPSE',
+    sideRestriction: 'BOTH',
+    requiresCommission: true,
+    requiresCLV: false,
+    paperOnly: true,
+    validationStatus: 'archived',
+    statusLabel: 'Archived — Disabled',
+    status: 'archived',
+  },
+};
+
+// Enrich strategies with Betfair fields
+export const ENRICHED_STRATEGY_LIBRARY = DEMO_STRATEGY_LIBRARY.map(s => ({
+  ...s,
+  ...STRATEGY_BETFAIR_FIELDS[s.name],
+}));

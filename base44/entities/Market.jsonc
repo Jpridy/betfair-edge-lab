@@ -5,26 +5,38 @@
     "betfairMarketId": {
       "type": "string"
     },
-    "eventType": {
+    "eventTypeId": {
       "type": "string"
     },
-    "country": {
+    "eventId": {
       "type": "string"
     },
-    "venue": {
+    "competitionId": {
       "type": "string"
     },
-    "eventName": {
+    "marketId": {
       "type": "string"
     },
     "marketName": {
       "type": "string"
     },
-    "marketType": {
+    "venue": {
       "type": "string"
     },
-    "startTime": {
+    "raceNumber": {
+      "type": "number"
+    },
+    "country": {
       "type": "string"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "marketStartTime": {
+      "type": "string"
+    },
+    "totalMatched": {
+      "type": "number"
     },
     "status": {
       "type": "string",
@@ -39,15 +51,54 @@
       "type": "boolean",
       "default": false
     },
-    "totalMatched": {
+    "numberOfWinners": {
       "type": "number"
     },
     "numberOfRunners": {
       "type": "number"
     },
+    "numberOfActiveRunners": {
+      "type": "number"
+    },
+    "betDelay": {
+      "type": "number"
+    },
+    "bspMarket": {
+      "type": "boolean"
+    },
+    "turnInPlayEnabled": {
+      "type": "boolean"
+    },
+    "marketBaseRate": {
+      "type": "number"
+    },
+    "eventType": {
+      "type": "string"
+    },
+    "eventName": {
+      "type": "string"
+    },
+    "marketType": {
+      "type": "string"
+    },
+    "startTime": {
+      "type": "string"
+    },
     "watched": {
       "type": "boolean",
       "default": false
+    },
+    "eligibleStrategies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warningFlags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [
