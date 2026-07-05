@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { DEMO_STRATEGY_LIBRARY, DEMO_STRATEGY_STATS } from '@/lib/demoData';
+import { getAuditData } from '@/lib/strategyAuditData';
+import { computeTrafficLight, computeDataQuality, checkLiveLockout, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
 
 export function generateStrategyDocument() {
   const doc = new jsPDF();
@@ -92,6 +94,12 @@ export function generateStrategyDocument() {
     }
 
     const stats = DEMO_STRATEGY_STATS.find((st) => st.strategyName === s.name);
+    const audit = getAuditData(s.name);
+    const trafficLight = computeTrafficLight(s, audit, { bankroll: 10000 });
+    const dq = computeDataQuality(s, audit);
+    const progress = getPaperProgress(audit);
+    const recon = reconcileMetrics(audit);
+    const lockout = checkLiveLockout(s, audit, { bankroll: 10000 }, { liveApproved: false, userConfirmed: false });
 
     // Strategy header
     doc.setFontSize(16);
@@ -104,9 +112,36 @@ export function generateStrategyDocument() {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text(`Category: ${s.category}  |  Status: ${s.status}  |  Risk: ${s.riskProfile}`, margin, y);
+    const lightColor = trafficLight.light === 'green' ? [0, 128, 0] : trafficLight.light === 'yellow' ? [200, 150, 0] : trafficLight.light === 'red' ? [200, 0, 0] : [128, 128, 128];
+    doc.text(`Category: ${s.category}  |  Risk: ${s.riskProfile}`, margin, y);
+    y += 5;
+    doc.setTextColor(...lightColor);
+    doc.text(`Status: ${trafficLight.label.toUpperCase()}`, margin, y);
+    y += 5;
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Data Quality: ${dq.label}  |  Live Mode: ${lockout.locked ? 'LOCKED' : 'AVAILABLE'}`, margin, y);
     y += 7;
     addDivider();
+
+    // Validation summary
+    addWrappedText('VALIDATION STATUS', 11, 'bold', [50, 50, 50]);
+    y += 2;
+    addWrappedText(`Paper Progress: ${progress.current} / ${progress.target} settled trades (${progress.percent.toFixed(0)}%)`, 10, 'normal', [40, 40, 40]);
+    if (lockout.locked) {
+      addWrappedText('Live Mode Lockout Reasons:', 10, 'bold', [180, 0, 0]);
+      lockout.reasons.forEach((r) => {
+        addWrappedText(`  - ${r}`, 10, 'normal', [120, 0, 0]);
+      });
+    } else {
+      addWrappedText('All live mode validation criteria passed.', 10, 'bold', [0, 128, 0]);
+    }
+    if (!recon.valid) {
+      addWrappedText('Metric Reconciliation Warnings:', 10, 'bold', [180, 0, 0]);
+      recon.errors.forEach((e) => {
+        addWrappedText(`  - ${e}`, 10, 'normal', [120, 0, 0]);
+      });
+    }
+    y += 3;
 
     // Description
     addWrappedText('OVERVIEW', 11, 'bold', [50, 50, 50]);
@@ -143,30 +178,45 @@ export function generateStrategyDocument() {
     });
     y += 3;
 
-    // Performance stats
-    if (stats) {
-      addWrappedText('PERFORMANCE METRICS', 11, 'bold', [50, 50, 50]);
+    // Full audit panel
+    if (audit) {
+      addWrappedText('FULL AUDIT PANEL', 11, 'bold', [50, 50, 50]);
       y += 2;
       const metrics = [
-        `Total Signals: ${stats.totalSignals}`,
-        `Total Paper Orders: ${stats.totalPaperOrders}`,
-        `Wins: ${stats.wins}  |  Losses: ${stats.losses}`,
-        `Strike Rate: ${stats.strikeRate.toFixed(1)}%`,
-        `Gross Profit: $${stats.grossProfit.toFixed(2)}`,
-        `Net Profit: $${stats.netProfit.toFixed(2)}`,
-        `ROI: ${stats.roi.toFixed(1)}%`,
-        `Profit Factor: ${stats.profitFactor.toFixed(2)}`,
-        `Max Drawdown: $${stats.maxDrawdown.toFixed(2)}`,
-        `Longest Losing Streak: ${stats.longestLosingStreak}`,
-        `Average Odds: ${stats.averageOdds.toFixed(2)}`,
-        `Average Stake: $${stats.averageStake.toFixed(2)}`,
-        `Average Edge: ${stats.averageEdge.toFixed(1)}%`,
-        `Closing Line Value: ${stats.closingLineValue.toFixed(1)}%`,
-        `Status: ${stats.statusLabel}`,
+        `Total Signals: ${audit.totalSignals}`,
+        `Total Paper Orders: ${audit.totalPaperOrders}`,
+        `Matched Orders: ${audit.matchedOrders}`,
+        `Unmatched Orders: ${audit.unmatchedOrders}`,
+        `Wins: ${audit.wins}  |  Losses: ${audit.losses}`,
+        `Strike Rate: ${audit.strikeRate.toFixed(1)}%`,
+        `Total Stake: $${audit.totalStake.toFixed(2)}`,
+        `Total Liability: $${audit.totalLiability.toFixed(2)}`,
+        `Gross Profit: $${audit.grossProfit.toFixed(2)}`,
+        `Commission Paid: $${audit.commissionPaid.toFixed(2)}`,
+        `Net Profit: $${audit.netProfit.toFixed(2)}`,
+        `ROI (stake-based): ${audit.roi.toFixed(2)}%`,
+        `Liability ROI: ${audit.liabilityRoi.toFixed(2)}%`,
+        `Profit Factor: ${audit.profitFactor.toFixed(2)}`,
+        `Max Drawdown: $${audit.maxDrawdown.toFixed(2)}`,
+        `Longest Losing Streak: ${audit.longestLosingStreak}`,
+        `Average Odds: ${audit.averageOdds.toFixed(2)}`,
+        `Average Stake: $${audit.averageStake.toFixed(2)}`,
+        `Average Edge: ${audit.averageEdge.toFixed(1)}%`,
+        `Average Matched Price: ${audit.averageMatchedPrice.toFixed(2)}`,
+        `Closing Price: ${audit.closingPrice.toFixed(2)}`,
+        `Closing Line Value: ${audit.closingLineValue.toFixed(1)}%`,
+        `Slippage: ${audit.slippage.toFixed(2)}%`,
+        `Avg Time Before Start: ${audit.averageTimeBeforeStart}s`,
+        `Last Run: ${new Date(audit.lastRunDate).toLocaleDateString('en-AU')}`,
       ];
       metrics.forEach((m) => {
         addWrappedText(`  • ${m}`, 10, 'normal', [40, 40, 40]);
       });
+      y += 2;
+      addWrappedText(`ROI Formula: Net Profit / Total Stake x 100 = $${audit.netProfit.toFixed(2)} / $${audit.totalStake.toFixed(2)} x 100 = ${audit.roi.toFixed(2)}%`, 9, 'italic', [80, 80, 80]);
+      if (audit.totalLiability !== audit.totalStake) {
+        addWrappedText(`Liability ROI Formula: Net Profit / Total Liability x 100 = ${audit.liabilityRoi.toFixed(2)}%`, 9, 'italic', [80, 80, 80]);
+      }
     }
 
     addDivider();

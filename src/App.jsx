@@ -21,6 +21,7 @@ import LogsAudit from '@/pages/LogsAudit';
 import BotControlCentre from '@/pages/BotControlCentre';
 import PerformanceAnalytics from '@/pages/PerformanceAnalytics';
 import StrategyLibrary from '@/pages/StrategyLibrary';
+import StrategyDetail from '@/pages/StrategyDetail';
 import { AppProvider } from '@/lib/AppContext';
 
 const AuthenticatedApp = () => {
@@ -60,6 +61,7 @@ const AuthenticatedApp = () => {
           <Route path="/logs" element={<LogsAudit />} />
           <Route path="/performance-analytics" element={<PerformanceAnalytics />} />
           <Route path="/strategy-library" element={<StrategyLibrary />} />
+          <Route path="/strategy/:id" element={<StrategyDetail />} />
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>

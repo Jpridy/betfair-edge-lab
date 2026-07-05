@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Panel, StatusBadge, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download } from 'lucide-react';
+import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download, ChevronRight, Copy, XCircle } from 'lucide-react';
 import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { getAuditData } from '@/lib/strategyAuditData';
+import { computeTrafficLight, computeDataQuality, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
+import { StrategyStatusBadge, DataQualityBadge, MetricWarningBadge } from '@/components/strategy/StrategyStatusBadge';
 import { generateStrategyDocument } from '@/lib/strategyDocument';
 
 const CATEGORY_ICONS = {
@@ -18,92 +22,111 @@ const CATEGORY_ICONS = {
   'Arbitrage': Shield,
 };
 
-const RISK_COLORS = {
-  'Low': 'text-chart-1',
-  'Medium': 'text-chart-4',
-  'Medium-High': 'text-chart-5',
-  'High': 'text-chart-5',
-};
+const TABS = [
+  { key: 'all', label: 'All Strategies' },
+  { key: 'green', label: 'Live Approved' },
+  { key: 'yellow', label: 'Paper Testing' },
+  { key: 'red', label: 'Failing' },
+  { key: 'grey', label: 'Archived' },
+];
 
 export default function StrategyLibrary() {
-  const { strategyStats } = useApp();
+  const navigate = useNavigate();
+  const { settings, addAuditLog } = useApp();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [tab, setTab] = useState('all');
   const [view, setView] = useState('grid');
-  const [expandedId, setExpandedId] = useState(null);
 
-  const strategies = useMemo(() => {
-    return DEMO_STRATEGY_LIBRARY.filter(s => {
-      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (categoryFilter !== 'all' && s.category !== categoryFilter) return false;
+  const strategiesWithStatus = useMemo(() => {
+    return DEMO_STRATEGY_LIBRARY.map(s => {
+      const audit = getAuditData(s.name);
+      const status = computeTrafficLight(s, audit, settings);
+      const dq = computeDataQuality(s, audit);
+      const progress = getPaperProgress(audit);
+      const recon = reconcileMetrics(audit);
+      return { ...s, audit, status, dataQuality: dq, progress, reconValid: recon.valid };
+    });
+  }, [settings]);
+
+  const filtered = useMemo(() => {
+    return strategiesWithStatus.filter(s => {
+      if (tab !== 'all' && s.status.light !== tab) return false;
       if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.description.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [search, statusFilter, categoryFilter]);
+  }, [strategiesWithStatus, search, tab]);
 
-  const categories = [...new Set(DEMO_STRATEGY_LIBRARY.map(s => s.category))];
-  const activeCount = DEMO_STRATEGY_LIBRARY.filter(s => s.status === 'active').length;
-  const archivedCount = DEMO_STRATEGY_LIBRARY.filter(s => s.status === 'archived').length;
+  const counts = useMemo(() => {
+    const c = { all: strategiesWithStatus.length, green: 0, yellow: 0, red: 0, grey: 0 };
+    strategiesWithStatus.forEach(s => c[s.status.light]++);
+    return c;
+  }, [strategiesWithStatus]);
 
-  const getStats = (name) => strategyStats.find(s => s.strategyName === name);
+  const handleClone = (s) => {
+    addAuditLog('Strategy Cloned', 'strategy', 'info', `Cloned "${s.name}" as new paper-only test strategy`);
+  };
 
   return (
     <div className="space-y-5">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Strategies</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total</span>
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="text-2xl font-bold font-mono text-foreground">{DEMO_STRATEGY_LIBRARY.length}</div>
+          <div className="text-2xl font-bold font-mono text-foreground">{counts.all}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Active</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Live Approved</span>
             <CheckCircle2 className="h-4 w-4 text-chart-1" />
           </div>
-          <div className="text-2xl font-bold font-mono text-chart-1">{activeCount}</div>
+          <div className="text-2xl font-bold font-mono text-chart-1">{counts.green}</div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Paper Testing</span>
+            <Clock className="h-4 w-4 text-chart-4" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-chart-4">{counts.yellow}</div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Failing</span>
+            <XCircle className="h-4 w-4 text-chart-5" />
+          </div>
+          <div className="text-2xl font-bold font-mono text-chart-5">{counts.red}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Archived</span>
             <Archive className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="text-2xl font-bold font-mono text-muted-foreground">{archivedCount}</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Categories</span>
-            <BookOpen className="h-4 w-4 text-chart-2" />
-          </div>
-          <div className="text-2xl font-bold font-mono text-chart-2">{categories.length}</div>
+          <div className="text-2xl font-bold font-mono text-muted-foreground">{counts.grey}</div>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Tabs + Filters */}
       <Panel>
+        <div className="border-b border-border px-4 flex gap-1 overflow-x-auto">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-3 text-xs font-bold whitespace-nowrap border-b-2 transition-colors ${
+                tab === t.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label} <span className="ml-1 text-muted-foreground">({counts[t.key]})</span>
+            </button>
+          ))}
+        </div>
         <div className="p-4 flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search strategies by name or description..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
+            <Input placeholder="Search strategies..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full md:w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-full md:w-[180px]"><SelectValue placeholder="Category" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
           <Button variant="outline" onClick={generateStrategyDocument}>
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Download Document</span>
@@ -122,96 +145,83 @@ export default function StrategyLibrary() {
       {/* Strategy Cards */}
       {view === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {strategies.map(s => {
-            const stats = getStats(s.name);
+          {filtered.map(s => {
             const CatIcon = CATEGORY_ICONS[s.category] || BookOpen;
-            const isExpanded = expandedId === s.id;
             return (
               <Panel key={s.id}>
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/strategy/${s.id}`)}>
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${s.status === 'active' ? 'bg-chart-1/10' : 'bg-muted/20'}`}>
                         <CatIcon className={`h-5 w-5 ${s.status === 'active' ? 'text-chart-1' : 'text-muted-foreground'}`} />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-foreground">{s.name}</div>
+                        <div className="text-sm font-bold text-foreground hover:text-primary transition-colors">{s.name}</div>
                         <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.category}</div>
                       </div>
                     </div>
-                    <StatusBadge status={s.status === 'active' ? 'ok' : 'neutral'}>{s.status === 'active' ? 'Active' : 'Archived'}</StatusBadge>
+                    <StrategyStatusBadge light={s.status.light} label={s.status.label} />
                   </div>
 
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-3">{s.description}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-3 line-clamp-2">{s.description}</p>
 
-                  {stats && (
+                  {/* Paper progress bar */}
+                  {s.status.light !== 'grey' && (
+                    <div className="mb-3">
+                      <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                        <span>Paper Trading Progress</span>
+                        <span className="font-mono">{s.progress.current} / {s.progress.target}</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${s.progress.percent >= 100 ? 'bg-chart-1' : 'bg-chart-4'}`}
+                          style={{ width: `${s.progress.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key metrics */}
+                  {s.audit && (
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       <div className="bg-background/50 border border-border rounded p-2 text-center">
-                        <div className="text-sm font-bold font-mono text-foreground">{stats.totalPaperOrders}</div>
-                        <div className="text-[9px] text-muted-foreground uppercase">Orders</div>
-                      </div>
-                      <div className="bg-background/50 border border-border rounded p-2 text-center">
-                        <div className="text-sm font-bold font-mono text-foreground">{stats.strikeRate.toFixed(0)}%</div>
+                        <div className="text-sm font-bold font-mono text-foreground">{s.audit.strikeRate.toFixed(0)}%</div>
                         <div className="text-[9px] text-muted-foreground uppercase">Strike</div>
                       </div>
                       <div className="bg-background/50 border border-border rounded p-2 text-center">
-                        <div className={`text-sm font-bold font-mono ${stats.netProfit >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
-                          {stats.netProfit >= 0 ? '+' : ''}${stats.netProfit.toFixed(0)}
+                        <div className={`text-sm font-bold font-mono ${s.audit.netProfit >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+                          {s.audit.netProfit >= 0 ? '+' : ''}${s.audit.netProfit.toFixed(0)}
                         </div>
                         <div className="text-[9px] text-muted-foreground uppercase">Net P/L</div>
                       </div>
+                      <div className="bg-background/50 border border-border rounded p-2 text-center">
+                        <div className={`text-sm font-bold font-mono ${s.audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+                          {s.audit.roi.toFixed(1)}%
+                        </div>
+                        <div className="text-[9px] text-muted-foreground uppercase">ROI</div>
+                      </div>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Risk Profile</span>
-                      <span className={`font-semibold ${RISK_COLORS[s.riskProfile] || 'text-foreground'}`}>{s.riskProfile}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Min Edge</span>
-                      <span className="font-mono font-semibold text-foreground">{s.minEdge.toFixed(1)}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Min Liquidity</span>
-                      <span className="font-mono font-semibold text-foreground">${s.minLiquidity.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Market Types</span>
-                      <span className="font-semibold text-foreground">{s.marketTypes.join(', ')}</span>
-                    </div>
+                  {/* Badges row */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <DataQualityBadge status={s.dataQuality.status} label={s.dataQuality.label} />
+                    {!s.reconValid && <MetricWarningBadge />}
+                    {s.audit?.closingLineValue < 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border bg-chart-5/10 text-chart-5 border-chart-5/30">Negative CLV</span>
+                    )}
                   </div>
 
-                  {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-border space-y-2">
-                      <div>
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Entry Rules</div>
-                        <div className="text-xs text-foreground leading-relaxed">{s.entryRules}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Exit Rules</div>
-                        <div className="text-xs text-foreground leading-relaxed">{s.exitRules}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Time Window</div>
-                        <div className="text-xs text-foreground">{s.timeWindow}</div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 pt-2">
-                        <div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Created</div>
-                          <div className="text-xs font-mono text-foreground">{new Date(s.createdAt).toLocaleDateString('en-AU')}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-muted-foreground uppercase">Last Run</div>
-                          <div className="text-xs font-mono text-foreground">{new Date(s.lastRun).toLocaleDateString('en-AU')}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <Button variant="ghost" size="sm" className="w-full mt-3 text-xs" onClick={() => setExpandedId(isExpanded ? null : s.id)}>
-                    {isExpanded ? 'Show Less' : 'View Full Details'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" className="flex-1 text-xs" onClick={() => navigate(`/strategy/${s.id}`)}>
+                      View Details <ChevronRight className="h-3 w-3" />
+                    </Button>
+                    {s.status.light === 'grey' && (
+                      <Button variant="outline" size="sm" className="text-xs" onClick={() => handleClone(s)}>
+                        <Copy className="h-3 w-3" /> Clone
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </Panel>
             );
@@ -223,45 +233,40 @@ export default function StrategyLibrary() {
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-xs">Strategy</TableHead>
-                <TableHead className="text-xs">Category</TableHead>
                 <TableHead className="text-xs">Status</TableHead>
-                <TableHead className="text-xs">Risk</TableHead>
-                <TableHead className="text-xs text-right">Min Edge</TableHead>
-                <TableHead className="text-xs text-right">Min Liquidity</TableHead>
-                <TableHead className="text-xs">Market Types</TableHead>
-                <TableHead className="text-xs">Time Window</TableHead>
+                <TableHead className="text-xs">Data Quality</TableHead>
                 <TableHead className="text-xs text-right">Orders</TableHead>
+                <TableHead className="text-xs text-right">Progress</TableHead>
                 <TableHead className="text-xs text-right">Strike</TableHead>
                 <TableHead className="text-xs text-right">Net P/L</TableHead>
                 <TableHead className="text-xs text-right">ROI</TableHead>
+                <TableHead className="text-xs text-right">CLV</TableHead>
+                <TableHead className="text-xs text-right">PF</TableHead>
+                <TableHead className="text-xs"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {strategies.map(s => {
-                const stats = getStats(s.name);
-                return (
-                  <TableRow key={s.id} className="border-border">
-                    <TableCell className="text-xs font-semibold">{s.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{s.category}</TableCell>
-                    <TableCell><StatusBadge status={s.status === 'active' ? 'ok' : 'neutral'}>{s.status}</StatusBadge></TableCell>
-                    <TableCell className={`text-xs font-semibold ${RISK_COLORS[s.riskProfile] || ''}`}>{s.riskProfile}</TableCell>
-                    <TableCell className="text-xs text-right font-mono">{s.minEdge.toFixed(1)}%</TableCell>
-                    <TableCell className="text-xs text-right font-mono">${s.minLiquidity.toLocaleString()}</TableCell>
-                    <TableCell className="text-xs">{s.marketTypes.join(', ')}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{s.timeWindow}</TableCell>
-                    <TableCell className="text-xs text-right font-mono">{stats?.totalPaperOrders ?? '—'}</TableCell>
-                    <TableCell className="text-xs text-right font-mono">{stats ? `${stats.strikeRate.toFixed(0)}%` : '—'}</TableCell>
-                    <TableCell className="text-xs text-right">{stats ? <PLValue value={stats.netProfit} /> : '—'}</TableCell>
-                    <TableCell className={`text-xs text-right font-mono ${stats && stats.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{stats ? `${stats.roi.toFixed(1)}%` : '—'}</TableCell>
-                  </TableRow>
-                );
-              })}
+              {filtered.map(s => (
+                <TableRow key={s.id} className="border-border cursor-pointer hover:bg-accent/30" onClick={() => navigate(`/strategy/${s.id}`)}>
+                  <TableCell className="text-xs font-semibold">{s.name}</TableCell>
+                  <TableCell><StrategyStatusBadge light={s.status.light} label={s.status.label} /></TableCell>
+                  <TableCell><DataQualityBadge status={s.dataQuality.status} label={s.dataQuality.label} /></TableCell>
+                  <TableCell className="text-xs text-right font-mono">{s.audit?.totalPaperOrders ?? '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{s.audit ? `${s.progress.current}/${s.progress.target}` : '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{s.audit ? `${s.audit.strikeRate.toFixed(0)}%` : '—'}</TableCell>
+                  <TableCell className="text-xs text-right">{s.audit ? <PLValue value={s.audit.netProfit} /> : '—'}</TableCell>
+                  <TableCell className={`text-xs text-right font-mono ${s.audit && s.audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{s.audit ? `${s.audit.roi.toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell className={`text-xs text-right font-mono ${s.audit && s.audit.closingLineValue >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{s.audit ? `${s.audit.closingLineValue.toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono">{s.audit?.profitFactor?.toFixed(2) ?? '—'}</TableCell>
+                  <TableCell><ChevronRight className="h-3 w-3 text-muted-foreground" /></TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </Panel>
       )}
 
-      {strategies.length === 0 && (
+      {filtered.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
           <div className="text-sm">No strategies match your filters.</div>

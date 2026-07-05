@@ -26,7 +26,9 @@ const PAGE_TITLES = {
 export default function Layout() {
   const { emergencyStop, clearEmergencyStop } = useApp();
   const location = useLocation();
-  const pageInfo = PAGE_TITLES[location.pathname] || { title: 'Betfair Edge Lab', subtitle: '' };
+  const pageInfo = PAGE_TITLES[location.pathname]
+    || (location.pathname.startsWith('/strategy/') ? { title: 'Strategy Detail', subtitle: 'Full strategy audit and validation' } : null)
+    || { title: 'Betfair Edge Lab', subtitle: '' };
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
