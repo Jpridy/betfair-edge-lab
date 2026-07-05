@@ -26,7 +26,23 @@ const RISK_RULES = [
 ];
 
 export default function RiskManager() {
-  const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus } = useApp();
+  const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus, mode, paperOrders, addAuditLog, updateSettings } = useApp();
+
+  const paperExposure = paperOrders.filter(o => o.result === 'pending' && o.paper_mode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
+  const liveExposure = paperOrders.filter(o => o.result === 'pending' && o.liveMode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
+  const unmatchedPaper = paperOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched').length;
+
+  const handleCancelUnmatched = () => {
+    addAuditLog('Cancel All Unmatched Orders', 'emergency', 'critical', `Risk Manager: cancelled ${unmatchedPaper} unmatched/partially matched orders`);
+  };
+  const handleDisableLive = () => {
+    updateSettings({ liveTradingEnabled: false, emergencyStopActive: true });
+    addAuditLog('Disable Live Trading', 'emergency', 'critical', 'Risk Manager: live trading disabled from Risk Manager panel');
+  };
+  const handleForcePaperOnly = () => {
+    updateSettings({ forcedPaperOnlyMode: true, liveTradingEnabled: false, mode: 'paper' });
+    addAuditLog('Force Paper-Only Mode', 'emergency', 'critical', 'Risk Manager: forced paper-only mode activated');
+  };
 
   return (
     <div className="space-y-5">
@@ -53,6 +69,68 @@ export default function RiskManager() {
             {emergencyStop ? 'CLEAR EMERGENCY STOP' : 'ACTIVATE EMERGENCY STOP'}
           </Button>
         </div>
+      </div>
+
+      {/* Emergency Action Buttons */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Button variant="outline" onClick={handleCancelUnmatched} disabled={unmatchedPaper === 0} className="h-auto py-4 flex flex-col items-start gap-1 border-chart-4/50">
+          <div className="flex items-center gap-2 text-chart-4"><AlertTriangle className="h-4 w-4" /><span className="text-sm font-bold">Cancel Unmatched</span></div>
+          <span className="text-xs text-muted-foreground">{unmatchedPaper} unmatched/partial orders</span>
+        </Button>
+        <Button variant="outline" onClick={handleDisableLive} disabled={!settings.liveTradingEnabled} className="h-auto py-4 flex flex-col items-start gap-1 border-chart-5/50">
+          <div className="flex items-center gap-2 text-chart-5"><Shield className="h-4 w-4" /><span className="text-sm font-bold">Disable Live Trading</span></div>
+          <span className="text-xs text-muted-foreground">{settings.liveTradingEnabled ? 'Live trading is ON' : 'Already disabled'}</span>
+        </Button>
+        <Button variant="outline" onClick={handleForcePaperOnly} disabled={settings.forcedPaperOnlyMode} className="h-auto py-4 flex flex-col items-start gap-1 border-chart-4/50">
+          <div className="flex items-center gap-2 text-chart-4"><AlertOctagon className="h-4 w-4" /><span className="text-sm font-bold">Force Paper-Only</span></div>
+          <span className="text-xs text-muted-foreground">{settings.forcedPaperOnlyMode ? 'Paper-only active' : 'Lock to paper mode'}</span>
+        </Button>
+      </div>
+
+      {/* Paper vs Live Exposure */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <Panel title="Paper Trading Exposure">
+          <div className="p-4 space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Open Paper Exposure</span>
+              <span className="font-mono font-bold text-chart-4">${paperExposure.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Unmatched Paper Orders</span>
+              <span className="font-mono font-bold">{unmatchedPaper}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Paper Bankroll</span>
+              <span className="font-mono font-bold">${settings.paperBankroll?.toLocaleString() || '10,000'}</span>
+            </div>
+            <div className="pt-2 border-t border-border">
+              <StatusBadge status="info">Paper Mode — No Real Funds</StatusBadge>
+            </div>
+          </div>
+        </Panel>
+        <Panel title="Live Trading Exposure">
+          <div className="p-4 space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Open Live Exposure</span>
+              <span className="font-mono font-bold text-chart-5">${liveExposure.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Live Trading Status</span>
+              <span className="font-mono font-bold">{settings.liveTradingEnabled ? <StatusBadge status="danger">ENABLED</StatusBadge> : <StatusBadge status="ok">DISABLED</StatusBadge>}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Live Bankroll</span>
+              <span className="font-mono font-bold">${settings.bankroll?.toLocaleString() || '10,000'}</span>
+            </div>
+            <div className="pt-2 border-t border-border">
+              {settings.forcedPaperOnlyMode
+                ? <StatusBadge status="warning">Forced Paper-Only Mode</StatusBadge>
+                : settings.liveTradingEnabled
+                  ? <StatusBadge status="danger">Live Funds At Risk</StatusBadge>
+                  : <StatusBadge status="ok">No Live Exposure</StatusBadge>}
+            </div>
+          </div>
+        </Panel>
       </div>
 
       {/* Risk Overview: Global state, connections, daily/weekly P/L */}

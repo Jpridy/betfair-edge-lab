@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, AlertTriangle } from 'lucide-react';
 import { exportToCSV } from '@/lib/csvExport';
 
 export default function Orders() {
@@ -16,6 +16,7 @@ export default function Orders() {
   const [resultFilter, setResultFilter] = useState('all');
   const [venueFilter, setVenueFilter] = useState('all');
   const [warningOnly, setWarningOnly] = useState(false);
+  const [modeFilter, setModeFilter] = useState('all');
   const [search, setSearch] = useState('');
 
   const strategies = useMemo(
@@ -43,7 +44,9 @@ export default function Orders() {
     if (resultFilter !== 'all' && o.result !== resultFilter) return false;
     if (venueFilter !== 'all' && !o.marketName?.startsWith(venueFilter)) return false;
     if (warningOnly && !hasWarning(o)) return false;
-    if (search && !o.runnerName?.toLowerCase().includes(search.toLowerCase()) && !o.marketName?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (modeFilter === 'paper' && !o.paper_mode) return false;
+    if (modeFilter === 'live' && !o.liveMode) return false;
+    if (search && !o.runnerName?.toLowerCase().includes(search.toLowerCase()) && !o.marketName?.toLowerCase().includes(search.toLowerCase()) && !o.customerRef?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -53,7 +56,10 @@ export default function Orders() {
       { key: 'strategyName', label: 'Strategy' },
       { key: 'marketName', label: 'Market' },
       { key: 'runnerName', label: 'Runner' },
+      { key: 'selectionId', label: 'Selection ID' },
       { key: 'side', label: 'Side' },
+      { key: 'persistenceType', label: 'Persistence' },
+      { key: 'customerRef', label: 'Customer Ref' },
       { key: 'requestedOdds', label: 'Req Odds' },
       { key: 'matchedOdds', label: 'Match Odds' },
       { key: 'matchedStake', label: 'Stake' },
@@ -61,7 +67,15 @@ export default function Orders() {
       { key: 'result', label: 'Result' },
       { key: 'grossProfit', label: 'Gross' },
       { key: 'commission', label: 'Commission' },
+      { key: 'commissionSource', label: 'Comm Source' },
       { key: 'netProfit', label: 'Net P/L' },
+      { key: 'clv', label: 'CLV %' },
+      { key: 'slippage', label: 'Slippage' },
+      { key: 'entryReason', label: 'Entry Reason' },
+      { key: 'exitReason', label: 'Exit Reason' },
+      { key: 'rejection_reason', label: 'Rejection Reason' },
+      { key: 'warningFlags', label: 'Warning Flags' },
+      { key: 'paperSimulationQuality', label: 'Sim Quality' },
     ];
     exportToCSV(`paper-orders-${new Date().toISOString().slice(0, 10)}.csv`, filtered, columns);
   };
@@ -147,7 +161,17 @@ export default function Orders() {
               </SelectContent>
             </Select>
           </div>
-          <Input placeholder="Search runner or market..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 text-xs" />
+          <div className="w-36">
+            <Select value={modeFilter} onValueChange={setModeFilter}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Modes</SelectItem>
+                <SelectItem value="paper">Paper Only</SelectItem>
+                <SelectItem value="live">Live Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Input placeholder="Search runner, market, ref..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 text-xs" />
           <div className="flex items-center gap-2">
             <input type="checkbox" id="warningOnly" checked={warningOnly} onChange={e => setWarningOnly(e.target.checked)} className="accent-chart-4" />
             <label htmlFor="warningOnly" className="text-xs text-muted-foreground cursor-pointer">Warnings only</label>
@@ -159,7 +183,7 @@ export default function Orders() {
         </div>
       </Panel>
 
-      <Panel title={`Paper Orders (${filtered.length})`}>
+      <Panel title={`Orders — Betfair Exchange Structure (${filtered.length})`}>
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
@@ -167,16 +191,21 @@ export default function Orders() {
               <TableHead className="text-xs">Strategy</TableHead>
               <TableHead className="text-xs">Market</TableHead>
               <TableHead className="text-xs">Runner</TableHead>
+              <TableHead className="text-xs">Sel. ID</TableHead>
               <TableHead className="text-xs">Side</TableHead>
+              <TableHead className="text-xs">Persist</TableHead>
+              <TableHead className="text-xs">Mode</TableHead>
               <TableHead className="text-xs text-right">Req Odds</TableHead>
               <TableHead className="text-xs text-right">Match Odds</TableHead>
               <TableHead className="text-xs text-right">Stake</TableHead>
               <TableHead className="text-xs text-right">Liability</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Result</TableHead>
+              <TableHead className="text-xs text-right">CLV</TableHead>
               <TableHead className="text-xs text-right">Gross</TableHead>
               <TableHead className="text-xs text-right">Comm</TableHead>
               <TableHead className="text-xs text-right">Net P/L</TableHead>
+              <TableHead className="text-xs">Flags</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -186,26 +215,45 @@ export default function Orders() {
                 <TableCell className="text-xs">{o.strategyName}</TableCell>
                 <TableCell className="text-xs">{o.marketName}</TableCell>
                 <TableCell className="text-xs">{o.runnerName}</TableCell>
+                <TableCell className="text-xs font-mono text-muted-foreground">{o.selectionId || '—'}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
+                <TableCell className="text-xs">
+                  <StatusBadge status={o.persistenceType === 'PERSIST' ? 'warning' : o.persistenceType === 'MARKET_ON_CLOSE' ? 'info' : 'neutral'}>{o.persistenceType || 'LAPSE'}</StatusBadge>
+                </TableCell>
+                <TableCell className="text-xs">
+                  <StatusBadge status={o.liveMode ? 'danger' : 'info'}>{o.liveMode ? 'LIVE' : 'PAPER'}</StatusBadge>
+                </TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.matchedStake}</TableCell>
+                <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${o.matchedStake || 0}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">
-                  ${o.side === 'LAY' ? (o.matchedStake * (o.matchedOdds - 1)).toFixed(2) : o.matchedStake.toFixed(2)}
+                  ${o.side === 'LAY' ? ((o.matchedStake || 0) * ((o.matchedOdds || 0) - 1)).toFixed(2) : (o.matchedStake || 0).toFixed(2)}
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={
                     o.status === 'matched' ? 'ok' :
-                    o.status === 'cancelled' || o.status === 'failed' || o.status === 'lapsed' ? 'danger' :
+                    o.status === 'rejected' || o.status === 'cancelled' || o.status === 'failed' || o.status === 'lapsed' ? 'danger' :
                     o.status === 'partially_matched' || o.status === 'unmatched' ? 'warning' : 'info'
                   }>{o.status}</StatusBadge>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={o.result === 'won' ? 'ok' : o.result === 'lost' ? 'danger' : 'neutral'}>{o.result}</StatusBadge>
                 </TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.grossProfit?.toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right font-mono text-muted-foreground">${o.commission?.toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right"><PLValue value={o.netProfit} /></TableCell>
+                <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{o.clv != null ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${o.grossProfit?.toFixed(2) || '0.00'}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-muted-foreground">${o.commission?.toFixed(2) || '0.00'}</TableCell>
+                <TableCell className="text-xs text-right"><PLValue value={o.netProfit || 0} /></TableCell>
+                <TableCell className="text-xs">
+                  {o.warningFlags?.length > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-chart-4" title={o.warningFlags.join('; ')}>
+                      <AlertTriangle className="h-3 w-3" />{o.warningFlags.length}
+                    </span>
+                  ) : o.rejection_reason ? (
+                    <span className="inline-flex items-center gap-1 text-chart-5" title={o.rejection_reason}>
+                      <AlertTriangle className="h-3 w-3" />!
+                    </span>
+                  ) : '—'}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

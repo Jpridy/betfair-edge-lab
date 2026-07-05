@@ -12,8 +12,17 @@ import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 const COLORS = ['hsl(142 71% 45%)', 'hsl(0 72% 51%)', 'hsl(263 70% 55%)', 'hsl(199 89% 48%)'];
 
 export default function PerformanceAnalytics() {
-  const { bankrollStats, strategyStats, plData } = useApp();
+  const { bankrollStats, strategyStats, plData, paperOrders } = useApp();
   const [timeRange, setTimeRange] = useState('12m');
+
+  const settledOrders = (paperOrders || []).filter(o => o.result === 'won' || o.result === 'lost');
+  const settledWins = settledOrders.filter(o => o.result === 'won').length;
+  const settledLosses = settledOrders.filter(o => o.result === 'lost').length;
+  const settledNetPL = settledOrders.reduce((sum, o) => sum + (o.netProfit || 0), 0);
+  const settledGrossPL = settledOrders.reduce((sum, o) => sum + (o.grossProfit || 0), 0);
+  const settledCommission = settledOrders.reduce((sum, o) => sum + (o.commission || 0), 0);
+  const avgCLV = settledOrders.length > 0 ? settledOrders.reduce((sum, o) => sum + (o.clv || 0), 0) / settledOrders.length : 0;
+  const avgSlippage = settledOrders.length > 0 ? settledOrders.reduce((sum, o) => sum + (o.slippage || 0), 0) / settledOrders.length : 0;
 
   const totalWins = strategyStats.reduce((sum, s) => sum + s.wins, 0);
   const totalLosses = strategyStats.reduce((sum, s) => sum + s.losses, 0);
@@ -28,14 +37,14 @@ export default function PerformanceAnalytics() {
   const sharpeEstimate = (avgROI / (Math.sqrt(DEMO_MONTHLY_GROWTH.reduce((sum, m) => sum + Math.pow(m.growth - avgROI, 2), 0) / DEMO_MONTHLY_GROWTH.length))).toFixed(2);
 
   const kpiCards = [
-    { label: 'Total Net P/L', value: `+$${totalNetPL.toFixed(2)}`, icon: DollarSign, trend: 'up', color: 'text-chart-1' },
+    { label: 'Settled Net P/L', value: `${settledNetPL >= 0 ? '+' : ''}$${settledNetPL.toFixed(2)}`, icon: DollarSign, trend: settledNetPL >= 0 ? 'up' : 'down', color: settledNetPL >= 0 ? 'text-chart-1' : 'text-chart-5' },
     { label: 'Win/Loss Ratio', value: winLossRatio, icon: Target, trend: totalWins > totalLosses ? 'up' : 'down', color: totalWins > totalLosses ? 'text-chart-1' : 'text-chart-5' },
     { label: 'Avg ROI', value: `${avgROI.toFixed(2)}%`, icon: Percent, trend: avgROI > 0 ? 'up' : 'down', color: avgROI > 0 ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Total Bets', value: totalBets, icon: Activity, trend: 'neutral', color: 'text-foreground' },
-    { label: 'Win Rate', value: `${((totalWins / totalBets) * 100).toFixed(1)}%`, icon: TrendingUp, trend: 'up', color: 'text-chart-3' },
-    { label: 'Est. Sharpe', value: sharpeEstimate, icon: BarChart3, trend: parseFloat(sharpeEstimate) > 0 ? 'up' : 'down', color: parseFloat(sharpeEstimate) > 0 ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Best Month', value: `${bestMonth.month} +${bestMonth.growth}%`, icon: TrendingUp, trend: 'up', color: 'text-chart-1' },
-    { label: 'Worst Month', value: `${worstMonth.month} ${worstMonth.growth}%`, icon: TrendingDown, trend: 'down', color: 'text-chart-5' },
+    { label: 'Settled Bets', value: settledOrders.length, icon: Activity, trend: 'neutral', color: 'text-foreground' },
+    { label: 'Strike Rate', value: `${settledOrders.length > 0 ? ((settledWins / settledOrders.length) * 100).toFixed(1) : 0}%`, icon: TrendingUp, trend: 'up', color: 'text-chart-3' },
+    { label: 'Avg CLV', value: `${avgCLV >= 0 ? '+' : ''}${avgCLV.toFixed(2)}%`, icon: Target, trend: avgCLV >= 0 ? 'up' : 'down', color: avgCLV >= 0 ? 'text-chart-1' : 'text-chart-5' },
+    { label: 'Avg Slippage', value: `${avgSlippage.toFixed(2)}%`, icon: BarChart3, trend: avgSlippage <= 0 ? 'up' : 'down', color: avgSlippage <= 0 ? 'text-chart-1' : 'text-chart-5' },
+    { label: 'Commission Paid', value: `$${settledCommission.toFixed(2)}`, icon: DollarSign, trend: 'neutral', color: 'text-chart-4' },
   ];
 
   const tooltipStyle = {
@@ -47,6 +56,11 @@ export default function PerformanceAnalytics() {
 
   return (
     <div className="space-y-5">
+      {/* Settled Orders Notice */}
+      <div className="bg-card border border-border rounded-lg p-3 text-xs text-muted-foreground">
+        <span className="text-chart-3 font-semibold">Metrics based on settled orders only.</span> {settledOrders.length} settled out of {(paperOrders || []).length} total. Pending and voided orders are excluded from performance calculations. Gross P/L: <span className="font-mono">${settledGrossPL.toFixed(2)}</span> · Commission: <span className="font-mono">${settledCommission.toFixed(2)}</span> · Net: <span className="font-mono">${settledNetPL.toFixed(2)}</span>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {kpiCards.map(k => {

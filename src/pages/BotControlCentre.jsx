@@ -5,11 +5,13 @@ import BotLoopDisplay from '@/components/bot/BotLoopDisplay';
 import BotRulesPanel from '@/components/bot/BotRulesPanel';
 import LiveBotLockPanel from '@/components/bot/LiveBotLockPanel';
 import BotScanStats from '@/components/bot/BotScanStats';
+import BotSyncControls from '@/components/bot/BotSyncControls';
 
 export default function BotControlCentre() {
   return (
     <div className="space-y-5">
       <BotControls />
+      <BotSyncControls />
       <BotScanStats />
       <BotStatusCard />
       <BotLoopDisplay />

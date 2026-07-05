@@ -8,11 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Plus, XCircle, RefreshCw, Download, ArrowRight } from 'lucide-react';
+import { Plus, XCircle, RefreshCw, Download, ArrowRight, AlertTriangle } from 'lucide-react';
 import PaperProgress from '@/components/paper/PaperProgress';
 import { exportToCSV } from '@/lib/csvExport';
 
-const ORDER_STATUSES = ['signal_created', 'risk_checked', 'submitted', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'failed'];
+const ORDER_STATUSES = ['pending', 'executable', 'execution_complete', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'voided', 'settled', 'rejected'];
 
 export default function PaperTrading() {
   const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, mode, emergencyStop, addAuditLog } = useApp();
@@ -24,6 +24,7 @@ export default function PaperTrading() {
     odds: 3.0,
     stake: settings.baseStake,
     strategy: 'Value Bet',
+    persistenceType: 'LAPSE',
   });
 
   const marketRunners = runners.filter(r => r.marketId === form.marketId);
@@ -46,24 +47,57 @@ export default function PaperTrading() {
     const order = {
       strategyName: form.strategy,
       marketId: form.marketId,
+      betfairMarketId: market?.betfairMarketId || form.marketId,
+      selectionId: runner?.betfairSelectionId || runner?.selectionId,
       runnerId: form.runnerId,
       runnerName: runner?.runnerName || 'Unknown',
       marketName: market?.marketName || 'Unknown',
+      venue: market?.venue || '',
+      raceNumber: market?.raceNumber || 0,
       side: form.side,
       orderType: 'LIMIT',
+      size: form.stake,
+      price: form.odds,
+      persistenceType: form.persistenceType || 'LAPSE',
+      customerRef: 'BEL' + Date.now().toString(36).toUpperCase(),
+      customerStrategyRef: 'BEL_' + form.strategy.toUpperCase().replace(/[^A-Z]/g, ''),
+      handicap: runner?.handicap || 0,
+      paper_mode: true,
+      liveMode: false,
+      requested_size: form.stake,
+      matched_size: riskChecks.length > 0 ? 0 : form.stake,
+      remaining_size: riskChecks.length > 0 ? form.stake : 0,
+      average_price_matched: riskChecks.length > 0 ? null : form.odds,
+      requested_price: form.odds,
+      matched_price: riskChecks.length > 0 ? null : form.odds,
+      placed_date: new Date().toISOString(),
+      matched_date: riskChecks.length > 0 ? null : new Date().toISOString(),
       requestedOdds: form.odds,
-      matchedOdds: form.odds,
+      matchedOdds: riskChecks.length > 0 ? null : form.odds,
       requestedStake: form.stake,
-      matchedStake: form.stake,
-      status: riskChecks.length > 0 ? 'failed' : 'matched',
+      matchedStake: riskChecks.length > 0 ? 0 : form.stake,
+      status: riskChecks.length > 0 ? 'rejected' : 'matched',
+      failed_validation_field: riskChecks[0] || null,
+      rejection_reason: riskChecks.length > 0 ? riskChecks.join('; ') : null,
       expectedValue: 0,
       result: 'pending',
       grossProfit: 0,
       commission: 0,
       netProfit: 0,
+      commissionRateUsed: market?.marketBaseRate || settings.defaultCommissionRate || 0.05,
+      commissionSource: market?.marketBaseRate ? 'market_base_rate' : 'default_fallback',
+      commission_calculation_status: market?.marketBaseRate ? 'ok' : 'using_default',
+      entryReason: `${form.strategy} manual paper order`,
+      warningFlags: riskChecks,
+      paperSimulationQuality: 'High',
     };
 
     addPaperOrder(order);
+    if (riskChecks.length > 0) {
+      addAuditLog('Paper Order Rejected', 'order', 'warning', `${form.side} ${runner?.runnerName} — rejected: ${riskChecks.join('; ')}`);
+    } else {
+      addAuditLog('Paper Order Created', 'order', 'info', `${form.side} ${runner?.runnerName} @ ${form.odds} × $${form.stake} (${form.persistenceType})`);
+    }
     setShowForm(false);
   };
 
@@ -221,12 +255,29 @@ export default function PaperTrading() {
               <Label className="text-xs">Stake ($)</Label>
               <Input type="number" value={form.stake} onChange={e => setForm({...form, stake: +e.target.value})} className="mt-1" />
             </div>
+            <div>
+              <Label className="text-xs">Persistence Type</Label>
+              <Select value={form.persistenceType} onValueChange={v => setForm({...form, persistenceType: v})}>
+                <SelectTrigger className="h-9 mt-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LAPSE">LAPSE (cancel at jump)</SelectItem>
+                  <SelectItem value="PERSIST">PERSIST (keep in-play)</SelectItem>
+                  <SelectItem value="MARKET_ON_CLOSE">MARKET_ON_CLOSE (BSP)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {selectedRunner && (
               <div className="md:col-span-3 text-xs text-muted-foreground bg-muted/50 rounded p-2">
                 Best Back: <span className="font-mono text-chart-3">{selectedRunner.bestBackPrice.toFixed(2)}</span> ·
                 Best Lay: <span className="font-mono text-chart-5">{selectedRunner.bestLayPrice.toFixed(2)}</span> ·
                 Implied Prob: <span className="font-mono">{selectedRunner.impliedProbability.toFixed(1)}%</span> ·
-                Spread: <span className="font-mono">{(selectedRunner.bestLayPrice - selectedRunner.bestBackPrice).toFixed(2)}</span>
+                Spread: <span className="font-mono">{selectedRunner.spreadTicks || '—'} ticks</span> ·
+                MBR: <span className="font-mono">{(markets.find(m => m.id === form.marketId)?.marketBaseRate * 100).toFixed(1)}%</span>
+              </div>
+            )}
+            {form.persistenceType === 'PERSIST' && (
+              <div className="md:col-span-3 text-xs text-chart-4 flex items-center gap-1 bg-chart-4/5 rounded p-2">
+                <AlertTriangle className="h-3 w-3" /> PERSIST keeps unmatched bets active in-play. Use only if intentionally approved.
               </div>
             )}
             <div className="md:col-span-3 flex gap-2">
@@ -238,7 +289,7 @@ export default function PaperTrading() {
       )}
 
       {/* Order Lifecycle Table */}
-      <Panel title="Order Lifecycle">
+      <Panel title="Order Lifecycle — Betfair Exchange Structure">
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
@@ -249,8 +300,11 @@ export default function PaperTrading() {
               <TableHead className="text-xs">Side</TableHead>
               <TableHead className="text-xs text-right">Odds</TableHead>
               <TableHead className="text-xs text-right">Stake</TableHead>
+              <TableHead className="text-xs">Persistence</TableHead>
+              <TableHead className="text-xs">Sim Quality</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Result</TableHead>
+              <TableHead className="text-xs text-right">CLV</TableHead>
               <TableHead className="text-xs text-right">P/L</TableHead>
             </TableRow>
           </TableHeader>
@@ -262,18 +316,25 @@ export default function PaperTrading() {
                 <TableCell className="text-xs">{o.marketName}</TableCell>
                 <TableCell className="text-xs">{o.runnerName}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
-                <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.matchedStake}</TableCell>
+                <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${o.matchedStake || 0}</TableCell>
+                <TableCell className="text-xs">
+                  <StatusBadge status={o.persistenceType === 'PERSIST' ? 'warning' : o.persistenceType === 'MARKET_ON_CLOSE' ? 'info' : 'neutral'}>{o.persistenceType || 'LAPSE'}</StatusBadge>
+                </TableCell>
+                <TableCell className="text-xs">
+                  <StatusBadge status={o.paperSimulationQuality === 'High' ? 'ok' : o.paperSimulationQuality === 'Good' ? 'info' : 'warning'}>{o.paperSimulationQuality || 'Basic'}</StatusBadge>
+                </TableCell>
                 <TableCell>
                   <StatusBadge status={
                     o.status === 'matched' ? 'ok' :
-                    o.status === 'cancelled' || o.status === 'failed' || o.status === 'lapsed' ? 'danger' :
+                    o.status === 'rejected' || o.status === 'cancelled' || o.status === 'failed' || o.status === 'lapsed' ? 'danger' :
                     o.status === 'partially_matched' || o.status === 'unmatched' ? 'warning' : 'info'
                   }>{o.status}</StatusBadge>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={o.result === 'won' ? 'ok' : o.result === 'lost' ? 'danger' : 'neutral'}>{o.result}</StatusBadge>
                 </TableCell>
+                <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{o.clv ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
                 <TableCell className="text-xs text-right"><PLValue value={o.netProfit} /></TableCell>
               </TableRow>
             ))}
