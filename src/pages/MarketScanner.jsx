@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Eye, EyeOff, Filter, ExternalLink } from 'lucide-react';
+import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 
 export default function MarketScanner() {
   const { markets, runners, toggleWatchMarket } = useApp();
@@ -64,6 +65,27 @@ export default function MarketScanner() {
     const mins = Math.floor(diff / 60);
     const secs = diff % 60;
     return `${mins}m ${secs}s`;
+  };
+
+  const getRaceNumber = (marketName) => {
+    const match = marketName?.match(/R(\d+)/i);
+    return match ? `R${match[1]}` : '—';
+  };
+
+  const getLiquidityStatus = (totalMatched, minLiquidity) => {
+    if (totalMatched >= 100000) return { label: 'High', status: 'ok' };
+    if (totalMatched >= 20000) return { label: 'Medium', status: 'warning' };
+    return { label: 'Low', status: 'danger' };
+  };
+
+  const getEligibleStrategies = (market) => {
+    return DEMO_STRATEGY_LIBRARY.filter(s => {
+      if (s.status === 'archived') return false;
+      if (market.inPlay && !s.timeWindow?.includes('In-Play')) return false;
+      if (market.totalMatched < s.minLiquidity) return false;
+      if (!s.marketTypes?.includes(market.marketType)) return false;
+      return true;
+    }).map(s => s.name);
   };
 
   return (
@@ -153,35 +175,53 @@ export default function MarketScanner() {
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="text-xs">Start Time</TableHead>
-              <TableHead className="text-xs">Venue / Event</TableHead>
+              <TableHead className="text-xs">Venue</TableHead>
+              <TableHead className="text-xs">Race</TableHead>
+              <TableHead className="text-xs">Market ID</TableHead>
               <TableHead className="text-xs">Market Name</TableHead>
               <TableHead className="text-xs text-right">Runners</TableHead>
               <TableHead className="text-xs text-right">Best Back</TableHead>
               <TableHead className="text-xs text-right">Best Lay</TableHead>
               <TableHead className="text-xs text-right">Spread</TableHead>
               <TableHead className="text-xs text-right">Traded Vol</TableHead>
+              <TableHead className="text-xs">Liquidity</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">In-Play</TableHead>
               <TableHead className="text-xs text-right">Time to Start</TableHead>
+              <TableHead className="text-xs">Eligible Strategies</TableHead>
               <TableHead className="text-xs">Watch</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map(m => {
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={16} className="text-center text-xs text-muted-foreground py-8">No markets match your filters.</TableCell></TableRow>
+            ) : filtered.map(m => {
               const rd = getRunnerData(m.id);
+              const liq = getLiquidityStatus(m.totalMatched, filters.minLiquidity);
+              const eligible = getEligibleStrategies(m);
               return (
                 <TableRow key={m.id} className="border-border cursor-pointer hover:bg-muted/30" onClick={() => navigate(`/runner?market=${m.id}`)}>
-                  <TableCell className="text-xs text-muted-foreground">{new Date(m.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
-                  <TableCell className="text-xs font-medium">{m.venue} — {m.eventName}</TableCell>
-                  <TableCell className="text-xs">{m.marketName}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(m.startTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
+                  <TableCell className="text-xs font-medium">{m.venue}</TableCell>
+                  <TableCell className="text-xs font-mono">{getRaceNumber(m.marketName)}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{m.betfairMarketId}</TableCell>
+                  <TableCell className="text-xs max-w-[200px] truncate">{m.marketName}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{m.numberOfRunners}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-chart-3">{rd.bestBack?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-chart-5">{rd.bestLay?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{rd.spread?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">${(m.totalMatched / 1000).toFixed(1)}k</TableCell>
+                  <TableCell><StatusBadge status={liq.status}>{liq.label}</StatusBadge></TableCell>
                   <TableCell><StatusBadge status="ok">{m.status}</StatusBadge></TableCell>
                   <TableCell className="text-xs">{m.inPlay ? <span className="text-chart-5 font-bold">YES</span> : <span className="text-muted-foreground">No</span>}</TableCell>
-                  <TableCell className="text-xs text-right font-mono">{getTimeToStart(m.startTime)}</TableCell>
+                  <TableCell className="text-xs text-right font-mono whitespace-nowrap">{getTimeToStart(m.startTime)}</TableCell>
+                  <TableCell className="text-xs">
+                    <div className="flex flex-wrap gap-1">
+                      {eligible.length === 0 ? <span className="text-muted-foreground">—</span> : eligible.map(s => (
+                        <span key={s} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-chart-2/10 text-chart-2 border border-chart-2/20">{s}</span>
+                      ))}
+                    </div>
+                  </TableCell>
                   <TableCell className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => toggleWatchMarket(m.id)}>
                       {m.watched ? <Eye className="h-3.5 w-3.5 text-primary" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}

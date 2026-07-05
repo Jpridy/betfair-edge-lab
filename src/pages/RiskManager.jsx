@@ -1,9 +1,11 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
-import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, ArrowRight } from 'lucide-react';
 import GlobalStopRules from '@/components/risk/GlobalStopRules';
+import RiskOverview from '@/components/risk/RiskOverview';
 
 const RISK_RULES = [
   { key: 'maxStake', label: 'Maximum Stake Per Bet', getValue: (s) => `$${s.maxStake}`, check: true },
@@ -53,8 +55,11 @@ export default function RiskManager() {
         </div>
       </div>
 
+      {/* Risk Overview: Global state, connections, daily/weekly P/L */}
+      <RiskOverview />
+
       {/* Live Risk Status */}
-      <Panel title="Live Risk Status">
+      <Panel title="Live Risk Checks — Evaluated Before Every Order">
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(riskStatus).map(([key, check]) => (
             <div key={key} className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
@@ -109,25 +114,9 @@ export default function RiskManager() {
               <span className="text-muted-foreground">Exposure %</span>
               <span className="font-mono font-bold">{((bankrollStats.openExposure / bankrollStats.bankroll) * 100).toFixed(1)}%</span>
             </div>
-          </div>
-        </Panel>
-
-        <Panel title="Daily P/L Status">
-          <div className="p-4 space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Today's P/L</span>
-              <span className="font-mono font-bold text-chart-1">+${bankrollStats.todayPL.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Daily Loss Limit</span>
-              <span className="font-mono font-bold text-chart-5">-${settings.dailyLossLimit}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Loss Used</span>
-              <span className="font-mono font-bold">{bankrollStats.todayPL < 0 ? `${((Math.abs(bankrollStats.todayPL) / settings.dailyLossLimit) * 100).toFixed(1)}%` : '0%'}</span>
-            </div>
-            <div className="pt-2 border-t border-border">
-              <StatusBadge status="ok">Within Limits</StatusBadge>
+            <div className="pt-2 border-t border-border flex justify-between items-center">
+              <span className="text-muted-foreground">Max Open Orders</span>
+              <span className="font-mono font-bold">{settings.maxOpenOrders}</span>
             </div>
           </div>
         </Panel>
@@ -148,6 +137,28 @@ export default function RiskManager() {
             </div>
             <div className="pt-2 border-t border-border">
               <StatusBadge status="ok">Within Limits</StatusBadge>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Strategy Drawdown Limits">
+          <div className="p-4 space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Max Strategy Drawdown</span>
+              <span className="font-mono font-bold text-chart-5">${(settings.bankroll * 0.1).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Max Losing Streak</span>
+              <span className="font-mono font-bold">5</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Min Paper Trades</span>
+              <span className="font-mono font-bold">200</span>
+            </div>
+            <div className="pt-2 border-t border-border">
+              <Link to="/strategy-library" className="text-xs text-chart-3 hover:underline flex items-center gap-1">
+                View Strategy Status <ArrowRight className="h-3 w-3" />
+              </Link>
             </div>
           </div>
         </Panel>

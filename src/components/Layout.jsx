@@ -8,19 +8,19 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 
 const PAGE_TITLES = {
-  '/': { title: 'Home Dashboard', subtitle: 'Bot control room overview' },
-  '/bot-control': { title: 'Bot Control Centre', subtitle: 'Automated bot control and monitoring' },
-  '/scanner': { title: 'Market Scanner', subtitle: 'Horse racing market scanner with filters' },
-  '/strategy-library': { title: 'Strategy Library', subtitle: 'Catalogue of all trading strategies' },
-  '/runner': { title: 'Runner View', subtitle: 'Detailed runner analysis and price ladder' },
+  '/': { title: 'Dashboard', subtitle: 'Real-time P/L, strategy health, and system activity across all paper trading' },
+  '/bot-control': { title: 'Bot Control Centre', subtitle: 'Start, stop, and monitor automated market scanning and signal generation' },
+  '/scanner': { title: 'Market Scanner', subtitle: 'Browse live Australian racing markets with liquidity and eligibility filters' },
+  '/strategy-library': { title: 'Strategy Library', subtitle: 'Compare all strategies by status, performance, and live approval readiness' },
+  '/runner': { title: 'Runner View', subtitle: 'Back/lay prices, edge, CLV estimate, and strategy suitability per runner' },
   '/strategy': { title: 'Strategy Research Hub', subtitle: 'Strategy modules and signal generation' },
-  '/paper-trading': { title: 'Paper Bot Orders', subtitle: 'Simulated order lifecycle and tracking' },
-  '/backtesting': { title: 'Backtesting', subtitle: 'Historical data replay and simulation' },
-  '/performance-analytics': { title: 'Performance Analytics', subtitle: 'Advanced metrics, equity curves, and distributions' },
-  '/orders': { title: 'Orders', subtitle: 'Paper order history and management' },
-  '/risk': { title: 'Risk Manager', subtitle: 'Risk checks and safety controls' },
-  '/settings': { title: 'Settings', subtitle: 'App configuration and parameters' },
-  '/logs': { title: 'Logs / Audit', subtitle: 'Audit trail and system events' },
+  '/paper-trading': { title: 'Paper Trading', subtitle: 'Safe testing centre — place, track, and settle simulated orders before going live' },
+  '/backtesting': { title: 'Backtesting', subtitle: 'Replay historical races to validate strategy performance before paper trading' },
+  '/performance-analytics': { title: 'Performance Analytics', subtitle: 'Equity curves, drawdown, CLV trends, and profit breakdowns by strategy and market' },
+  '/orders': { title: 'Orders', subtitle: 'Complete paper and live order history with full audit trail and filtering' },
+  '/risk': { title: 'Risk Manager', subtitle: 'Global risk state, loss limits, exposure, and emergency controls for all trading' },
+  '/settings': { title: 'Settings', subtitle: 'Betfair API, commission, bankroll, risk limits, and strategy configuration' },
+  '/logs': { title: 'Logs / Audit', subtitle: 'Complete audit trail of every strategy, bot, order, and risk action' },
 };
 
 export default function Layout() {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -7,11 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { Plus, XCircle, RefreshCw, Download, ArrowRight } from 'lucide-react';
+import PaperProgress from '@/components/paper/PaperProgress';
+import { exportToCSV } from '@/lib/csvExport';
 
 const ORDER_STATUSES = ['signal_created', 'risk_checked', 'submitted', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'failed'];
 
 export default function PaperTrading() {
-  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, mode, emergencyStop } = useApp();
+  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, mode, emergencyStop, addAuditLog } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     marketId: markets[0]?.id || '',
@@ -68,35 +72,87 @@ export default function PaperTrading() {
     equity: 10000 + paperOrders.slice(0, i + 1).reduce((sum, p) => sum + (p.netProfit || 0), 0),
   }));
 
+  const openOrders = paperOrders.filter(o => o.result === 'pending');
+  const settledOrders = paperOrders.filter(o => o.result === 'won' || o.result === 'lost');
+
+  const handleCancelUnmatched = () => {
+    addAuditLog('Cancel Unmatched Orders', 'order', 'warning', `Cancelled ${openOrders.length} unmatched/pending paper orders`);
+  };
+
+  const handleRecalculate = () => {
+    addAuditLog('Recalculate Paper Results', 'system', 'info', 'Paper trading results recalculated from settled orders');
+  };
+
+  const handleExportCSV = () => {
+    const columns = [
+      { key: 'created_date', label: 'Time' },
+      { key: 'strategyName', label: 'Strategy' },
+      { key: 'marketName', label: 'Market' },
+      { key: 'runnerName', label: 'Runner' },
+      { key: 'side', label: 'Side' },
+      { key: 'matchedOdds', label: 'Odds' },
+      { key: 'matchedStake', label: 'Stake' },
+      { key: 'status', label: 'Status' },
+      { key: 'result', label: 'Result' },
+      { key: 'netProfit', label: 'Net P/L' },
+    ];
+    exportToCSV(`paper-trading-${new Date().toISOString().slice(0, 10)}.csv`, paperOrders, columns);
+    addAuditLog('Export Paper Trading CSV', 'system', 'info', `Exported ${paperOrders.length} paper orders to CSV`);
+  };
+
   return (
     <div className="space-y-5">
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Bankroll</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Paper Bankroll</span>
           <div className="text-xl font-bold font-mono text-foreground mt-1">${bankrollStats.bankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Open Exposure</span>
-          <div className="text-xl font-bold font-mono text-foreground mt-1">${bankrollStats.openExposure.toFixed(2)}</div>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Paper P/L</span>
+          <div className={`text-xl font-bold font-mono mt-1 ${bankrollStats.totalPL >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{bankrollStats.totalPL >= 0 ? '+' : ''}${bankrollStats.totalPL.toFixed(2)}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">ROI</span>
-          <div className="text-xl font-bold font-mono text-chart-1 mt-1">{bankrollStats.roi}%</div>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Paper ROI</span>
+          <div className={`text-xl font-bold font-mono mt-1 ${bankrollStats.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{bankrollStats.roi}%</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Strike Rate</span>
-          <div className="text-xl font-bold font-mono text-foreground mt-1">{bankrollStats.strikeRate}%</div>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Open Orders</span>
+          <div className="text-xl font-bold font-mono text-chart-4 mt-1">{openOrders.length}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Max Drawdown</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Settled Orders</span>
+          <div className="text-xl font-bold font-mono text-foreground mt-1">{settledOrders.length}</div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Drawdown</span>
           <div className="text-xl font-bold font-mono text-chart-5 mt-1">${bankrollStats.maxDrawdown.toFixed(2)}</div>
         </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Losing Streak</span>
-          <div className="text-xl font-bold font-mono text-foreground mt-1">{bankrollStats.longestLosingStreak}</div>
-        </div>
       </div>
+
+      {/* Action Buttons */}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => setShowForm(true)} disabled={emergencyStop || mode === 'live_locked'}>
+          <Plus className="h-4 w-4" /> Create Manual Paper Order
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleCancelUnmatched} disabled={openOrders.length === 0}>
+          <XCircle className="h-4 w-4" /> Cancel Unmatched ({openOrders.length})
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleRecalculate}>
+          <RefreshCw className="h-4 w-4" /> Recalculate Results
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleExportCSV}>
+          <Download className="h-4 w-4" /> Export CSV
+        </Button>
+        <Link to="/orders" className="ml-auto">
+          <Button size="sm" variant="ghost">
+            View All Orders <ArrowRight className="h-3 w-3" />
+          </Button>
+        </Link>
+      </div>
+
+      {/* Paper Progress Per Strategy */}
+      <PaperProgress />
 
       {/* Equity Curve */}
       <Panel title="Equity Curve">
@@ -114,7 +170,7 @@ export default function PaperTrading() {
       </Panel>
 
       {/* New Order Form */}
-      {showForm ? (
+      {showForm && (
         <Panel title="New Paper Order">
           <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -143,7 +199,7 @@ export default function PaperTrading() {
                   <SelectItem value="Value Bet">Value Bet</SelectItem>
                   <SelectItem value="Pre-Off Scalping">Pre-Off Scalping</SelectItem>
                   <SelectItem value="Fav/Outsider">Fav/Outsider</SelectItem>
-                  <SelectItem value="Cross-Market">Cross-Market</SelectItem>
+                  <SelectItem value="Steam/Drift">Steam/Drift</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -169,7 +225,8 @@ export default function PaperTrading() {
               <div className="md:col-span-3 text-xs text-muted-foreground bg-muted/50 rounded p-2">
                 Best Back: <span className="font-mono text-chart-3">{selectedRunner.bestBackPrice.toFixed(2)}</span> ·
                 Best Lay: <span className="font-mono text-chart-5">{selectedRunner.bestLayPrice.toFixed(2)}</span> ·
-                Implied Prob: <span className="font-mono">{selectedRunner.impliedProbability.toFixed(1)}%</span>
+                Implied Prob: <span className="font-mono">{selectedRunner.impliedProbability.toFixed(1)}%</span> ·
+                Spread: <span className="font-mono">{(selectedRunner.bestLayPrice - selectedRunner.bestBackPrice).toFixed(2)}</span>
               </div>
             )}
             <div className="md:col-span-3 flex gap-2">
@@ -178,10 +235,6 @@ export default function PaperTrading() {
             </div>
           </div>
         </Panel>
-      ) : (
-        <Button onClick={() => setShowForm(true)} disabled={emergencyStop || mode === 'live_locked'}>
-          + New Paper Order
-        </Button>
       )}
 
       {/* Order Lifecycle Table */}

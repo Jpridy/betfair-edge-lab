@@ -14,6 +14,8 @@ export default function Orders() {
   const [sideFilter, setSideFilter] = useState('all');
   const [strategyFilter, setStrategyFilter] = useState('all');
   const [resultFilter, setResultFilter] = useState('all');
+  const [venueFilter, setVenueFilter] = useState('all');
+  const [warningOnly, setWarningOnly] = useState(false);
   const [search, setSearch] = useState('');
 
   const strategies = useMemo(
@@ -21,11 +23,26 @@ export default function Orders() {
     [paperOrders]
   );
 
+  const venues = useMemo(
+    () => [...new Set(paperOrders.map(o => {
+      const parts = o.marketName?.split(' ');
+      return parts?.[0] || 'Unknown';
+    }).filter(Boolean))].sort(),
+    [paperOrders]
+  );
+
+  const hasWarning = (o) => {
+    return o.status === 'failed' || o.status === 'cancelled' || o.status === 'unmatched' || o.status === 'lapsed' ||
+      (o.result === 'lost' && o.netProfit < -50);
+  };
+
   const filtered = paperOrders.filter(o => {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (sideFilter !== 'all' && o.side !== sideFilter) return false;
     if (strategyFilter !== 'all' && o.strategyName !== strategyFilter) return false;
     if (resultFilter !== 'all' && o.result !== resultFilter) return false;
+    if (venueFilter !== 'all' && !o.marketName?.startsWith(venueFilter)) return false;
+    if (warningOnly && !hasWarning(o)) return false;
     if (search && !o.runnerName?.toLowerCase().includes(search.toLowerCase()) && !o.marketName?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -121,7 +138,20 @@ export default function Orders() {
               </SelectContent>
             </Select>
           </div>
+          <div className="w-40">
+            <Select value={venueFilter} onValueChange={setVenueFilter}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Venues</SelectItem>
+                {venues.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <Input placeholder="Search runner or market..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 text-xs" />
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="warningOnly" checked={warningOnly} onChange={e => setWarningOnly(e.target.checked)} className="accent-chart-4" />
+            <label htmlFor="warningOnly" className="text-xs text-muted-foreground cursor-pointer">Warnings only</label>
+          </div>
           <div className="flex-1" />
           <Button variant="outline" size="sm" onClick={handleExportCSV} className="h-9">
             <Download className="h-4 w-4" /> Export CSV
@@ -141,6 +171,7 @@ export default function Orders() {
               <TableHead className="text-xs text-right">Req Odds</TableHead>
               <TableHead className="text-xs text-right">Match Odds</TableHead>
               <TableHead className="text-xs text-right">Stake</TableHead>
+              <TableHead className="text-xs text-right">Liability</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Result</TableHead>
               <TableHead className="text-xs text-right">Gross</TableHead>
@@ -159,6 +190,9 @@ export default function Orders() {
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${o.matchedStake}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-muted-foreground">
+                  ${o.side === 'LAY' ? (o.matchedStake * (o.matchedOdds - 1)).toFixed(2) : o.matchedStake.toFixed(2)}
+                </TableCell>
                 <TableCell>
                   <StatusBadge status={
                     o.status === 'matched' ? 'ok' :

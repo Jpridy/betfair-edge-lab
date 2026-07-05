@@ -117,6 +117,8 @@ export default function Settings() {
               <Field label="Maximum Odds"><Input type="number" step="0.1" value={local.maxOdds} onChange={e => update('maxOdds', +e.target.value)} /></Field>
               <Field label="Time Window Start (sec before start)"><Input type="number" value={local.defaultTimeWindowStartSeconds} onChange={e => update('defaultTimeWindowStartSeconds', +e.target.value)} /></Field>
               <Field label="Time Window End (sec before start)"><Input type="number" value={local.defaultTimeWindowEndSeconds} onChange={e => update('defaultTimeWindowEndSeconds', +e.target.value)} /></Field>
+              <Field label="Minimum Paper Trades Before Live Review"><Input type="number" value={local.minimumPaperTrades || 200} onChange={e => update('minimumPaperTrades', +e.target.value)} /></Field>
+              <Field label="Weekly Loss Limit ($)"><Input type="number" value={local.weeklyLossLimit || settings.dailyLossLimit * 5} onChange={e => update('weeklyLossLimit', +e.target.value)} /></Field>
               <div className="flex items-center gap-3 pt-6">
                 <Switch checked={local.allowInPlay} onCheckedChange={v => update('allowInPlay', v)} />
                 <Label className="text-sm">Allow In-Play Trading</Label>
@@ -152,6 +154,8 @@ export default function Settings() {
           <Panel title="API & Data Settings">
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="API Polling Interval (seconds)"><Input type="number" value={local.apiPollingInterval} onChange={e => update('apiPollingInterval', +e.target.value)} /></Field>
+              <Field label="Data Feed Freshness Limit (seconds)"><Input type="number" value={local.dataFreshnessLimit || 30} onChange={e => update('dataFreshnessLimit', +e.target.value)} /></Field>
+              <Field label="Market Refresh Interval (seconds)"><Input type="number" value={local.marketRefreshInterval || 10} onChange={e => update('marketRefreshInterval', +e.target.value)} /></Field>
             </div>
           </Panel>
 

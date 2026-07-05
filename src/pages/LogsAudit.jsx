@@ -84,29 +84,38 @@ export default function LogsAudit() {
         </div>
       </Panel>
 
-      <Panel title={`Audit Log (${filtered.length})`}>
+      <Panel title={`Audit Log (${filtered.length})`} action={<span className="text-xs text-muted-foreground">Showing before/after values and reasons</span>}>
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="text-xs">Timestamp</TableHead>
               <TableHead className="text-xs">Category</TableHead>
               <TableHead className="text-xs">Action</TableHead>
+              <TableHead className="text-xs">Object</TableHead>
+              <TableHead className="text-xs">Before</TableHead>
+              <TableHead className="text-xs">After</TableHead>
+              <TableHead className="text-xs">Reason</TableHead>
               <TableHead className="text-xs">Severity</TableHead>
               <TableHead className="text-xs">User</TableHead>
-              <TableHead className="text-xs">Details</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map(log => (
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-8">No log entries match your filters.</TableCell></TableRow>
+            ) : filtered.map(log => (
               <TableRow key={log.id} className="border-border">
-                <TableCell className="text-xs text-muted-foreground font-mono">{new Date(log.timestamp).toLocaleString('en-AU', { hour12: false })}</TableCell>
+                <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">{new Date(log.timestamp).toLocaleString('en-AU', { hour12: false })}</TableCell>
                 <TableCell className="text-xs">
                   <span className="flex items-center gap-1.5">
                     <span>{CATEGORY_ICONS[log.category] || '•'}</span>
                     <span className="capitalize">{log.category}</span>
                   </span>
                 </TableCell>
-                <TableCell className="text-xs font-medium">{log.action}</TableCell>
+                <TableCell className="text-xs font-medium whitespace-nowrap">{log.action}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{log.object_name || log.details?.split(' ')[0] || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground font-mono">{log.before_value || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground font-mono">{log.after_value || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-xs truncate">{log.reason || log.details}</TableCell>
                 <TableCell>
                   <StatusBadge status={
                     log.severity === 'info' ? 'info' :
@@ -115,7 +124,6 @@ export default function LogsAudit() {
                   }>{log.severity.toUpperCase()}</StatusBadge>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">{log.user}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{log.details}</TableCell>
               </TableRow>
             ))}
           </TableBody>

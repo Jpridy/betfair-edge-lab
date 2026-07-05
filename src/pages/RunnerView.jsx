@@ -4,7 +4,10 @@ import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft, Plus, FileText, Target } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
+import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 
 // Generate synthetic price history for a runner
 function generatePriceHistory(basePrice) {

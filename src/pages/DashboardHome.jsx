@@ -3,6 +3,7 @@ import DashboardHero from '@/components/dashboard/DashboardHero';
 import DashboardStatCards from '@/components/dashboard/DashboardStatCards';
 import StrategyStatusSummary from '@/components/dashboard/StrategyStatusSummary';
 import DashboardActivityFeed from '@/components/dashboard/DashboardActivityFeed';
+import BestWorstStrategy from '@/components/dashboard/BestWorstStrategy';
 import { useApp } from '@/lib/AppContext';
 import { Link } from 'react-router-dom';
 import { Bot, Radar, BarChart3, TrendingUp, ArrowRight, Info, Shield, BookOpen, FlaskConical } from 'lucide-react';
@@ -61,9 +62,9 @@ export default function DashboardHome() {
         <div className="flex items-start gap-2.5 rounded-xl border border-chart-3/20 bg-chart-3/5 px-4 py-3">
           <Info className="h-4 w-4 text-chart-3 shrink-0 mt-0.5" />
           <div className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">Welcome to Betfair Edge Lab.</span>{' '}
-            This is your central trading control centre. Every signal, order, strategy result, risk warning, and bot action is connected here.
-            All trades are <span className="text-chart-1 font-medium">simulated paper trades</span> — no real money is at risk until a strategy passes full validation.
+            <span className="font-semibold text-foreground">Betfair Edge Lab — Strategy Validation System.</span>{' '}
+            All trades are <span className="text-chart-1 font-medium">simulated paper trades</span>. No strategy goes live until it passes 200+ settled trades, positive CLV, profit factor &gt; 1.20, and admin review.
+            Start at the <Link to="/scanner" className="text-chart-3 hover:underline">Market Scanner</Link>, then flow through Runner View → Paper Order → Orders → Analytics.
           </div>
         </div>
       )}
@@ -98,6 +99,9 @@ export default function DashboardHome() {
         <QuickAction to="/performance-analytics" icon={TrendingUp} label="Analytics" sub="Performance" accent="green" />
         <QuickAction to="/risk" icon={Shield} label="Risk Manager" sub="Safety rules" accent="red" />
       </div>
+
+      {/* Best / Worst Strategy */}
+      <BestWorstStrategy />
 
       {/* Strategy Status + Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
