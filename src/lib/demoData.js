@@ -495,7 +495,17 @@ function enrichPaperOrder(o) {
 }
 
 // Enrich all demo data with Betfair fields
-const ENRICHED_MARKETS = DEMO_MARKETS.map(enrichMarket);
+// Demo start times are shifted relative to "now" so markets are always in the
+// pre-off trading window — original dates are historical and would fail the
+// time-window validation ("race has jumped").
+const NOW = Date.now();
+const _shiftedMarkets = DEMO_MARKETS.map((m, i) => ({
+  ...m,
+  startTime: new Date(NOW + (2 + i * 4) * 60 * 1000).toISOString(), // 2min, 6min, 10min, 14min...
+  inPlay: false,
+  status: 'OPEN',
+}));
+const ENRICHED_MARKETS = _shiftedMarkets.map(enrichMarket);
 const ENRICHED_RUNNERS = DEMO_RUNNERS.map(enrichRunner);
 const ENRICHED_PAPER_ORDERS = DEMO_PAPER_ORDERS.map(enrichPaperOrder);
 

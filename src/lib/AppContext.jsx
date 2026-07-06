@@ -739,7 +739,28 @@ export function AppProvider({ children }) {
     steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
     if (steps[1].status === 'blocked') steps[1].reason = 'No markets passed filters. Check liquidity, runner count, or commission settings.';
 
-    const market = filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : null;
+    // Sort markets by proximity to the pre-off trading window (default 300s–30s before start).
+    // The bot prefers markets about to jump — a random pick would almost always be hours
+    // away and get rejected at the time-window validation check.
+    const windowStart = s.settings.defaultTimeWindowStartSeconds || 300;
+    const windowEnd = s.settings.defaultTimeWindowEndSeconds || 30;
+    const nowMs = Date.now();
+    const sorted = filtered
+      .map(m => {
+        const start = m.startTime ? new Date(m.startTime).getTime() : NaN;
+        const secsBefore = isNaN(start) ? null : (start - nowMs) / 1000;
+        // Distance from the ideal window: 0 if inside, otherwise how far outside
+        let distance;
+        if (secsBefore === null) distance = Infinity; // No start time — lowest priority
+        else if (secsBefore >= windowEnd && secsBefore <= windowStart) distance = 0; // In window
+        else if (secsBefore > windowStart) distance = secsBefore - windowStart; // Too early
+        else if (secsBefore > 0) distance = windowEnd - secsBefore; // Too late (closing)
+        else distance = Infinity; // Already jumped
+        return { market: m, secsBefore, distance };
+      })
+      .sort((a, b) => a.distance - b.distance);
+
+    const market = sorted.length > 0 ? sorted[0].market : null;
 
     if (market) {
       // Step 3: Read Odds (Market Book)
@@ -759,8 +780,13 @@ export function AppProvider({ children }) {
         const marketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
 
         if (marketRunners.length > 0) {
-          // Step 5: Create Signal
-          const runner = marketRunners[Math.floor(Math.random() * marketRunners.length)];
+          // Step 5: Create Signal — prefer runners with real prices and sufficient liquidity
+          const runnable = marketRunners
+            .filter(r => r.bestBackPrice > 0 || r.bestLayPrice > 0)
+            .sort((a, b) => (b.bestBackSize || 0) - (a.bestBackSize || 0));
+          const runner = (runnable.length > 0 ? runnable : marketRunners)[
+            Math.floor(Math.random() * Math.min(runnable.length > 0 ? runnable.length : marketRunners.length, 5))
+          ];
           const signal = createSignal(strategyName, market, runner, s.settings);
           signalCreated = signal;
           signalsCreated = 1;
