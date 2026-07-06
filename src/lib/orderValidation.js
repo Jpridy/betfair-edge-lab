@@ -89,6 +89,8 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     }
   }
 
+  const isLiveMode = connectionState?.apiConnected === true;
+
   // ── Market Open Check ──
   if (market.status !== 'OPEN') {
     if (!failures.some(f => f.field === 'marketStatus')) {
@@ -155,7 +157,6 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   // price/size checks below catch truly empty markets — so skip the volume
   // minimum when connected to the live stream.
   const minLiquidity = strategy?.minLiquidity || settings.minimumLiquidity || 5000;
-  const isLiveMode = connectionState?.apiConnected === true;
   if (!isLiveMode && market.totalMatched < minLiquidity) {
     failures.push({ field: 'liquidity', reason: `Market liquidity $${market.totalMatched?.toFixed(0)} below minimum $${minLiquidity}` });
   }
