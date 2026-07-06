@@ -341,8 +341,11 @@ export default function Settings() {
                       <span>Runners: <span className="font-mono text-foreground">{testResults.runnerCount ?? 0}</span></span>
                     </div>
                     {testResults.streamStatus === 'error' && (
-                      <div className="text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-2">
-                        Stream authentication failed. Your app key may not have Stream API permissions, or your session token may be invalid. Ensure you're using a live (non-delayed) Betfair app key and a fresh session token.
+                      <div className="text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-3 space-y-1">
+                        <div className="font-bold">Stream connection failed</div>
+                        <div>The Cloudflare Worker needs to be updated to support the WebSocket-to-TCP stream bridge.</div>
+                        <div className="mt-1">Steps: Go to Cloudflare Dashboard → Workers → your betfair-proxy worker → Edit code → paste the updated code from <span className="font-mono">cloudflare-worker/betfair-proxy.js</span> → Save and deploy.</div>
+                        <div className="mt-1">The worker now bridges browser WebSocket connections to Betfair's raw TCP Stream API (Betfair does not support WebSocket directly).</div>
                       </div>
                     )}
                     {testResults.streamStatus === 'session_expired' && (

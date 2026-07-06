@@ -13,10 +13,11 @@
  */
 
 export class BetfairStreamClient {
-  constructor(appKey, sessionToken, jurisdiction = 'AU') {
+  constructor(appKey, sessionToken, jurisdiction = 'AU', wsProxyUrl = null) {
     this.appKey = appKey;
     this.sessionToken = sessionToken;
     this.jurisdiction = jurisdiction;
+    this.wsProxyUrl = wsProxyUrl;
     this.ws = null;
     this.messageId = 1;
     this.markets = new Map();
@@ -31,7 +32,22 @@ export class BetfairStreamClient {
   connect() {
     this.shouldReconnect = true;
     this.subscribed = false;
-    const wsUrl = 'wss://stream-api.betfair.com:443';
+    this._reconnectAttempts = 0;
+
+    // Connect through the Cloudflare Worker WebSocket-to-TCP bridge.
+    // Betfair's Stream API does NOT support WebSocket — it uses raw SSL sockets.
+    // The worker accepts our WebSocket and bridges it to a TCP socket to Betfair.
+    let wsUrl;
+    if (this.wsProxyUrl) {
+      // Convert https:// → wss:// (or http:// → ws://)
+      wsUrl = this.wsProxyUrl
+        .replace(/^https:\/\//, 'wss://')
+        .replace(/^http:\/\//, 'ws://');
+    } else {
+      if (this.onError) this.onError('No stream proxy URL configured. Deploy the Cloudflare Worker and set BETFAIR_PROXY_URL.');
+      if (this.onStatusChange) this.onStatusChange('error');
+      return;
+    }
 
     try {
       this.ws = new WebSocket(wsUrl);
@@ -331,8 +347,16 @@ export class BetfairStreamClient {
 
   _onClose(event) {
     if (this.onStatusChange) this.onStatusChange('disconnected');
+    // Reconnect only on abnormal close (not on clean close or auth failure)
+    // Limit retries to avoid infinite loops when the worker isn't deployed yet
     if (this.shouldReconnect && event.code !== 1000) {
-      this.reconnectTimer = setTimeout(() => this.connect(), 5000);
+      this._reconnectAttempts = (this._reconnectAttempts || 0) + 1;
+      if (this._reconnectAttempts <= 3) {
+        this.reconnectTimer = setTimeout(() => this.connect(), 5000);
+      } else {
+        if (this.onError) this.onError('Stream disconnected after 3 reconnection attempts. Ensure the Cloudflare Worker is updated with the WebSocket-to-TCP bridge code.');
+        if (this.onStatusChange) this.onStatusChange('error');
+      }
     }
   }
 

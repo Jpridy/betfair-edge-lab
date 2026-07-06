@@ -97,7 +97,7 @@ export async function connectToBetfair(username, password) {
  */
 export async function createBetfairStream(sessionToken, callbacks) {
   const config = await getBetfairConfig();
-  const client = new BetfairStreamClient(config.appKey, sessionToken, config.jurisdiction);
+  const client = new BetfairStreamClient(config.appKey, sessionToken, config.jurisdiction, config.proxyUrl);
   client.onMarketsUpdate = callbacks.onMarketsUpdate;
   client.onStatusChange = callbacks.onStatusChange;
   client.onError = callbacks.onError;
