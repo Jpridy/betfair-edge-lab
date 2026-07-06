@@ -143,8 +143,13 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Liquidity Check ──
+  // In live mode, freshly opened markets legitimately have totalMatched=0 (no
+  // trades yet). The market filter already accepted this market, and runner
+  // price/size checks below catch truly empty markets — so skip the volume
+  // minimum when connected to the live stream.
   const minLiquidity = strategy?.minLiquidity || settings.minimumLiquidity || 5000;
-  if (market.totalMatched < minLiquidity) {
+  const isLiveMode = connectionState?.apiConnected === true;
+  if (!isLiveMode && market.totalMatched < minLiquidity) {
     failures.push({ field: 'liquidity', reason: `Market liquidity $${market.totalMatched?.toFixed(0)} below minimum $${minLiquidity}` });
   }
 
