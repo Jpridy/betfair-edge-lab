@@ -118,11 +118,11 @@ export class BetfairStreamClient {
   }
 
   _subscribeToMarkets() {
-    const now = new Date();
-    // Narrow window: AU horse racing WIN markets starting within the next 1 hour.
-    // Betfair limits stream subscriptions to 200 markets max.
-    const fromTime = now.toISOString();
-    const toTime = new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString();
+    // Betfair Stream API MarketFilter only supports: countryCodes, marketTypes,
+    // eventTypeIds, eventIds, marketIds, venues, bettingTypes, bspMarket, raceTypes.
+    // There is NO marketStartTime filter — countryCodes is what keeps us under the
+    // 200-market subscription limit.
+    const countryCode = this.jurisdiction === 'AU' ? 'AU' : 'GB';
 
     this._send({
       op: 'marketSubscription',
@@ -130,8 +130,7 @@ export class BetfairStreamClient {
       marketFilter: {
         eventTypeIds: ['7'],
         marketTypes: ['WIN'],
-        marketStartTime: { from: fromTime, to: toTime },
-        countries: [this.jurisdiction === 'AU' ? 'AU' : 'GB'],
+        countryCodes: [countryCode],
       },
       marketDataFilter: {
         ladderLevels: 1,
