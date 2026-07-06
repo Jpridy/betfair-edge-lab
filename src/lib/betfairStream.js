@@ -79,11 +79,17 @@ export class BetfairStreamClient {
       }
     } else if (data.statusCode === 'FAILURE') {
       const errorCode = data.errorCode || '';
-      if (this.onError) this.onError(data.errorMessage || errorCode || 'Stream error');
+      const errorMsg = data.errorMessage || errorCode || 'Stream error';
+      if (this.onError) this.onError(errorMsg);
+
+      // Stop reconnecting on auth failures — the token/key is invalid
+      this.shouldReconnect = false;
 
       if (errorCode === 'INVALID_SESSION_INFO' || errorCode === 'NO_SESSION' || errorCode === 'SESSION_EXPIRED') {
-        this.shouldReconnect = false;
         if (this.onStatusChange) this.onStatusChange('session_expired');
+      } else {
+        // App key invalid, no permissions, etc.
+        if (this.onStatusChange) this.onStatusChange('error');
       }
     }
   }

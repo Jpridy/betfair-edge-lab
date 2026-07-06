@@ -326,13 +326,30 @@ export default function Settings() {
                   </Button>
                 </div>
                 {testResults && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    <TestResult label="Login/Session" passed={testResults.loginValid} />
-                    <TestResult label="App Key" passed={testResults.appKeyPresent} />
-                    <TestResult label="Market Data" passed={testResults.marketDataAccess} />
-                    <TestResult label="Account Funds" passed={testResults.accountFundsAvailable} />
-                    <TestResult label="Current Orders" passed={testResults.currentOrdersAvailable} />
-                    <TestResult label="Stream Connection" passed={testResults.streamAvailable} />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      <TestResult label="Login/Session" passed={testResults.loginValid} />
+                      <TestResult label="App Key" passed={testResults.appKeyPresent} />
+                      <TestResult label="Market Data" passed={testResults.marketDataAccess} />
+                      <TestResult label="Account Funds" passed={testResults.accountFundsAvailable} />
+                      <TestResult label="Current Orders" passed={testResults.currentOrdersAvailable} />
+                      <TestResult label="Stream Connection" passed={testResults.streamAvailable} />
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground bg-muted/30 rounded-lg p-2">
+                      <span>Stream: <span className="font-mono text-foreground">{testResults.streamStatus || '—'}</span></span>
+                      <span>Markets: <span className="font-mono text-foreground">{testResults.marketCount ?? 0}</span></span>
+                      <span>Runners: <span className="font-mono text-foreground">{testResults.runnerCount ?? 0}</span></span>
+                    </div>
+                    {testResults.streamStatus === 'error' && (
+                      <div className="text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-2">
+                        Stream authentication failed. Your app key may not have Stream API permissions, or your session token may be invalid. Ensure you're using a live (non-delayed) Betfair app key and a fresh session token.
+                      </div>
+                    )}
+                    {testResults.streamStatus === 'session_expired' && (
+                      <div className="text-xs text-chart-4 bg-chart-4/10 border border-chart-4/30 rounded-lg p-2">
+                        Session token expired. Go to betfair.com.au, log in, and paste a fresh session token from the keepAlive link.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

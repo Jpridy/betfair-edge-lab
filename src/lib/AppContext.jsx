@@ -482,6 +482,9 @@ export function AppProvider({ children }) {
       accountFundsAvailable: false,
       currentOrdersAvailable: false,
       streamAvailable: false,
+      streamStatus: betfairConnection.streamConnectionStatus || 'disconnected',
+      marketCount: markets.length,
+      runnerCount: runners.length,
     };
 
     try {
@@ -495,10 +498,21 @@ export function AppProvider({ children }) {
         results.loginValid = true;
       }
 
-      // Stream check — if the WebSocket stream is connected, market data is flowing
+      // If the stream is still connecting/authenticating, wait up to 8 seconds for it
       if (results.loginValid) {
-        const streamConnected = betfairConnection.streamConnectionStatus === 'connected';
-        const hasMarketData = markets.length > 0;
+        const transitionalStates = ['connecting', 'authenticating', 'subscribing'];
+        let waited = 0;
+        let currentStatus = betfairConnection.streamConnectionStatus;
+
+        while (transitionalStates.includes(currentStatus) && waited < 8000) {
+          await new Promise(r => setTimeout(r, 500));
+          waited += 500;
+          currentStatus = stateRef.current.betfairConnection.streamConnectionStatus;
+        }
+        results.streamStatus = currentStatus;
+
+        const streamConnected = currentStatus === 'connected';
+        const hasMarketData = stateRef.current.markets.length > 0;
         if (streamConnected || hasMarketData) {
           results.marketDataAccess = true;
           results.accountFundsAvailable = true;
@@ -507,9 +521,12 @@ export function AppProvider({ children }) {
       }
 
       // Stream check
-      if (betfairConnection.streamApiEnabled) {
-        results.streamAvailable = betfairConnection.streamConnectionStatus === 'connected';
+      if (betfairConnection.streamApiEnabled || apiConnected) {
+        results.streamAvailable = results.streamStatus === 'connected';
       }
+
+      results.marketCount = stateRef.current.markets.length;
+      results.runnerCount = stateRef.current.runners.length;
 
       const allPassed = results.loginValid && results.appKeyPresent && results.marketDataAccess;
       
@@ -518,10 +535,11 @@ export function AppProvider({ children }) {
         accountFundsAvailable: results.accountFundsAvailable,
         currentOrdersAvailable: results.currentOrdersAvailable,
         streamAvailable: results.streamAvailable,
+        streamConnectionStatus: results.streamStatus,
       }));
 
       addAuditLog('Betfair Connection Test Complete', 'api', allPassed ? 'info' : 'warning',
-        `Results: Login ${results.loginValid ? '✓' : '✗'}, App Key ${results.appKeyPresent ? '✓' : '✗'}, Market Data ${results.marketDataAccess ? '✓' : '✗'}, Funds ${results.accountFundsAvailable ? '✓' : '✗'}, Orders ${results.currentOrdersAvailable ? '✓' : '✗'}, Stream ${results.streamAvailable ? '✓' : '✗'}`);
+        `Results: Login ${results.loginValid ? '✓' : '✗'}, App Key ${results.appKeyPresent ? '✓' : '✗'}, Market Data ${results.marketDataAccess ? '✓' : '✗'}, Funds ${results.accountFundsAvailable ? '✓' : '✗'}, Orders ${results.currentOrdersAvailable ? '✓' : '✗'}, Stream ${results.streamAvailable ? '✓' : '✗'} (${results.streamStatus}, ${results.marketCount} markets)`);
 
       return results;
     } catch (err) {
@@ -972,15 +990,17 @@ export function AppProvider({ children }) {
         if (cancelled) return;
         addAuditLog('Stream Error', 'api', 'error', `Betfair stream error: ${error}`);
       },
-    }).then(client => {
+    }).then(({ client, config }) => {
       if (cancelled) {
         client.disconnect();
         return;
       }
       streamClientRef.current = client;
+      setBetfairConnection(prev => ({ ...prev, appKey: config.appKey, jurisdiction: config.jurisdiction }));
     }).catch(err => {
       if (cancelled) return;
       addAuditLog('Stream Connection Failed', 'api', 'error', `Failed to create stream: ${err.message}`);
+      setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
     });
 
     return () => {

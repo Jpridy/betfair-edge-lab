@@ -102,7 +102,7 @@ export async function createBetfairStream(sessionToken, callbacks) {
   client.onStatusChange = callbacks.onStatusChange;
   client.onError = callbacks.onError;
   client.connect();
-  return client;
+  return { client, config };
 }
 
 /** Build a proxied URL for browser-to-Betfair calls */

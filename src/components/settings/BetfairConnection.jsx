@@ -8,7 +8,7 @@ import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink, 
 import { connectToBetfair, connectWithSessionToken } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
-  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setMode, addAuditLog, betfairConnection, markets, runners } = useApp();
+  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setMode, addAuditLog, betfairConnection, updateBetfairConnection, markets, runners } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
@@ -71,6 +71,7 @@ export default function BetfairConnection() {
     setApiConnected(true);
     setBetfairSessionToken(account.sessionToken);
     setMode('live');
+    updateBetfairConnection({ appKey: account.appKey, jurisdiction: account.jurisdiction, loginStatus: 'connected', sessionTokenStatus: 'connected', streamApiEnabled: true });
     setBetfairAccount({
       username: displayUsername,
       jurisdiction: account.jurisdiction,
