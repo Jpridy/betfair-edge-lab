@@ -119,7 +119,10 @@ export class BetfairStreamClient {
 
   _subscribeToMarkets() {
     const now = new Date();
-    const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    // Narrow window: markets starting within the next 4 hours.
+    // Betfair limits stream subscriptions to 200 markets max.
+    const fromTime = now.toISOString();
+    const toTime = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
 
     this._send({
       op: 'marketSubscription',
@@ -127,7 +130,7 @@ export class BetfairStreamClient {
       marketFilter: {
         eventTypeIds: ['7'],
         marketTypes: ['WIN'],
-        marketStartTime: { from: fromTime },
+        marketStartTime: { from: fromTime, to: toTime },
       },
       marketDataFilter: {
         ladderLevels: 1,
