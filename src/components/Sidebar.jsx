@@ -76,23 +76,23 @@ export default function Sidebar({ mobileOpen, onClose }) {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Bankroll</span>
-              <span className="font-mono font-semibold text-sidebar-foreground">${bankrollStats.bankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="font-mono font-semibold text-sidebar-foreground">${(bankrollStats.bankroll || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Today's P/L</span>
-              <span className="font-mono font-semibold text-chart-1">+${bankrollStats.todayPL.toFixed(2)}</span>
+              <span className={`font-mono font-semibold ${(bankrollStats.todayPL || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(bankrollStats.todayPL || 0) >= 0 ? '+' : '-'}${Math.abs(bankrollStats.todayPL || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Total P/L</span>
-              <span className="font-mono font-semibold text-chart-1">+${bankrollStats.totalPL.toFixed(2)}</span>
+              <span className={`font-mono font-semibold ${(bankrollStats.totalPL || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(bankrollStats.totalPL || 0) >= 0 ? '+' : '-'}${Math.abs(bankrollStats.totalPL || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Exposure</span>
-              <span className="font-mono font-semibold text-sidebar-foreground">${bankrollStats.openExposure.toFixed(2)}</span>
+              <span className="font-mono font-semibold text-sidebar-foreground">${(bankrollStats.openExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Available</span>
-              <span className="font-mono font-semibold text-sidebar-foreground">${bankrollStats.available.toFixed(2)}</span>
+              <span className="font-mono font-semibold text-sidebar-foreground">${(bankrollStats.available || 0).toFixed(2)}</span>
             </div>
           </div>
 
