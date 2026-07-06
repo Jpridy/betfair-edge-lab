@@ -11,6 +11,7 @@
  */
 
 import { base44 } from '@/api/base44Client';
+import { BetfairStreamClient } from '@/lib/betfairStream';
 
 let _config = null;
 
@@ -87,6 +88,21 @@ export async function connectToBetfair(username, password) {
     lastName: data.account?.lastName ?? null,
     locale: data.account?.locale ?? null,
   };
+}
+
+/**
+ * Create a real-time stream connection to Betfair's Stream API.
+ * Uses WebSocket — bypasses CORS and WAF (browser TLS fingerprint passes).
+ * Returns the BetfairStreamClient instance for lifecycle management.
+ */
+export async function createBetfairStream(sessionToken, callbacks) {
+  const config = await getBetfairConfig();
+  const client = new BetfairStreamClient(config.appKey, sessionToken, config.jurisdiction);
+  client.onMarketsUpdate = callbacks.onMarketsUpdate;
+  client.onStatusChange = callbacks.onStatusChange;
+  client.onError = callbacks.onError;
+  client.connect();
+  return client;
 }
 
 /** Build a proxied URL for browser-to-Betfair calls */

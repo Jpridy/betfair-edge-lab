@@ -8,15 +8,19 @@ Deno.serve(async (req) => {
 
     const appKey = Deno.env.get("BETFAIR_APP_KEY");
     const jurisdiction = Deno.env.get("BETFAIR_JURISDICTION") || "AU";
+    const proxyUrl = Deno.env.get("BETFAIR_PROXY_URL");
 
     let body;
     try { body = await req.json(); } catch { body = {}; }
 
-    // Use SSOID from env (preferred) or from request body
     const sessionToken = body?.sessionToken;
 
     if (!appKey || !sessionToken) {
-      return Response.json({ error: 'Betfair SSOID or App Key not configured' }, { status: 400 });
+      return Response.json({ error: 'Betfair session token or App Key not configured' }, { status: 400 });
+    }
+
+    if (!proxyUrl) {
+      return Response.json({ error: 'BETFAIR_PROXY_URL not configured. Market data requires the Cloudflare Worker proxy.' }, { status: 500 });
     }
 
     const apiBase = jurisdiction === 'AU'
@@ -30,6 +34,17 @@ Deno.serve(async (req) => {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
+
+    // Helper: call Betfair through the proxy (direct calls are WAF-blocked)
+    async function callBetfair(targetUrl, headers, bodyStr) {
+      const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
+      const res = await fetch(proxyFetchUrl, {
+        method: 'POST',
+        headers,
+        body: bodyStr,
+      });
+      return res;
+    }
 
     // Date range: midnight today to midnight tomorrow+1 (covers in-play + upcoming)
     const now = new Date();
@@ -54,17 +69,12 @@ Deno.serve(async (req) => {
       ],
     };
 
-    const catalogueRes = await fetch(`${bettingBase}/listMarketCatalogue/`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify(catalogueBody),
-    });
-
+    const catalogueRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, authHeaders, JSON.stringify(catalogueBody));
     const catalogueText = await catalogueRes.text();
 
     // Session expired?
     if (catalogueText.includes('UNAUTHORIZED') || catalogueText.includes('INVALID_SESSION') || catalogueText.includes('NO_SESSION')) {
-      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair SSOID expired' }, { status: 401 });
+      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired' }, { status: 401 });
     }
 
     if (!catalogueRes.ok) {
@@ -90,12 +100,7 @@ Deno.serve(async (req) => {
       },
     };
 
-    const bookRes = await fetch(`${bettingBase}/listMarketBook/`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify(bookBody),
-    });
-
+    const bookRes = await callBetfair(`${bettingBase}/listMarketBook/`, authHeaders, JSON.stringify(bookBody));
     const bookText = await bookRes.text();
     let books = [];
     if (bookRes.ok) {
@@ -131,6 +136,10 @@ Deno.serve(async (req) => {
         inPlay: book.inplay || false,
         totalMatched: book.totalMatched || 0,
         numberOfRunners: (cat.runners || []).length,
+        numberOfActiveRunners: (cat.runners || []).filter(r => r.status === 'ACTIVE').length,
+        betDelay: cat.description?.betDelay || 0,
+        bspMarket: cat.description?.bspMarket || false,
+        marketBaseRate: cat.description?.marketBaseRate ?? null,
         watched: false,
       });
 

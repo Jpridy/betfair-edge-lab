@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { fetchBetfairMarkets } from '@/lib/betfairApi';
+import { createBetfairStream } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
@@ -193,6 +193,9 @@ export function AppProvider({ children }) {
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
   stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, betfairConnection, syncState };
+
+  // Ref for the Betfair Stream client
+  const streamClientRef = useRef(null);
 
   // ── Load all app-generated data from database on mount ──
   useEffect(() => {
@@ -492,12 +495,13 @@ export function AppProvider({ children }) {
         results.loginValid = true;
       }
 
-      // Try fetching markets
+      // Stream check — if the WebSocket stream is connected, market data is flowing
       if (results.loginValid) {
-        const res = await fetchBetfairMarkets(betfairSessionToken);
-        if (res.status === 'success') {
+        const streamConnected = betfairConnection.streamConnectionStatus === 'connected';
+        const hasMarketData = markets.length > 0;
+        if (streamConnected || hasMarketData) {
           results.marketDataAccess = true;
-          results.accountFundsAvailable = true; // If markets work, account funds should work
+          results.accountFundsAvailable = true;
           results.currentOrdersAvailable = true;
         }
       }
@@ -907,45 +911,86 @@ export function AppProvider({ children }) {
     return () => clearInterval(timer);
   }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
 
-  // ── Betfair API — fetch live market data when connected ──
+  // ── Betfair Stream API — real-time market data when connected ──
+  // In live mode, ONLY API data is used for all numbers.
+  // Uses WebSocket (bypasses CORS + WAF) to stream live market/runner data.
+  // Demo data is cleared immediately on connect; stream populates with real data.
   useEffect(() => {
+    // Disconnect existing stream
+    if (streamClientRef.current) {
+      streamClientRef.current.disconnect();
+      streamClientRef.current = null;
+    }
+
     if (!apiConnected) {
-      setBetfairSessionToken(null);
-      setBetfairConnection(prev => ({ ...prev, dataFresh: false }));
+      setBetfairConnection(prev => ({ ...prev, dataFresh: false, streamConnectionStatus: 'disconnected' }));
+      // Restore demo data when disconnecting in demo mode
+      if (mode === 'demo') {
+        setMarkets(BETFAIR_MARKETS);
+        setRunners(BETFAIR_RUNNERS);
+      } else {
+        setMarkets([]);
+        setRunners([]);
+      }
       return;
     }
-    setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected' }));
+
+    // Connected — clear demo data immediately so live mode shows ONLY API data
+    setMarkets([]);
+    setRunners([]);
+    setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected', streamApiEnabled: true }));
+
     if (!betfairSessionToken) return;
 
     let cancelled = false;
 
-    const fetchMarkets = async () => {
-      try {
-        const res = await fetchBetfairMarkets(betfairSessionToken);
+    // Create stream connection
+    createBetfairStream(betfairSessionToken, {
+      onMarketsUpdate: (streamMarkets, streamRunners) => {
         if (cancelled) return;
-        if (res.status === 'success') {
-          setMarkets(res.markets);
-          setRunners(res.runners);
-          setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), dataFresh: true }));
-          addAuditLog('Market Sync Completed', 'api', 'info', `Synced ${res.markets.length} markets from Betfair API`);
-        } else if (res.sessionExpired) {
+        setMarkets(streamMarkets);
+        setRunners(streamRunners);
+        setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), dataFresh: true, streamConnectionStatus: 'connected' }));
+      },
+      onStatusChange: (status) => {
+        if (cancelled) return;
+        setBetfairConnection(prev => ({
+          ...prev,
+          streamConnectionStatus: status,
+          loginStatus: status === 'connected' || status === 'subscribing' ? 'connected' : 'disconnected',
+          sessionTokenStatus: status === 'session_expired' ? 'expired' : (status === 'connected' ? 'connected' : 'disconnected'),
+        }));
+        if (status === 'connected') {
+          addAuditLog('Betfair Stream Connected', 'api', 'info', 'Real-time market data stream established');
+        } else if (status === 'session_expired') {
           setApiConnected(false);
           setBetfairSessionToken(null);
-          setBetfairConnection(prev => ({ ...prev, loginStatus: 'disconnected', sessionTokenStatus: 'expired', dataFresh: false }));
-          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
-        } else {
-          addAuditLog('Market Sync Failed', 'api', 'error', res.error || 'Unknown error during market sync');
+          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Stream session expired. Please reconnect your Betfair account.');
         }
-      } catch (err) {
-        addAuditLog('Market Sync Failed', 'api', 'error', `Market sync error: ${err.message}`);
+      },
+      onError: (error) => {
+        if (cancelled) return;
+        addAuditLog('Stream Error', 'api', 'error', `Betfair stream error: ${error}`);
+      },
+    }).then(client => {
+      if (cancelled) {
+        client.disconnect();
+        return;
+      }
+      streamClientRef.current = client;
+    }).catch(err => {
+      if (cancelled) return;
+      addAuditLog('Stream Connection Failed', 'api', 'error', `Failed to create stream: ${err.message}`);
+    });
+
+    return () => {
+      cancelled = true;
+      if (streamClientRef.current) {
+        streamClientRef.current.disconnect();
+        streamClientRef.current = null;
       }
     };
-
-    fetchMarkets();
-    const intervalMs = Math.max(5, settings.apiPollingInterval || 5) * 1000;
-    const timer = setInterval(fetchMarkets, intervalMs);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [apiConnected, betfairSessionToken, settings.apiPollingInterval]);
+  }, [apiConnected, betfairSessionToken]);
 
   const value = {
     mode, changeMode, setMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,

@@ -8,7 +8,7 @@ import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink, 
 import { connectToBetfair, connectWithSessionToken } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
-  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setMode, addAuditLog } = useApp();
+  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setMode, addAuditLog, betfairConnection, markets, runners } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
@@ -198,34 +198,40 @@ export default function BetfairConnection() {
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Available Balance</div>
-                <div className="text-lg font-bold font-mono text-chart-1 mt-1">
-                  {betfairAccount?.currency || '$'}{(betfairAccount?.balance ?? 0).toFixed(2)}
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Stream Status</div>
+                <div className="text-lg font-bold font-mono mt-1 flex items-center gap-1.5">
+                  {betfairConnection.streamConnectionStatus === 'connected' ? (
+                    <><span className="h-2 w-2 rounded-full bg-chart-1 animate-pulse" /><span className="text-chart-1">LIVE</span></>
+                  ) : betfairConnection.streamConnectionStatus === 'connecting' || betfairConnection.streamConnectionStatus === 'authenticating' || betfairConnection.streamConnectionStatus === 'subscribing' ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin text-chart-4" /><span className="text-chart-4">{betfairConnection.streamConnectionStatus}</span></>
+                  ) : (
+                    <span className="text-muted-foreground">{betfairConnection.streamConnectionStatus || '—'}</span>
+                  )}
                 </div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Current Exposure</div>
-                <div className="text-lg font-bold font-mono text-foreground mt-1">
-                  {betfairAccount?.currency || '$'}{(betfairAccount?.exposure ?? 0).toFixed(2)}
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Markets Streaming</div>
+                <div className="text-lg font-bold font-mono text-chart-1 mt-1">{markets.length}</div>
+              </div>
+              <div className="bg-background/50 border border-border rounded-lg p-3">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Runners Tracked</div>
+                <div className="text-lg font-bold font-mono text-chart-1 mt-1">{runners.length}</div>
+              </div>
+              <div className="bg-background/50 border border-border rounded-lg p-3">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Sync</div>
+                <div className="text-sm font-bold font-mono text-foreground mt-1">
+                  {betfairConnection.lastMarketSyncTime ? new Date(betfairConnection.lastMarketSyncTime).toLocaleTimeString('en-AU') : '—'}
                 </div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Exposure Limit</div>
-                <div className="text-lg font-bold font-mono text-foreground mt-1">
-                  {betfairAccount?.currency || '$'}{Math.abs(betfairAccount?.exposureLimit ?? 0).toFixed(2)}
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Data Fresh</div>
+                <div className="text-lg font-bold font-mono mt-1">
+                  {betfairConnection.dataFresh ? <span className="text-chart-1">✓ Yes</span> : <span className="text-chart-5">✗ Stale</span>}
                 </div>
-              </div>
-              <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Discount Rate</div>
-                <div className="text-lg font-bold font-mono text-foreground mt-1">{((betfairAccount?.discountRate ?? 0) * 100).toFixed(1)}%</div>
-              </div>
-              <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Points Balance</div>
-                <div className="text-lg font-bold font-mono text-foreground mt-1">{betfairAccount?.pointsBalance ?? 0}</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Jurisdiction</div>
-                <div className="text-lg font-bold font-mono text-foreground mt-1">{betfairAccount?.jurisdiction}</div>
+                <div className="text-lg font-bold font-mono text-foreground mt-1">{betfairAccount?.jurisdiction || 'AU'}</div>
               </div>
             </div>
 
