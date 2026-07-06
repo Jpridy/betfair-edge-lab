@@ -797,6 +797,7 @@ export function AppProvider({ children }) {
       const maxOdds = s.settings.maxOdds || 20;
       const maxTradesPerMarket = s.settings.maxTradesPerMarket || 5;
       const openStatuses = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
+      const sizeThreshold = s.apiConnected ? 2 : (s.settings.baseStake || 50);
 
       if (enabled.length > 0) {
         // Search across markets × strategies to find a runner that doesn't
@@ -819,7 +820,7 @@ export function AppProvider({ children }) {
             const candidateStrategy = s.strategyLibrary?.find(sl => sl.name === candidateStrategyName);
             const isScalping = candidateStrategyName === 'Pre-Off Scalping';
             const runnable = marketRunners
-              .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) > 0 && (r.bestLaySize || 0) > 0)
+              .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) >= sizeThreshold && (r.bestLaySize || 0) >= sizeThreshold)
               .filter(r => (r.bestBackPrice >= minOdds && r.bestBackPrice <= maxOdds) || (r.bestLayPrice >= minOdds && r.bestLayPrice <= maxOdds))
               .filter(r => !isScalping || countTicksBetween(r.bestBackPrice, r.bestLayPrice) <= 3)
               .filter(r => !s.paperOrders.some(o =>
