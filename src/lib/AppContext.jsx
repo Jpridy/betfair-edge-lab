@@ -796,16 +796,18 @@ export function AppProvider({ children }) {
 
         if (marketRunners.length > 0) {
           // Step 5: Create Signal — prefer runners with real prices and sufficient liquidity
-          // Step 5: Create Signal — only runners with a back price
+          // Step 5: Create Signal — only runners with sufficient liquidity on BOTH sides,
+          // since the strategy may pick BACK or LAY. Sorted by the weaker side's size.
+          const minSize = s.settings.baseStake || 50;
           const runnable = marketRunners
-            .filter(r => r.bestBackPrice > 0)
-            .sort((a, b) => (b.bestBackSize || 0) - (a.bestBackSize || 0));
+            .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && r.bestBackSize >= minSize && r.bestLaySize >= minSize)
+            .sort((a, b) => Math.min(b.bestBackSize || 0, b.bestLaySize || 0) - Math.min(a.bestBackSize || 0, a.bestLaySize || 0));
           const runner = runnable[Math.floor(Math.random() * Math.min(runnable.length, 5))];
 
           if (!runner) {
             steps[4].status = 'blocked';
-            steps[4].reason = 'No runners with back prices available yet — waiting for stream data.';
-            notes.push('No runners with back prices');
+            steps[4].reason = `No runners with sufficient liquidity on both sides (min $${minSize} back & lay) — waiting for stream data.`;
+            notes.push(`No runners with sufficient liquidity (min $${minSize} both sides)`);
           } else {
           const signal = createSignal(strategyName, market, runner, s.settings);
           signalCreated = signal;
