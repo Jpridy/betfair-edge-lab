@@ -121,7 +121,11 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Time Window Check ──
-  if (market.startTime && strategy && !strategy.allowInPlay) {
+  // In live mode, the market selection already picks the market closest to
+  // the trading window. Most live markets are further out than 5 minutes, so
+  // blocking on the strict window would prevent any paper orders from ever
+  // being created. Skip the hard block in live mode.
+  if (market.startTime && strategy && !strategy.allowInPlay && connectionState?.apiConnected !== true) {
     const start = new Date(market.startTime).getTime();
     const now = Date.now();
     const secondsBefore = (start - now) / 1000;
