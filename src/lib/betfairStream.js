@@ -29,14 +29,15 @@ export class BetfairStreamClient {
     this.subscribed = false;
   }
 
-  connect() {
+  connect(isReconnect = false) {
     this.shouldReconnect = true;
     this.subscribed = false;
-    this._reconnectAttempts = 0;
+    // Only reset attempt counter on manual connect, not on auto-reconnect
+    if (!isReconnect) {
+      this._reconnectAttempts = 0;
+    }
 
     // Connect through the Cloudflare Worker WebSocket-to-TCP bridge.
-    // Betfair's Stream API does NOT support WebSocket — it uses raw SSL sockets.
-    // The worker accepts our WebSocket and bridges it to a TCP socket to Betfair.
     let wsUrl;
     if (this.wsProxyUrl) {
       // Convert https:// → wss:// (or http:// → ws://)
@@ -48,6 +49,8 @@ export class BetfairStreamClient {
       if (this.onStatusChange) this.onStatusChange('error');
       return;
     }
+
+    this._wsUrl = wsUrl;
 
     try {
       this.ws = new WebSocket(wsUrl);
@@ -353,25 +356,25 @@ export class BetfairStreamClient {
     if (this.onStatusChange) this.onStatusChange('disconnected');
     if (!this.shouldReconnect) return;
 
-    // Don't reconnect if we got an explicit auth failure (shouldReconnect was set false)
-    // But DO reconnect on clean close (1000) if we never fully connected — Betfair may
-    // have closed the TCP stream before responding, or the worker's TCP socket failed
     const neverConnected = !this.subscribed;
     const shouldRetry = event.code !== 1000 || neverConnected;
 
     if (shouldRetry) {
       this._reconnectAttempts = (this._reconnectAttempts || 0) + 1;
       if (this._reconnectAttempts <= 3) {
-        this.reconnectTimer = setTimeout(() => this.connect(), 5000);
+        if (this.onError) this.onError(`WebSocket closed (code ${event.code}${event.reason ? ': ' + event.reason : ''}). Reconnect attempt ${this._reconnectAttempts}/3...`);
+        this.reconnectTimer = setTimeout(() => this.connect(true), 5000);
       } else {
-        if (this.onError) this.onError(`Stream disconnected after 3 attempts. Last worker diagnostic: ${this._lastDiag || 'none'}. Check the Logs page for details.`);
+        if (this.onError) this.onError(`Stream failed after 3 attempts. Last close code: ${event.code}. Worker diagnostic: ${this._lastDiag || 'none'}. Verify the worker is deployed with the latest WebSocket-to-TCP bridge code at ${this._wsUrl}.`);
         if (this.onStatusChange) this.onStatusChange('error');
       }
     }
   }
 
   _onError() {
-    if (this.onError) this.onError('WebSocket connection error');
+    // Browser WebSocket onerror events carry no useful detail (no message/code/reason).
+    // The actionable info comes from onclose (code + reason), which always fires after onerror.
+    // So we skip logging here to avoid duplicate, uninformative error entries.
   }
 
   disconnect() {
