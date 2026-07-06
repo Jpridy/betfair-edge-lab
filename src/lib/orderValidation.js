@@ -68,13 +68,16 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
       failures.push({ field: 'bestLayPrice', reason: 'No lay price available' });
     }
 
-    // Size availability
-    if (order.side === 'BACK' && runner.bestBackSize < (settings.baseStake || 50)) {
-      failures.push({ field: 'bestBackSize', reason: `Insufficient available back size ($${runner.bestBackSize?.toFixed(2)})` });
+    // Size availability — in live mode, allow partial fills (50% of stake).
+    // Live markets have varying liquidity; the paper matching engine already
+    // simulates partial fills at 80% threshold.
+    const sizeThreshold = isLiveMode ? (order.size * 0.5) : (settings.baseStake || 50);
+    if (order.side === 'BACK' && runner.bestBackSize < sizeThreshold) {
+      failures.push({ field: 'bestBackSize', reason: `Insufficient available back size ($${runner.bestBackSize?.toFixed(2)}, need $${sizeThreshold.toFixed(2)})` });
     }
 
-    if (order.side === 'LAY' && runner.bestLaySize < (settings.baseStake || 50)) {
-      failures.push({ field: 'bestLaySize', reason: `Insufficient available lay size ($${runner.bestLaySize?.toFixed(2)})` });
+    if (order.side === 'LAY' && runner.bestLaySize < sizeThreshold) {
+      failures.push({ field: 'bestLaySize', reason: `Insufficient available lay size ($${runner.bestLaySize?.toFixed(2)}, need $${sizeThreshold.toFixed(2)})` });
     }
 
     // Spread check (for scalping strategies)
