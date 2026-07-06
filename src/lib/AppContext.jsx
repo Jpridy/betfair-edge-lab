@@ -777,6 +777,8 @@ export function AppProvider({ children }) {
       .sort((a, b) => a.distance - b.distance);
 
     const market = sorted.length > 0 ? sorted[0].market : null;
+    // Also try other markets if the closest one has no valid runners
+    const marketCandidates = sorted.map(s => s.market);
 
     if (market) {
       // Step 3: Read Odds (Market Book)
@@ -803,7 +805,7 @@ export function AppProvider({ children }) {
           const isScalping = strategyName === 'Pre-Off Scalping';
           const runnable = marketRunners
             .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) > 0 && (r.bestLaySize || 0) > 0)
-            .filter(r => r.bestBackPrice >= minOdds && r.bestLayPrice <= maxOdds)
+            .filter(r => (r.bestBackPrice >= minOdds && r.bestBackPrice <= maxOdds) || (r.bestLayPrice >= minOdds && r.bestLayPrice <= maxOdds))
             .filter(r => !isScalping || countTicksBetween(r.bestBackPrice, r.bestLayPrice) <= 3)
             .sort((a, b) => Math.min(b.bestBackSize || 0, b.bestLaySize || 0) - Math.min(a.bestBackSize || 0, a.bestLaySize || 0));
           const runner = runnable[Math.floor(Math.random() * Math.min(runnable.length, 5))];
