@@ -69,10 +69,10 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
       failures.push({ field: 'bestLayPrice', reason: 'No lay price available' });
     }
 
-    // Size availability — in live mode, allow partial fills (50% of stake).
-    // Live markets have varying liquidity; the paper matching engine already
-    // simulates partial fills at 80% threshold.
-    const sizeThreshold = isLiveMode ? (order.size * 0.5) : (settings.baseStake || 50);
+    // Size availability — in live mode, just require a token minimum ($2).
+    // Live markets have thin liquidity at best price; the paper matching engine
+    // already simulates partial fills.
+    const sizeThreshold = isLiveMode ? 2 : (settings.baseStake || 50);
     if (order.side === 'BACK' && runner.bestBackSize < sizeThreshold) {
       failures.push({ field: 'bestBackSize', reason: `Insufficient available back size ($${runner.bestBackSize?.toFixed(2)}, need $${sizeThreshold.toFixed(2)})` });
     }

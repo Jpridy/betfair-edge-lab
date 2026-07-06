@@ -4,6 +4,7 @@ import { createBetfairStream } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
+import { countTicksBetween } from '@/lib/tickLadder';
 import { ENRICHED_STRATEGY_LIBRARY, BETFAIR_MARKETS, BETFAIR_RUNNERS } from '@/lib/demoData';
 
 const AppContext = createContext(null);
@@ -795,11 +796,15 @@ export function AppProvider({ children }) {
         const marketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
 
         if (marketRunners.length > 0) {
-          // Step 5: Create Signal — prefer runners with real prices and sufficient liquidity
-          // Step 5: Create Signal — runners with prices on BOTH sides (strategy may pick BACK or LAY).
-          // Sorted by the weaker side's size so we prefer runners with the best liquidity.
+          // Step 5: Create Signal — runners with prices on BOTH sides, within odds range,
+          // and (for scalping) with a tight enough spread. Sorted by the weaker side's size.
+          const minOdds = s.settings.minOdds || 1.5;
+          const maxOdds = s.settings.maxOdds || 20;
+          const isScalping = strategyName === 'Pre-Off Scalping';
           const runnable = marketRunners
             .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) > 0 && (r.bestLaySize || 0) > 0)
+            .filter(r => r.bestBackPrice >= minOdds && r.bestLayPrice <= maxOdds)
+            .filter(r => !isScalping || countTicksBetween(r.bestBackPrice, r.bestLayPrice) <= 3)
             .sort((a, b) => Math.min(b.bestBackSize || 0, b.bestLaySize || 0) - Math.min(a.bestBackSize || 0, a.bestLaySize || 0));
           const runner = runnable[Math.floor(Math.random() * Math.min(runnable.length, 5))];
 
