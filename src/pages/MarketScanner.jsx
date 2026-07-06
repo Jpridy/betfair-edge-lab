@@ -31,7 +31,7 @@ export default function MarketScanner() {
     exactlyTwo: false,
   });
 
-  const venues = [...new Set(markets.map(m => m.venue))];
+  const venues = [...new Set(markets.map(m => m.venue).filter(v => v && v.trim()))];
 
   const filtered = useMemo(() => {
     return markets.filter(m => {
