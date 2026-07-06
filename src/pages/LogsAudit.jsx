@@ -112,9 +112,9 @@ export default function LogsAudit() {
                   </span>
                 </TableCell>
                 <TableCell className="text-xs font-medium whitespace-nowrap">{log.action}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{log.object_name || log.details?.split(' ')[0] || '—'}</TableCell>
-                <TableCell className="text-xs text-muted-foreground font-mono">{log.before_value || '—'}</TableCell>
-                <TableCell className="text-xs text-muted-foreground font-mono">{log.after_value || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{log.objectName || log.details?.split(' ')[0] || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground font-mono">{log.beforeValue || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground font-mono">{log.afterValue || '—'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground max-w-xs truncate">{log.reason || log.details}</TableCell>
                 <TableCell>
                   <StatusBadge status={
