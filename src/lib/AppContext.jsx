@@ -875,7 +875,7 @@ export function AppProvider({ children }) {
                 setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
 
                 const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
-                if (!s.apiConnected && pending.length > 0 && Math.random() > 0.5) {
+                if (pending.length > 0 && Math.random() > 0.5) {
                   const toSettle = pending[0];
                   const settled = settleOrder(toSettle, market, s.settings);
                   setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
