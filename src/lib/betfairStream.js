@@ -121,17 +121,14 @@ export class BetfairStreamClient {
   _subscribeToMarkets() {
     // Betfair Stream API MarketFilter only supports: countryCodes, marketTypes,
     // eventTypeIds, eventIds, marketIds, venues, bettingTypes, bspMarket, raceTypes.
-    // There is NO marketStartTime filter — countryCodes is what keeps us under the
-    // 200-market subscription limit.
-    const countryCode = this.jurisdiction === 'AU' ? 'AU' : 'GB';
-
+    // Max 200 markets per subscription — we broaden to global horse racing + greyhounds
+    // to get as close to 200 as possible.
     this._send({
       op: 'marketSubscription',
       id: String(this.messageId++),
       marketFilter: {
-        eventTypeIds: ['7'],
+        eventTypeIds: ['7', '4339'],
         marketTypes: ['WIN'],
-        countryCodes: [countryCode],
       },
       marketDataFilter: {
         ladderLevels: 1,
