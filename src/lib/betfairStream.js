@@ -104,6 +104,17 @@ export class BetfairStreamClient {
     } else if (data.statusCode === 'FAILURE') {
       const errorCode = data.errorCode || '';
       const errorMsg = data.errorMessage || errorCode || 'Stream error';
+
+      // If we exceeded the 200-market subscription limit, fall back to a narrower filter
+      if (errorCode === 'SUBSCRIPTION_LIMIT_EXCEEDED' || errorCode === 'TOO_MANY_MARKETS') {
+        const nextLevel = (this._subscriptionFilterLevel || 0) + 1;
+        if (nextLevel <= 3) {
+          if (this.onError) this.onError(`Market filter too broad (${errorCode}). Falling back to narrower filter (level ${nextLevel})...`);
+          this._subscribeToMarkets(nextLevel);
+          return;
+        }
+      }
+
       if (this.onError) this.onError(errorMsg);
 
       // Stop reconnecting on auth failures — the token/key is invalid
@@ -118,18 +129,28 @@ export class BetfairStreamClient {
     }
   }
 
-  _subscribeToMarkets() {
+  _subscribeToMarkets(filterLevel = 0) {
     // Betfair Stream API MarketFilter only supports: countryCodes, marketTypes,
     // eventTypeIds, eventIds, marketIds, venues, bettingTypes, bspMarket, raceTypes.
-    // Max 200 markets per subscription — we broaden to global horse racing + greyhounds
-    // to get as close to 200 as possible.
+    // Max 200 markets per subscription. We try broad filters first and fall back
+    // to narrower ones if Betfair rejects for exceeding the limit.
+    const filters = [
+      // Level 0 — global horse racing + greyhounds (broadest)
+      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'] },
+      // Level 1 — AU + GB + IE horse racing + greyhounds
+      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB', 'IE'] },
+      // Level 2 — AU + GB horse racing + greyhounds
+      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB'] },
+      // Level 3 — AU only (safest fallback)
+      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'], countryCodes: ['AU'] },
+    ];
+    const filter = filters[Math.min(filterLevel, filters.length - 1)];
+    this._subscriptionFilterLevel = filterLevel;
+
     this._send({
       op: 'marketSubscription',
       id: String(this.messageId++),
-      marketFilter: {
-        eventTypeIds: ['7', '4339'],
-        marketTypes: ['WIN'],
-      },
+      marketFilter: filter,
       marketDataFilter: {
         ladderLevels: 1,
         fields: ['EX_BEST_OFFERS', 'EX_TRADED_VOL', 'EX_LTP'],
