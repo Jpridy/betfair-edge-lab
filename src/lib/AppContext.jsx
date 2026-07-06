@@ -875,7 +875,7 @@ export function AppProvider({ children }) {
                 setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
 
                 const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
-                if (pending.length > 0 && Math.random() > 0.5) {
+                if (!s.apiConnected && pending.length > 0 && Math.random() > 0.5) {
                   const toSettle = pending[0];
                   const settled = settleOrder(toSettle, market, s.settings);
                   setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
@@ -1051,9 +1051,29 @@ export function AppProvider({ children }) {
           o => o.result === 'pending' && (o.marketId === marketId || o.betfairMarketId === marketId)
         );
         for (const order of pendingOrders) {
+          const market = s.markets.find(m => m.betfairMarketId === marketId || m.id === marketId) || { venue, marketName };
+
+          // Unmatched/unfilled orders lapse when the market closes — no money changed hands
+          if (order.status !== 'matched' && order.status !== 'partially_matched') {
+            const lapsed = {
+              ...order,
+              status: 'lapsed',
+              result: 'void',
+              lapse_reason: 'Market closed — order was not matched',
+              settled_date: new Date().toISOString(),
+              remaining_size: 0,
+              netProfit: 0,
+              grossProfit: 0,
+              commission: 0,
+            };
+            setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
+            base44.entities.PaperOrder.update(order.id, lapsed).catch(() => {});
+            addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — unmatched at market close (${venue || ''} ${marketName || ''})`);
+            continue;
+          }
+
           const selectionId = String(order.selectionId || order.betfairSelectionId || '');
           const won = winners.includes(selectionId);
-          const market = s.markets.find(m => m.betfairMarketId === marketId || m.id === marketId) || { venue, marketName };
           const settled = settleOrder(order, market, s.settings, won ? 'won' : 'lost');
           setPaperOrders(prev => prev.map(o => o.id === order.id ? settled : o));
           base44.entities.PaperOrder.update(order.id, settled).catch(() => {});
