@@ -1,26 +1,28 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
-import { getAuditData } from '@/lib/strategyAuditData';
-import { computeTrafficLight } from '@/lib/strategyValidation';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 import { PLValue } from '@/components/ui/Trading';
 import { Trophy, AlertTriangle, ArrowRight } from 'lucide-react';
 
 export default function BestWorstStrategy() {
-  const { settings } = useApp();
+  const { strategyStats, strategyLibrary } = useApp();
 
-  const strategies = DEMO_STRATEGY_LIBRARY.map(s => {
-    const audit = getAuditData(s.name);
-    const status = computeTrafficLight(s, audit, settings);
-    return { ...s, audit, status };
-  }).filter(s => s.audit && s.status.light !== 'grey');
+  const withStats = strategyStats.map(stat => {
+    const lib = strategyLibrary?.find(s => s.name === stat.strategyName);
+    return { ...stat, category: lib?.category || '—', id: lib?.id || stat.strategyName };
+  }).filter(s => s.totalPaperOrders > 0);
 
-  const sorted = [...strategies].sort((a, b) => (b.audit?.netProfit || 0) - (a.audit?.netProfit || 0));
+  const sorted = [...withStats].sort((a, b) => (b.netProfit || 0) - (a.netProfit || 0));
   const best = sorted[0];
   const worst = sorted[sorted.length - 1];
 
-  if (!best || !worst) return null;
+  if (!best || !worst) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-4 text-center text-xs text-muted-foreground">
+        No strategy performance data yet. Start paper trading to see best/worst strategies.
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -29,20 +31,20 @@ export default function BestWorstStrategy() {
           <Trophy className="h-4 w-4 text-chart-1" />
           <span className="text-xs font-bold text-chart-1 uppercase tracking-wider">Best Performing</span>
         </div>
-        <div className="text-sm font-bold text-foreground">{best.name}</div>
+        <div className="text-sm font-bold text-foreground">{best.strategyName}</div>
         <div className="text-[10px] text-muted-foreground mb-2">{best.category}</div>
         <div className="flex items-center gap-4">
           <div>
             <div className="text-[10px] text-muted-foreground">Net P/L</div>
-            <PLValue value={best.audit.netProfit} />
+            <PLValue value={best.netProfit} />
           </div>
           <div>
             <div className="text-[10px] text-muted-foreground">ROI</div>
-            <div className={`text-sm font-bold font-mono ${best.audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{best.audit.roi.toFixed(1)}%</div>
+            <div className={`text-sm font-bold font-mono ${(best.roi || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(best.roi || 0).toFixed(1)}%</div>
           </div>
           <div>
             <div className="text-[10px] text-muted-foreground">Strike</div>
-            <div className="text-sm font-bold font-mono text-foreground">{best.audit.strikeRate.toFixed(0)}%</div>
+            <div className="text-sm font-bold font-mono text-foreground">{(best.strikeRate || 0).toFixed(0)}%</div>
           </div>
         </div>
         <div className="flex items-center gap-1 mt-3 text-xs text-chart-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -55,20 +57,20 @@ export default function BestWorstStrategy() {
           <AlertTriangle className="h-4 w-4 text-chart-5" />
           <span className="text-xs font-bold text-chart-5 uppercase tracking-wider">Needs Attention</span>
         </div>
-        <div className="text-sm font-bold text-foreground">{worst.name}</div>
+        <div className="text-sm font-bold text-foreground">{worst.strategyName}</div>
         <div className="text-[10px] text-muted-foreground mb-2">{worst.category}</div>
         <div className="flex items-center gap-4">
           <div>
             <div className="text-[10px] text-muted-foreground">Net P/L</div>
-            <PLValue value={worst.audit.netProfit} />
+            <PLValue value={worst.netProfit} />
           </div>
           <div>
             <div className="text-[10px] text-muted-foreground">ROI</div>
-            <div className={`text-sm font-bold font-mono ${worst.audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{worst.audit.roi.toFixed(1)}%</div>
+            <div className={`text-sm font-bold font-mono ${(worst.roi || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(worst.roi || 0).toFixed(1)}%</div>
           </div>
           <div>
             <div className="text-[10px] text-muted-foreground">CLV</div>
-            <div className={`text-sm font-bold font-mono ${worst.audit.closingLineValue >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{worst.audit.closingLineValue.toFixed(1)}%</div>
+            <div className={`text-sm font-bold font-mono ${(worst.closingLineValue || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(worst.closingLineValue || 0).toFixed(1)}%</div>
           </div>
         </div>
         <div className="flex items-center gap-1 mt-3 text-xs text-chart-5 opacity-0 group-hover:opacity-100 transition-opacity">

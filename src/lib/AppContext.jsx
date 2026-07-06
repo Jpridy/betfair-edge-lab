@@ -1,16 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { fetchBetfairMarkets } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
-import {
-  BETFAIR_MARKETS, BETFAIR_RUNNERS, BETFAIR_PAPER_ORDERS,
-  DEMO_STRATEGY_SIGNALS,
-  DEMO_BANKROLL_STATS, DEMO_RISK_STATUS, DEMO_HEATMAP, DEMO_AUDIT_LOGS,
-  DEMO_BACKTEST_RUNS, DEMO_PL_DATA, DEMO_STRATEGY_STATS, DEMO_BOT_CYCLES,
-  DEMO_BOT_ACTIVITY, ENRICHED_STRATEGY_LIBRARY,
-} from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
 
 const AppContext = createContext(null);
 
@@ -33,7 +27,7 @@ const DEFAULT_BOT_SETTINGS = {
 export function AppProvider({ children }) {
   const [mode, setMode] = useState('research');
   const [emergencyStop, setEmergencyStop] = useState(false);
-  const [demoMode, setDemoMode] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
   const [beginnerMode, setBeginnerMode] = useState(true);
   const [apiConnected, setApiConnected] = useState(false);
   const [betfairAccount, setBetfairAccount] = useState(null);
@@ -127,27 +121,35 @@ export function AppProvider({ children }) {
     selectedJurisdiction: 'AU',
   });
 
-  // ── Data State (using Betfair-enriched demo data) ──
-  const [markets, setMarkets] = useState(BETFAIR_MARKETS);
-  const [runners, setRunners] = useState(BETFAIR_RUNNERS);
-  const [paperOrders, setPaperOrders] = useState(BETFAIR_PAPER_ORDERS);
-  const [strategySignals, setStrategySignals] = useState(DEMO_STRATEGY_SIGNALS);
+  // ── Data State — loaded from database, no demo fallback ──
+  const [dataLoading, setDataLoading] = useState(true);
+  const [markets, setMarkets] = useState([]);
+  const [runners, setRunners] = useState([]);
+  const [paperOrders, setPaperOrders] = useState([]);
+  const [strategySignals, setStrategySignals] = useState([]);
   const [bankrollStats, setBankrollStats] = useState({
-    ...DEMO_BANKROLL_STATS,
-    weeklyPL: 850,
-    paperBankroll: 10212.45,
+    bankroll: settings.paperBankroll || settings.bankroll,
+    paperBankroll: settings.paperBankroll || settings.bankroll,
     accountBankroll: 0,
-    available: 9702.45,
-    openPaperExposure: 510,
+    available: settings.paperBankroll || settings.bankroll,
+    todayPL: 0,
+    weeklyPL: 0,
+    totalPL: 0,
+    openPaperExposure: 0,
     openLiveExposure: 0,
-    commissionPaid: 72.80,
-    maxDrawdown: -285.50,
+    commissionPaid: 0,
+    maxDrawdown: 0,
+    wins: 0,
+    losses: 0,
   });
-  const [riskStatus] = useState(DEMO_RISK_STATUS);
-  const [heatmap] = useState(DEMO_HEATMAP);
-  const [auditLogs, setAuditLogs] = useState(DEMO_AUDIT_LOGS);
-  const [backtestRuns, setBacktestRuns] = useState(DEMO_BACKTEST_RUNS);
-  const [plData] = useState(DEMO_PL_DATA);
+  const [riskStatus] = useState({
+    dailyLossLimit: 500, weeklyLossLimit: 2500, maxMarketExposure: 1000,
+    maxOpenOrders: 10, maxUnmatchedOrders: 10, dataHealth: 'unknown',
+    dailyLossUsed: 0, weeklyLossUsed: 0, strategyLimits: [],
+  });
+  const [heatmap] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [backtestRuns, setBacktestRuns] = useState([]);
   const [strategyLibrary] = useState(ENRICHED_STRATEGY_LIBRARY);
 
   // ── Sync State ──
@@ -182,9 +184,9 @@ export function AppProvider({ children }) {
     botMode: 'stopped', // stopped, paper_scanning, live_locked, live_running
   });
   const [botSettings, setBotSettings] = useState(DEFAULT_BOT_SETTINGS);
-  const [botCycles, setBotCycles] = useState(DEMO_BOT_CYCLES);
-  const [strategyStats, setStrategyStats] = useState(DEMO_STRATEGY_STATS);
-  const [botActivity, setBotActivity] = useState(DEMO_BOT_ACTIVITY);
+  const [botCycles, setBotCycles] = useState([]);
+  const [strategyStats, setStrategyStats] = useState([]);
+  const [botActivity, setBotActivity] = useState([]);
 
   // ── Rejected Orders ──
   const [rejectedOrders, setRejectedOrders] = useState([]);
@@ -193,10 +195,128 @@ export function AppProvider({ children }) {
   const stateRef = useRef({});
   stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, betfairConnection, syncState };
 
+  // ── Load all app-generated data from database on mount ──
+  useEffect(() => {
+    let cancelled = false;
+    const unsubs = [];
+
+    const loadAll = async () => {
+      try {
+        setDataLoading(true);
+        const [orders, signals, cycles, logs, runs, stats] = await Promise.all([
+          base44.entities.PaperOrder.filter({}, '-created_date', 200).catch(() => []),
+          base44.entities.StrategySignal.filter({}, '-created_date', 200).catch(() => []),
+          base44.entities.BotCycle.filter({}, '-created_date', 100).catch(() => []),
+          base44.entities.AuditLog.filter({}, '-created_date', 200).catch(() => []),
+          base44.entities.BacktestRun.filter({}, '-created_date', 50).catch(() => []),
+          base44.entities.StrategyStats.filter({}, '-created_date', 50).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setPaperOrders(orders);
+        setStrategySignals(signals);
+        setBotCycles(cycles);
+        setAuditLogs(logs);
+        setBacktestRuns(runs);
+        setStrategyStats(stats);
+      } catch (err) {
+        // silently fail — app starts empty
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    };
+
+    loadAll();
+
+    // Realtime subscriptions
+    const subscribe = (entityName, setter, maxItems = 200) => {
+      try {
+        const unsub = base44.entities[entityName].subscribe((event) => {
+          if (event.type === 'create') setter(prev => [event.data, ...prev].slice(0, maxItems));
+          else if (event.type === 'update') setter(prev => prev.map(i => i.id === event.data.id ? { ...i, ...event.data } : i));
+          else if (event.type === 'delete') setter(prev => prev.filter(i => i.id !== event.data.id));
+        });
+        unsubs.push(unsub);
+      } catch (_) {}
+    };
+    subscribe('PaperOrder', setPaperOrders);
+    subscribe('StrategySignal', setStrategySignals);
+    subscribe('BotCycle', setBotCycles);
+    subscribe('AuditLog', setAuditLogs, 500);
+    subscribe('BacktestRun', setBacktestRuns);
+    subscribe('StrategyStats', setStrategyStats);
+
+    return () => { cancelled = true; unsubs.forEach(u => { try { u(); } catch (_) {} }); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Derive bankroll stats from settled paper orders ──
+  useEffect(() => {
+    const settled = paperOrders.filter(o => o.status === 'settled');
+    const wins = settled.filter(o => o.result === 'won').length;
+    const losses = settled.filter(o => o.result === 'lost').length;
+    const totalPL = settled.reduce((s, o) => s + (o.netProfit || 0), 0);
+    const commissionPaid = settled.reduce((s, o) => s + (o.commission || 0), 0);
+    const today = new Date().toISOString().slice(0, 10);
+    const todayPL = settled.filter(o => (o.settled_date || o.created_date || '').slice(0, 10) === today).reduce((s, o) => s + (o.netProfit || 0), 0);
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const weeklyPL = settled.filter(o => (o.settled_date || o.created_date || '') >= weekAgo).reduce((s, o) => s + (o.netProfit || 0), 0);
+
+    const openOrders = paperOrders.filter(o => ['pending', 'matched', 'unmatched', 'partially_matched', 'executable'].includes(o.status));
+    const paperExposure = openOrders.reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
+
+    const startingBankroll = settings.paperBankroll || settings.bankroll;
+    const currentBankroll = startingBankroll + totalPL;
+
+    // Max drawdown calc
+    let peak = startingBankroll;
+    let maxDD = 0;
+    let running = startingBankroll;
+    const sorted = [...settled].sort((a, b) => (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || ''));
+    for (const o of sorted) {
+      running += (o.netProfit || 0);
+      if (running > peak) peak = running;
+      const dd = running - peak;
+      if (dd < maxDD) maxDD = dd;
+    }
+
+    setBankrollStats(prev => ({
+      ...prev,
+      bankroll: currentBankroll,
+      paperBankroll: currentBankroll,
+      available: currentBankroll - paperExposure,
+      todayPL,
+      weeklyPL,
+      totalPL,
+      commissionPaid,
+      openPaperExposure: paperExposure,
+      openLiveExposure: 0,
+      maxDrawdown: maxDD,
+      wins,
+      losses,
+    }));
+  }, [paperOrders, settings.paperBankroll, settings.bankroll]);
+
+  // ── Derive P/L chart data from settled orders ──
+  const plData = useMemo(() => {
+    const settled = paperOrders.filter(o => o.status === 'settled').slice().sort((a, b) => (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || ''));
+    const starting = settings.paperBankroll || settings.bankroll;
+    let running = starting;
+    return settled.map((o, i) => {
+      running += (o.netProfit || 0);
+      return {
+        date: (o.settled_date || o.created_date || '').slice(0, 10),
+        timestamp: o.settled_date || o.created_date,
+        bankroll: running,
+        pl: o.netProfit || 0,
+        cumulativePL: running - starting,
+        label: `Trade ${i + 1}`,
+      };
+    });
+  }, [paperOrders, settings.paperBankroll, settings.bankroll]);
+
   // ── Audit Logging ──
   const addAuditLog = (action, category, severity, details, extra = {}) => {
     const log = {
-      id: 'al' + Date.now() + Math.random().toString(36).slice(2, 6),
       action,
       category,
       severity,
@@ -209,17 +329,12 @@ export function AppProvider({ children }) {
       afterValue: extra.afterValue || null,
       reason: extra.reason || null,
     };
-    setAuditLogs(prev => [log, ...prev].slice(0, 500));
+    setAuditLogs(prev => [{ ...log, id: 'al' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 500));
+    base44.entities.AuditLog.create(log).catch(() => {});
   };
 
   const addToBotActivity = (action, details) => {
-    const entry = {
-      id: 'ba' + Date.now() + Math.random().toString(36).slice(2, 6),
-      action,
-      details,
-      timestamp: new Date().toISOString(),
-    };
-    setBotActivity(prev => [entry, ...prev].slice(0, 50));
+    setBotActivity(prev => [{ id: 'ba' + Date.now() + Math.random().toString(36).slice(2, 6), action, details, timestamp: new Date().toISOString() }, ...prev].slice(0, 50));
   };
 
   // ── Emergency Controls ──
@@ -278,7 +393,14 @@ export function AppProvider({ children }) {
     addToBotActivity('Paper-only mode forced', 'Live trading disabled system-wide');
   };
 
-  const resetAllPaperTrading = () => {
+  const resetAllPaperTrading = async () => {
+    // Clear from database
+    await Promise.all([
+      base44.entities.PaperOrder.deleteMany({}).catch(() => {}),
+      base44.entities.StrategySignal.deleteMany({}).catch(() => {}),
+      base44.entities.BotCycle.deleteMany({}).catch(() => {}),
+    ]);
+    // Clear local state
     setPaperOrders([]);
     setRejectedOrders([]);
     setStrategySignals([]);
@@ -300,24 +422,6 @@ export function AppProvider({ children }) {
       wins: 0,
       losses: 0,
     }));
-    setStrategyStats(prev => prev.map(stat => ({
-      ...stat,
-      totalPaperOrders: 0,
-      wins: 0,
-      losses: 0,
-      strikeRate: 0,
-      grossProfit: 0,
-      netProfit: 0,
-      roi: 0,
-      profitFactor: 0,
-      maxDrawdown: 0,
-      longestLosingStreak: 0,
-      averageOdds: 0,
-      averageStake: 0,
-      averageEdge: 0,
-      closingLineValue: 0,
-      updatedAt: new Date().toISOString(),
-    })));
     setBotState(prev => ({
       ...prev,
       cycleNumber: 0,
@@ -530,6 +634,7 @@ export function AppProvider({ children }) {
       placed_date: new Date().toISOString(),
     };
     setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
+    base44.entities.PaperOrder.create(order).catch(() => {});
     addAuditLog('Paper Order Created', 'order', 'info', `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake} (${order.persistenceType})`, { objectName: order.runnerName });
     setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
   };
@@ -550,6 +655,7 @@ export function AppProvider({ children }) {
   const addStrategySignal = (signal) => {
     const newSignal = { ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) };
     setStrategySignals(prev => [newSignal, ...prev].slice(0, 100));
+    base44.entities.StrategySignal.create(signal).catch(() => {});
     addAuditLog('Strategy Signal', 'strategy', 'info', `${signal.strategyName}: ${signal.reason || 'Signal generated'}`);
     setSyncState(prev => ({ ...prev, signalsGeneratedToday: prev.signalsGeneratedToday + 1 }));
   };
@@ -557,6 +663,7 @@ export function AppProvider({ children }) {
   const addBacktestRun = (run) => {
     const newRun = { ...run, id: 'bt' + Date.now() };
     setBacktestRuns(prev => [newRun, ...prev]);
+    base44.entities.BacktestRun.create(run).catch(() => {});
     addAuditLog('Backtest Completed', 'system', 'info', `Backtest "${run.name}" completed: ${run.totalBets} bets, ROI ${run.roi}%`);
   };
 
@@ -640,6 +747,7 @@ export function AppProvider({ children }) {
           steps[4].status = 'passed';
 
           setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+          base44.entities.StrategySignal.create(signal).catch(() => {});
 
           // Step 6: Run Pre-Order Validation
           const connectionState = {
@@ -689,6 +797,7 @@ export function AppProvider({ children }) {
                 steps[8].status = 'passed';
 
                 setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
+                base44.entities.PaperOrder.create(order).catch(() => {});
                 setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
 
                 // Settle a previous pending order
@@ -697,6 +806,7 @@ export function AppProvider({ children }) {
                   const toSettle = pending[0];
                   const settled = settleOrder(toSettle, market, s.settings);
                   setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
+                  base44.entities.PaperOrder.update(toSettle.id, settled).catch(() => {});
                   setBankrollStats(prev => ({
                     ...prev,
                     bankroll: prev.bankroll + settled.netProfit,
@@ -746,8 +856,7 @@ export function AppProvider({ children }) {
       ordersBlockedToday: prev.ordersBlockedToday + ordersBlocked,
     }));
 
-    setBotCycles(prev => [{
-      id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6),
+    const cycleRecord = {
       cycleNumber: cycleNum,
       botMode: 'paper',
       startedAt: now,
@@ -760,7 +869,9 @@ export function AppProvider({ children }) {
       ordersBlocked,
       errors,
       notes: notes.join('; ') || 'Cycle completed',
-    }, ...prev].slice(0, 100));
+    };
+    setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+    base44.entities.BotCycle.create(cycleRecord).catch(() => {});
 
     setSyncState(prev => ({ ...prev, signalsGeneratedToday: prev.signalsGeneratedToday + signalsCreated }));
 
@@ -847,7 +958,7 @@ export function AppProvider({ children }) {
     betfairConnection, updateBetfairConnection, testBetfairConnection,
     settings, updateSettings,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
-    auditLogs, backtestRuns, plData,
+    auditLogs, backtestRuns, plData, dataLoading,
     addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,
     toggleWatchMarket, handleRunnerRemoval,
     rejectedOrders,

@@ -1,9 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
-import { getAuditData } from '@/lib/strategyAuditData';
+import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, reconcileMetrics } from '@/lib/strategyValidation';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 import { SideBadge, PLValue, StatusBadge } from '@/components/ui/Trading';
 import { Zap, ArrowRight, AlertTriangle, ScrollText, FlaskConical } from 'lucide-react';
 
@@ -119,11 +118,11 @@ function BacktestRow({ r }) {
 }
 
 export default function DashboardActivityFeed() {
-  const { strategySignals, paperOrders, auditLogs, backtestRuns, settings } = useApp();
+  const { strategySignals, paperOrders, auditLogs, backtestRuns, settings, strategyStats, strategyLibrary } = useApp();
 
-  // Compute strategy warnings
-  const strategyWarnings = DEMO_STRATEGY_LIBRARY.map(s => {
-    const audit = getAuditData(s.name);
+  // Compute strategy warnings — using live data
+  const strategyWarnings = (strategyLibrary || []).map(s => {
+    const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
     const status = computeTrafficLight(s, audit, settings);
     const recon = reconcileMetrics(audit);
     let warningText = null;

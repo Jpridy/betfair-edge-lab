@@ -16,12 +16,14 @@ export default function DashboardMetrics() {
   const winRate = settledOrders.length > 0
     ? ((settledOrders.filter(o => o.result === 'won').length / settledOrders.length) * 100).toFixed(1)
     : '0.0';
-  const exposurePercent = ((bankrollStats.openExposure / bankrollStats.bankroll) * 100).toFixed(1);
+  const exposure = bankrollStats.openPaperExposure || 0;
+  const bankroll = bankrollStats.bankroll || 0;
+  const exposurePercent = bankroll > 0 ? ((exposure / bankroll) * 100).toFixed(1) : '0.0';
 
   const metrics = [
     { label: 'Signals Today', value: botState.signalsToday, sub: `${strategySignals.length} active`, icon: Zap, accent: 'blue' },
     { label: 'Orders Today', value: botState.ordersToday, sub: botState.ordersBlockedToday > 0 ? `${botState.ordersBlockedToday} blocked` : 'No blocks', icon: Activity, accent: 'purple' },
-    { label: 'Open Exposure', value: `$${bankrollStats.openExposure.toFixed(0)}`, sub: `${exposurePercent}% of bank`, icon: ShieldCheck, accent: 'yellow' },
+    { label: 'Open Exposure', value: `$${exposure.toFixed(0)}`, sub: `${exposurePercent}% of bank`, icon: ShieldCheck, accent: 'yellow' },
     { label: 'Win Rate', value: `${winRate}%`, sub: `${settledOrders.length} settled`, icon: Target, accent: 'green' },
   ];
 

@@ -1,9 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
-import { getAuditData } from '@/lib/strategyAuditData';
+import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, reconcileMetrics } from '@/lib/strategyValidation';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 import {
   DollarSign, Percent, Wallet, TrendingUp, TrendingDown,
   ShieldAlert, Target, CheckCircle2, Lock, AlertTriangle,
@@ -26,19 +25,21 @@ function StatCard({ to, label, value, sublabel, icon: Icon, color }) {
 }
 
 export default function DashboardStatCards() {
-  const { bankrollStats, settings, paperOrders, strategyStats, auditLogs } = useApp();
+  const { bankrollStats, settings, paperOrders, strategyStats, auditLogs, strategyLibrary } = useApp();
 
   const totalNetProfit = bankrollStats.totalPL || 0;
-  const totalROI = bankrollStats.roi || 0;
+  const settled = paperOrders.filter(o => o.status === 'settled');
+  const totalStake = settled.reduce((s, o) => s + (o.matchedStake || o.matched_size || o.requestedStake || 0), 0);
+  const totalROI = totalStake > 0 ? (totalNetProfit / totalStake) * 100 : 0;
   const currentBankroll = bankrollStats.bankroll || 0;
   const dailyPL = bankrollStats.todayPL || 0;
-  const weeklyPL = totalNetProfit * 0.4; // approximate weekly portion
+  const weeklyPL = bankrollStats.weeklyPL || 0;
   const drawdown = bankrollStats.maxDrawdown || 0;
-  const openExposure = bankrollStats.openExposure || 0;
+  const openExposure = bankrollStats.openPaperExposure || 0;
 
-  // Strategy counts from validation engine
-  const strategiesWithStatus = DEMO_STRATEGY_LIBRARY.map(s => {
-    const audit = getAuditData(s.name);
+  // Strategy counts from validation engine — using live data
+  const strategiesWithStatus = (strategyLibrary || []).map(s => {
+    const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
     const status = computeTrafficLight(s, audit, settings);
     const recon = reconcileMetrics(audit);
     return { ...s, status, audit, reconValid: recon.valid };
@@ -98,7 +99,7 @@ export default function DashboardStatCards() {
         to="/risk"
         label="Current Drawdown"
         value={`$${Math.abs(drawdown).toFixed(2)}`}
-        sublabel={`${(Math.abs(drawdown) / currentBankroll * 100).toFixed(2)}% of bank`}
+        sublabel={currentBankroll > 0 ? `${(Math.abs(drawdown) / currentBankroll * 100).toFixed(2)}% of bank` : '—'}
         icon={TrendingDown}
         color="text-chart-5"
       />
@@ -106,7 +107,7 @@ export default function DashboardStatCards() {
         to="/risk"
         label="Open Exposure"
         value={`$${openExposure.toFixed(2)}`}
-        sublabel={`${(openExposure / currentBankroll * 100).toFixed(1)}% of bank`}
+        sublabel={currentBankroll > 0 ? `${(openExposure / currentBankroll * 100).toFixed(1)}% of bank` : '—'}
         icon={ShieldAlert}
         color="text-chart-4"
       />
