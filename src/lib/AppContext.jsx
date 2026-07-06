@@ -192,7 +192,7 @@ export function AppProvider({ children }) {
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, betfairConnection, syncState, apiConnected, betfairSessionToken };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken };
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
