@@ -290,17 +290,26 @@ export class BetfairStreamClient {
           if (rc.tv != null) runner.tradedVolume = rc.tv;
           marketTotalMatched += runner.tradedVolume || 0;
 
-          // Best back (atb = available to back)
-          if (rc.atb && rc.atb.length > 0) {
-            // atb is [[price, size], ...] sorted by price descending (best back = highest)
-            runner.bestBackPrice = rc.atb[0][0];
-            runner.bestBackSize = rc.atb[0][1];
+          // Best back — EX_BEST_OFFERS returns batb: [[level, price, size], ...]
+          // EX_ALL_OFFERS returns atb: [[price, size], ...]
+          if (rc.batb && rc.batb.length > 0) {
+            const best = rc.batb.find(([lvl, p, s]) => s > 0);
+            if (best) { runner.bestBackPrice = best[1]; runner.bestBackSize = best[2]; }
+            else { runner.bestBackPrice = 0; runner.bestBackSize = 0; }
+          } else if (rc.atb && rc.atb.length > 0) {
+            const best = rc.atb.find(([p, s]) => s > 0);
+            if (best) { runner.bestBackPrice = best[0]; runner.bestBackSize = best[1]; }
+            else { runner.bestBackPrice = 0; runner.bestBackSize = 0; }
           }
-          // Best lay (atl = available to lay)
-          if (rc.atl && rc.atl.length > 0) {
-            // atl is [[price, size], ...] sorted by price ascending (best lay = lowest)
-            runner.bestLayPrice = rc.atl[0][0];
-            runner.bestLaySize = rc.atl[0][1];
+          // Best lay
+          if (rc.batl && rc.batl.length > 0) {
+            const best = rc.batl.find(([lvl, p, s]) => s > 0);
+            if (best) { runner.bestLayPrice = best[1]; runner.bestLaySize = best[2]; }
+            else { runner.bestLayPrice = 0; runner.bestLaySize = 0; }
+          } else if (rc.atl && rc.atl.length > 0) {
+            const best = rc.atl.find(([p, s]) => s > 0);
+            if (best) { runner.bestLayPrice = best[0]; runner.bestLaySize = best[1]; }
+            else { runner.bestLayPrice = 0; runner.bestLaySize = 0; }
           }
 
           if (runner.bestBackPrice > 0) {
