@@ -93,7 +93,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Paper Exposure</span>
-              <span className="font-mono font-bold text-chart-4">${paperExposure.toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-4">${(paperExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Unmatched Paper Orders</span>
@@ -112,7 +112,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Live Exposure</span>
-              <span className="font-mono font-bold text-chart-5">${liveExposure.toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-5">${(liveExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Live Trading Status</span>
@@ -178,19 +178,19 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bankroll</span>
-              <span className="font-mono font-bold">${bankrollStats.bankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="font-mono font-bold">${(bankrollStats.bankroll || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Exposure</span>
-              <span className="font-mono font-bold text-chart-4">${bankrollStats.openExposure.toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-4">${(bankrollStats.openExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Available</span>
-              <span className="font-mono font-bold text-chart-1">${bankrollStats.available.toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-1">${(bankrollStats.available || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between pt-2 border-t border-border">
               <span className="text-muted-foreground">Exposure %</span>
-              <span className="font-mono font-bold">{((bankrollStats.openExposure / bankrollStats.bankroll) * 100).toFixed(1)}%</span>
+              <span className="font-mono font-bold">{(((bankrollStats.openExposure || 0) / (bankrollStats.bankroll || 1)) * 100).toFixed(1)}%</span>
             </div>
             <div className="pt-2 border-t border-border flex justify-between items-center">
               <span className="text-muted-foreground">Max Open Orders</span>
@@ -203,11 +203,11 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Current Drawdown</span>
-              <span className="font-mono font-bold text-chart-5">${bankrollStats.maxDrawdown.toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-5">${(bankrollStats.maxDrawdown || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Drawdown Limit</span>
-              <span className="font-mono font-bold">${(settings.bankroll * 0.1).toFixed(2)}</span>
+              <span className="font-mono font-bold">${((settings.bankroll || 0) * 0.1).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Longest Losing Streak</span>
@@ -223,7 +223,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Strategy Drawdown</span>
-              <span className="font-mono font-bold text-chart-5">${(settings.bankroll * 0.1).toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-5">${((settings.bankroll || 0) * 0.1).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Losing Streak</span>
