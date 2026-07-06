@@ -119,10 +119,10 @@ export class BetfairStreamClient {
 
   _subscribeToMarkets() {
     const now = new Date();
-    // Narrow window: markets starting within the next 4 hours.
+    // Narrow window: AU horse racing WIN markets starting within the next 1 hour.
     // Betfair limits stream subscriptions to 200 markets max.
     const fromTime = now.toISOString();
-    const toTime = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
+    const toTime = new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString();
 
     this._send({
       op: 'marketSubscription',
@@ -131,6 +131,7 @@ export class BetfairStreamClient {
         eventTypeIds: ['7'],
         marketTypes: ['WIN'],
         marketStartTime: { from: fromTime, to: toTime },
+        countries: [this.jurisdiction === 'AU' ? 'AU' : 'GB'],
       },
       marketDataFilter: {
         ladderLevels: 1,
