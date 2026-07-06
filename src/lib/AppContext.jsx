@@ -797,7 +797,7 @@ export function AppProvider({ children }) {
         if (marketRunners.length > 0) {
           // Step 5: Create Signal — prefer runners with real prices and sufficient liquidity
           const runnable = marketRunners
-            .filter(r => r.bestBackPrice > 0 || r.bestLayPrice > 0)
+            .filter(r => r.bestBackPrice > 0)
             .sort((a, b) => (b.bestBackSize || 0) - (a.bestBackSize || 0));
           const runner = (runnable.length > 0 ? runnable : marketRunners)[
             Math.floor(Math.random() * Math.min(runnable.length > 0 ? runnable.length : marketRunners.length, 5))
