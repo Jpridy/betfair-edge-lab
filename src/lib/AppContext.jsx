@@ -730,26 +730,28 @@ export function AppProvider({ children }) {
     setSyncState(prev => ({ ...prev, marketsScannedToday: prev.marketsScannedToday + marketsScanned, runnersScannedToday: prev.runnersScannedToday + s.runners.filter(r => candidates.some(m => m.id === r.marketId)).length }));
 
     // Step 2: Filter Markets (Market Book)
-    // For live stream markets, totalMatched may be 0 (market just opened) and
-    // numberOfRunners may be unset (marketDefinition not yet received). We use
-    // available runner liquidity and runner count from the runners state as
-    // fallbacks so real tradeable markets aren't incorrectly filtered out.
+    // In live mode, stream markets may have totalMatched=0 (just opened) and
+    // numberOfRunners unset (marketDefinition still arriving). We accept any
+    // OPEN market with 2+ runners; the pre-order validation step catches
+    // markets without actual price data. In demo mode we keep the liquidity
+    // check since demo data always has totalMatched populated.
     const filtered = candidates.filter(m => {
-      const runnerCount = m.numberOfRunners || m.numberOfActiveRunners ||
-        s.runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId).length;
       const marketRunners = s.runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
-      const hasRunnerLiquidity = marketRunners.some(r => (r.bestBackSize > 0 || r.bestLaySize > 0));
-      const liquidityOk = m.totalMatched >= s.settings.minimumLiquidity ||
-        (s.apiConnected && hasRunnerLiquidity); // Live markets with priced runners are tradeable
+      const runnerCount = m.numberOfRunners || m.numberOfActiveRunners || marketRunners.length;
       const commissionOk = m.marketBaseRate != null || s.settings.defaultCommissionRate > 0;
-      return liquidityOk && runnerCount >= 2 && commissionOk;
+      if (s.apiConnected) {
+        // Live mode: just need 2+ runners and determinable commission
+        return runnerCount >= 2 && commissionOk;
+      }
+      // Demo mode: apply liquidity filter
+      return m.totalMatched >= s.settings.minimumLiquidity && runnerCount >= 2 && commissionOk;
     });
     marketsPassed = filtered.length;
     steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
     if (steps[1].status === 'blocked') {
       steps[1].reason = candidates.length === 0
         ? 'No open markets found. Check API connection or market data stream.'
-        : 'No markets passed filters. Check liquidity, runner count, or commission settings.';
+        : 'No markets passed filters. Check runner count or commission settings.';
     }
 
     // Sort markets by proximity to the pre-off trading window (default 300s–30s before start).
