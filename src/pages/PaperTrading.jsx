@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
@@ -29,6 +29,17 @@ export default function PaperTrading() {
 
   const marketRunners = runners.filter(r => r.marketId === form.marketId);
   const selectedRunner = runners.find(r => r.id === form.runnerId);
+
+  // Auto-fill odds from live market data when runner or side changes
+  useEffect(() => {
+    if (selectedRunner) {
+      const liveOdds = form.side === 'BACK' ? selectedRunner.bestBackPrice : selectedRunner.bestLayPrice;
+      if (liveOdds > 0) {
+        setForm(prev => ({ ...prev, odds: liveOdds }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.runnerId, form.side]);
 
   const handleSubmit = () => {
     if (!form.runnerId || !selectedRunner) return;

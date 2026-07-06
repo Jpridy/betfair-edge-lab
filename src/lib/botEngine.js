@@ -215,8 +215,9 @@ export function createPaperOrder(signal, market, runner, settings) {
   };
 }
 
-export function settleOrder(order, market, settings) {
-  const won = Math.random() > 0.45;
+export function settleOrder(order, market, settings, outcome = null) {
+  // outcome: 'won' | 'lost' from real market results, or null for random (demo data mode)
+  const won = outcome === 'won' ? true : outcome === 'lost' ? false : Math.random() > 0.45;
   
   // Calculate commission using Market Base Rate model
   const commResult = calculateCommission(

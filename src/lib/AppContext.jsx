@@ -192,7 +192,7 @@ export function AppProvider({ children }) {
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, betfairConnection, syncState };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, betfairConnection, syncState, apiConnected, betfairSessionToken };
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
@@ -820,9 +820,10 @@ export function AppProvider({ children }) {
                 base44.entities.PaperOrder.create(order).catch(() => {});
                 setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
 
-                // Settle a previous pending order
+                // Settle a previous pending order (demo data mode only — when connected to
+                // the live stream, settlement happens via real market closure events)
                 const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
-                if (pending.length > 0 && Math.random() > 0.5) {
+                if (!s.apiConnected && pending.length > 0 && Math.random() > 0.5) {
                   const toSettle = pending[0];
                   const settled = settleOrder(toSettle, market, s.settings);
                   setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
@@ -989,6 +990,34 @@ export function AppProvider({ children }) {
       onError: (error) => {
         if (cancelled) return;
         addAuditLog('Stream Error', 'api', 'error', `Betfair stream error: ${error}`);
+      },
+      onMarketSettled: ({ marketId, winners, venue, marketName }) => {
+        if (cancelled) return;
+        const s = stateRef.current;
+        const pendingOrders = s.paperOrders.filter(
+          o => o.result === 'pending' && (o.marketId === marketId || o.betfairMarketId === marketId)
+        );
+        for (const order of pendingOrders) {
+          const selectionId = String(order.selectionId || order.betfairSelectionId || '');
+          const won = winners.includes(selectionId);
+          const market = s.markets.find(m => m.betfairMarketId === marketId || m.id === marketId) || { venue, marketName };
+          const settled = settleOrder(order, market, s.settings, won ? 'won' : 'lost');
+          setPaperOrders(prev => prev.map(o => o.id === order.id ? settled : o));
+          base44.entities.PaperOrder.update(order.id, settled).catch(() => {});
+          setBankrollStats(prev => ({
+            ...prev,
+            bankroll: prev.bankroll + settled.netProfit,
+            todayPL: prev.todayPL + settled.netProfit,
+            totalPL: prev.totalPL + settled.netProfit,
+            available: prev.available + settled.netProfit,
+            commissionPaid: prev.commissionPaid + (settled.commission || 0),
+            wins: settled.result === 'won' ? prev.wins + 1 : prev.wins,
+            losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
+          }));
+          addAuditLog('Paper Order Settled (Live Result)', 'order', 'info',
+            `${settled.runnerName} ${settled.result.toUpperCase()} — Net ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)} (${venue || ''} ${marketName || ''})`);
+          addToBotActivity('Paper order settled (live)', `${settled.runnerName} ${settled.result.toUpperCase()} — ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)}`);
+        }
       },
     }).then(({ client, config }) => {
       if (cancelled) {

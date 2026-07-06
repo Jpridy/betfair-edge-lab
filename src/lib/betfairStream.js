@@ -24,6 +24,7 @@ export class BetfairStreamClient {
     this.onMarketsUpdate = null;
     this.onStatusChange = null;
     this.onError = null;
+    this.onMarketSettled = null;
     this.reconnectTimer = null;
     this.shouldReconnect = false;
     this.subscribed = false;
@@ -224,6 +225,17 @@ export class BetfairStreamClient {
             if (runnerDef.name) runner.runnerName = runnerDef.name;
             if (runnerDef.status) runner.status = runnerDef.status;
             if (runnerDef.adjustmentFactor != null) runner.adjustmentFactor = runnerDef.adjustmentFactor;
+          }
+        }
+
+        // Detect market settlement — closed with winners declared by the exchange
+        if (marketDef.status === 'CLOSED' && !market._settledNotified) {
+          market._settledNotified = true;
+          const winners = (marketDef.runners || [])
+            .filter(r => r.status === 'WINNER')
+            .map(r => String(r.id));
+          if (this.onMarketSettled && winners.length > 0) {
+            this.onMarketSettled({ marketId, winners, venue: market.venue, marketName: market.marketName });
           }
         }
       }
