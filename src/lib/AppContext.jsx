@@ -948,7 +948,7 @@ export function AppProvider({ children }) {
   }, [apiConnected, betfairSessionToken, settings.apiPollingInterval]);
 
   const value = {
-    mode, changeMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
+    mode, changeMode, setMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     demoMode,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,

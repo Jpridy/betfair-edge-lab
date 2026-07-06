@@ -8,11 +8,25 @@ import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink }
 import { connectToBetfair } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
-  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setDemoMode, addAuditLog } = useApp();
+  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setMode, addAuditLog } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+
+  const handleQuickConnect = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const account = await connectToBetfair();
+      finishConnect(account, '(stored credentials)');
+    } catch (err) {
+      setError(err.message || 'Quick connect failed — try entering your credentials manually below');
+      addAuditLog('Betfair Quick Connect Failed', 'api', 'error', err.message || 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleConnect = async () => {
     if (!usernameInput.trim() || !passwordInput.trim()) {
@@ -23,24 +37,8 @@ export default function BetfairConnection() {
     setError('');
     try {
       const account = await connectToBetfair(usernameInput.trim(), passwordInput);
-      setApiConnected(true);
-      setBetfairSessionToken(account.sessionToken);
-      setDemoMode(false);
-      setBetfairAccount({
-        username: usernameInput.trim(),
-        jurisdiction: account.jurisdiction,
-        balance: account.balance,
-        exposure: account.exposure,
-        exposureLimit: account.exposureLimit,
-        discountRate: account.discountRate,
-        pointsBalance: account.pointsBalance,
-        currency: account.currency,
-        firstName: account.firstName,
-        lastName: account.lastName,
-        locale: account.locale,
-        connectedAt: new Date().toISOString(),
-      });
-      addAuditLog('Betfair Account Linked', 'api', 'info', `Connected as ${usernameInput.trim()} (${account.jurisdiction})`);
+      finishConnect(account, usernameInput.trim());
+      finishConnect(account, usernameInput.trim());
       setPasswordInput('');
     } catch (err) {
       setError(err.message || 'Connection failed');
@@ -48,6 +46,27 @@ export default function BetfairConnection() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const finishConnect = (account, displayUsername) => {
+    setApiConnected(true);
+    setBetfairSessionToken(account.sessionToken);
+    setMode('live');
+    setBetfairAccount({
+      username: displayUsername,
+      jurisdiction: account.jurisdiction,
+      balance: account.balance,
+      exposure: account.exposure,
+      exposureLimit: account.exposureLimit,
+      discountRate: account.discountRate,
+      pointsBalance: account.pointsBalance,
+      currency: account.currency,
+      firstName: account.firstName,
+      lastName: account.lastName,
+      locale: account.locale,
+      connectedAt: new Date().toISOString(),
+    });
+    addAuditLog('Betfair Account Linked', 'api', 'info', `Connected as ${displayUsername} (${account.jurisdiction})`);
   };
 
   const handleDisconnect = () => {
@@ -132,11 +151,25 @@ export default function BetfairConnection() {
               </div>
             </div>
 
-            <Button onClick={handleConnect} disabled={loading || !usernameInput.trim() || !passwordInput.trim()} className="w-full h-11 font-medium">
+            <Button onClick={handleQuickConnect} disabled={loading} variant="default" className="w-full h-11 font-medium">
               {loading ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting to Betfair...</>
               ) : (
-                <><Link2 className="h-4 w-4 mr-2" /> Connect to Betfair</>
+                <><Link2 className="h-4 w-4 mr-2" /> Quick Connect (Saved Credentials)</>
+              )}
+            </Button>
+
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <div className="flex-1 border-t border-border" />
+              <span>OR ENTER MANUALLY</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            <Button onClick={handleConnect} disabled={loading || !usernameInput.trim() || !passwordInput.trim()} variant="outline" className="w-full h-11 font-medium">
+              {loading ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
+              ) : (
+                <><Link2 className="h-4 w-4 mr-2" /> Connect with Entered Credentials</>
               )}
             </Button>
           </>
