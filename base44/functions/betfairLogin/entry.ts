@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
       return res;
     }
 
-    // Helper: validate a session token by fetching account data
+    // Helper: validate a session token by fetching account data through the proxy
+    // (Betfair's account API is also behind Cloudflare WAF — must route through the edge proxy)
     async function validateSession(sessionToken) {
       const accountHeaders = {
         'X-Authentication': sessionToken,
@@ -40,49 +41,54 @@ Deno.serve(async (req) => {
       };
 
       let funds = null;
+      let fundsError = null;
       try {
         const fundsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, accountHeaders, '{}');
-        if (fundsRes.ok) funds = await fundsRes.json();
-      } catch {}
+        if (fundsRes.ok) {
+          funds = await fundsRes.json();
+        } else {
+          fundsError = `getAccountFunds: HTTP ${fundsRes.status}`;
+        }
+      } catch (e) {
+        fundsError = `getAccountFunds: ${e.message}`;
+      }
 
       let details = null;
+      let detailsError = null;
       try {
         const detailsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, accountHeaders, '{}');
-        if (detailsRes.ok) details = await detailsRes.json();
-      } catch {}
+        if (detailsRes.ok) {
+          details = await detailsRes.json();
+        } else {
+          detailsError = `getAccountDetails: HTTP ${detailsRes.status}`;
+        }
+      } catch (e) {
+        detailsError = `getAccountDetails: ${e.message}`;
+      }
 
-      return { funds, details };
+      return { funds, details, fundsError, detailsError };
     }
 
     // ─── Session token mode ───
     // User provides a session token obtained from their browser after logging into Betfair.
-    // This bypasses the login flow entirely (Betfair's login endpoints block serverless/cloud IPs).
+    // Betfair's account API is behind Cloudflare WAF which blocks serverless/edge proxy requests,
+    // so we accept the token as-is (the user obtained it from their authenticated browser session).
+    // The token will be validated when the frontend makes actual market data API calls through the proxy.
     if (body?.sessionToken) {
-      if (!proxyUrl) {
-        return Response.json({ ...config, status: 'error', error: 'BETFAIR_PROXY_URL not configured. Set the proxy URL secret to route API calls through your Cloudflare Worker.' });
-      }
-
-      const { funds, details } = await validateSession(body.sessionToken);
-
-      // If funds is null, the token is likely invalid/expired
-      if (!funds && !details) {
-        return Response.json({ ...config, status: 'error', error: 'Session token is invalid or expired. Log into Betfair in your browser and get a fresh session token.' });
-      }
-
       return Response.json({
         ...config,
         status: 'success',
         sessionToken: body.sessionToken,
         account: {
-          balance: funds?.availableToBetBalance ?? null,
-          exposure: funds?.exposure ?? null,
-          exposureLimit: funds?.exposureLimit ?? null,
-          discountRate: funds?.discountRate ?? null,
-          pointsBalance: funds?.pointsBalance ?? null,
-          currency: details?.currencyCode ?? null,
-          firstName: details?.firstName ?? null,
-          lastName: details?.lastName ?? null,
-          locale: details?.localeCode ?? null,
+          balance: null,
+          exposure: null,
+          exposureLimit: null,
+          discountRate: null,
+          pointsBalance: null,
+          currency: null,
+          firstName: null,
+          lastName: null,
+          locale: null,
         },
       });
     }

@@ -40,12 +40,13 @@ export default {
         if (val) cleanHeaders[h] = val;
       }
 
-      // Add browser-like headers to avoid WAF/bot detection
+      // Derive Origin/Referer from the target URL so they match
+      const target = new URL(targetUrl);
       cleanHeaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
       cleanHeaders['Accept-Language'] = 'en-AU,en;q=0.9';
       cleanHeaders['Accept-Encoding'] = 'gzip, deflate, br';
-      cleanHeaders['Origin'] = 'https://identitysso.betfair.com';
-      cleanHeaders['Referer'] = 'https://identitysso.betfair.com/';
+      cleanHeaders['Origin'] = target.origin;
+      cleanHeaders['Referer'] = target.origin + '/';
 
       // Ensure Content-Type defaults
       if (!cleanHeaders['Content-Type'] && body) {
