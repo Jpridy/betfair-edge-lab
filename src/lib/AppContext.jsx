@@ -25,10 +25,9 @@ const DEFAULT_BOT_SETTINGS = {
 };
 
 export function AppProvider({ children }) {
-  const [mode, setMode] = useState('research');
+  const [mode, setMode] = useState('demo');
   const [emergencyStop, setEmergencyStop] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  const [beginnerMode, setBeginnerMode] = useState(true);
+  const demoMode = mode === 'demo';
   const [apiConnected, setApiConnected] = useState(false);
   const [betfairAccount, setBetfairAccount] = useState(null);
   const [betfairSessionToken, setBetfairSessionToken] = useState(null);
@@ -340,7 +339,7 @@ export function AppProvider({ children }) {
   // ── Emergency Controls ──
   const triggerEmergencyStop = () => {
     setEmergencyStop(true);
-    setMode('research');
+    setMode('demo');
     setBotState(prev => ({ ...prev, running: false, paused: false, botMode: 'stopped' }));
     // Cancel all unmatched orders
     setPaperOrders(prev => prev.map(o =>
@@ -348,15 +347,15 @@ export function AppProvider({ children }) {
         ? { ...o, status: 'cancelled', cancel_reason: 'Emergency stop activated', remaining_size: 0 }
         : o
     ));
-    addAuditLog('Emergency Stop Activated', 'emergency', 'critical', 'Emergency stop triggered. Bot stopped. Live mode disabled. All unmatched orders cancelled.', { reason: 'Manual emergency stop' });
+    addAuditLog('Emergency Stop Activated', 'emergency', 'critical', 'Emergency stop triggered. Bot stopped. Reverted to demo mode. All unmatched orders cancelled.', { reason: 'Manual emergency stop' });
     addToBotActivity('Emergency stop activated', 'All bot activity halted, unmatched orders cancelled');
     setNotifications(prev => prev + 1);
   };
 
   const clearEmergencyStop = () => {
     setEmergencyStop(false);
-    addAuditLog('Emergency Stop Cleared', 'emergency', 'info', 'Emergency stop cleared. App returned to research mode.');
-    addToBotActivity('Emergency stop cleared', 'System returned to research mode');
+    addAuditLog('Emergency Stop Cleared', 'emergency', 'info', 'Emergency stop cleared. App returned to demo mode.');
+    addToBotActivity('Emergency stop cleared', 'System returned to demo mode');
   };
 
   const cancelUnmatchedOrders = () => {
@@ -388,9 +387,9 @@ export function AppProvider({ children }) {
 
   const forcePaperOnly = () => {
     setSettings(prev => ({ ...prev, forcedPaperOnlyMode: true, liveTradingEnabled: false }));
-    setMode('paper');
-    addAuditLog('Forced Paper-Only Mode', 'mode', 'warning', 'Forced paper-only mode activated. Live trading disabled.');
-    addToBotActivity('Paper-only mode forced', 'Live trading disabled system-wide');
+    setMode('demo');
+    addAuditLog('Forced Demo Mode', 'mode', 'warning', 'Forced demo mode activated. Live trading disabled.');
+    addToBotActivity('Demo mode forced', 'Live trading disabled system-wide');
   };
 
   const resetAllPaperTrading = async () => {
@@ -445,11 +444,10 @@ export function AppProvider({ children }) {
 
   // ── Mode Management ──
   const changeMode = (newMode) => {
-    if (newMode === 'live_locked') return;
     if (emergencyStop) return;
-    if (settings.forcedPaperOnlyMode && newMode !== 'paper' && newMode !== 'research') return;
+    if (newMode === 'live' && (settings.forcedPaperOnlyMode || !apiConnected)) return;
     setMode(newMode);
-    const label = newMode === 'research' ? 'Research' : newMode === 'paper' ? 'Paper Trading' : 'Live';
+    const label = newMode === 'live' ? 'Live' : 'Demo';
     addAuditLog('Mode Changed', 'mode', 'info', `Switched to ${label} mode`);
   };
 
@@ -601,7 +599,7 @@ export function AppProvider({ children }) {
   const startBot = () => {
     if (emergencyStop) return;
     if (settings.forcedPaperOnlyMode) {
-      setMode('paper');
+      setMode('demo');
     }
     setBotState(prev => ({ ...prev, running: true, paused: false, nextScanCountdown: 1, botMode: 'paper_scanning' }));
     addAuditLog('Paper Scanner Started', 'mode', 'info', 'Paper scanner started. Auto scanning, signal detection, and paper order creation enabled.');
@@ -693,7 +691,7 @@ export function AppProvider({ children }) {
   const runBotCycleRef = useRef(() => {});
   runBotCycleRef.current = () => {
     const s = stateRef.current;
-    if (s.emergencyStop || (s.mode !== 'paper' && s.mode !== 'live_locked')) return;
+    if (s.emergencyStop || (s.mode !== 'demo' && s.mode !== 'live')) return;
 
     const cycleNum = s.botState.cycleNumber + 1;
     const now = new Date().toISOString();
@@ -890,7 +888,7 @@ export function AppProvider({ children }) {
 
   // ── Bot Cycle Interval ──
   useEffect(() => {
-    if (!botState.running || emergencyStop || (mode !== 'paper' && mode !== 'live_locked')) return;
+    if (!botState.running || emergencyStop || (mode !== 'demo' && mode !== 'live')) return;
     const intervalMs = (botSettings.scanIntervalSeconds || 10) * 1000;
 
     const initialDelay = setTimeout(() => { runBotCycleRef.current(); }, 500);
@@ -901,7 +899,7 @@ export function AppProvider({ children }) {
 
   // ── Countdown Timer ──
   useEffect(() => {
-    if (!botState.running || emergencyStop || (mode !== 'paper' && mode !== 'live_locked')) return;
+    if (!botState.running || emergencyStop || (mode !== 'demo' && mode !== 'live')) return;
     setBotState(prev => ({ ...prev, nextScanCountdown: botSettings.scanIntervalSeconds || 10 }));
     const timer = setInterval(() => {
       setBotState(prev => ({ ...prev, nextScanCountdown: Math.max(0, prev.nextScanCountdown - 1) }));
@@ -916,7 +914,6 @@ export function AppProvider({ children }) {
       setBetfairConnection(prev => ({ ...prev, dataFresh: false }));
       return;
     }
-    setDemoMode(false);
     setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected' }));
     if (!betfairSessionToken) return;
 
@@ -952,7 +949,7 @@ export function AppProvider({ children }) {
 
   const value = {
     mode, changeMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
-    demoMode, setDemoMode, beginnerMode, setBeginnerMode,
+    demoMode,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     betfairConnection, updateBetfairConnection, testBetfairConnection,

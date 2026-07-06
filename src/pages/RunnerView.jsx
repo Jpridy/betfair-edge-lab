@@ -107,7 +107,7 @@ export default function RunnerView() {
   const volatility = Math.sqrt(priceHistory.reduce((sum, p, i, arr) => i > 0 ? sum + Math.pow(p.price - arr[i-1].price, 2) : 0, 0) / priceHistory.length);
 
   const handleCreatePaperOrder = () => {
-    if (emergencyStop || mode === 'live_locked') return;
+    if (emergencyStop || mode === 'live') return;
     const price = paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
     const order = {
       strategyName: paperForm.strategy,

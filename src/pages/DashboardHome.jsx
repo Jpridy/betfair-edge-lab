@@ -37,7 +37,7 @@ function QuickAction({ to, icon: Icon, label, sub, accent }) {
 }
 
 export default function DashboardHome() {
-  const { mode, emergencyStop, botState, beginnerMode } = useApp();
+  const { mode, emergencyStop, botState } = useApp();
 
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
@@ -45,10 +45,8 @@ export default function DashboardHome() {
   let nextAction = null;
   if (emergencyStop) {
     nextAction = { text: 'Emergency stop is active. Clear it from the Risk Manager to resume.', link: '/risk', linkText: 'Go to Risk Manager' };
-  } else if (!botState.running && mode !== 'paper') {
-    nextAction = { text: 'Switch to Paper mode and start the bot from the Bot Control Centre.', link: '/bot-control', linkText: 'Go to Bot Control' };
   } else if (!botState.running) {
-    nextAction = { text: 'The bot is stopped. Start it to begin scanning and paper trading.', link: '/bot-control', linkText: 'Start Paper Bot' };
+    nextAction = { text: 'The bot is stopped. Start it to begin scanning and trading.', link: '/bot-control', linkText: 'Start Bot' };
   } else if (isPaused) {
     nextAction = { text: 'The bot is paused. It is still scanning but not placing new paper orders.', link: '/bot-control', linkText: 'Resume Bot' };
   } else if (isRunning) {
@@ -58,16 +56,14 @@ export default function DashboardHome() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Welcome banner */}
-      {beginnerMode && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-chart-3/20 bg-chart-3/5 px-4 py-3">
+      <div className="flex items-start gap-2.5 rounded-xl border border-chart-3/20 bg-chart-3/5 px-4 py-3">
           <Info className="h-4 w-4 text-chart-3 shrink-0 mt-0.5" />
           <div className="text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">Betfair Edge Lab — Strategy Validation System.</span>{' '}
             All trades are <span className="text-chart-1 font-medium">simulated paper trades</span>. No strategy goes live until it passes 200+ settled trades, positive CLV, profit factor &gt; 1.20, and admin review.
             Start at the <Link to="/scanner" className="text-chart-3 hover:underline">Market Scanner</Link>, then flow through Runner View → Paper Order → Orders → Analytics.
           </div>
-        </div>
-      )}
+      </div>
 
       {/* Hero */}
       <DashboardHero />

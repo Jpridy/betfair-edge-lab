@@ -39,7 +39,7 @@ export default function BotStatusCard() {
             <div className={cn('text-2xl font-bold', statusColor)}>{statusLabel}</div>
             <div className="text-xs text-muted-foreground">
               {emergencyStop ? 'All activity halted'
-              : isRunning ? `Paper Bot mode · scanning every ${botSettings.scanIntervalSeconds}s`
+              : isRunning ? `${mode === 'live' ? 'Live' : 'Demo'} mode · scanning every ${botSettings.scanIntervalSeconds}s`
               : isPaused ? 'Scanning continues, no new orders'
               : 'Press Start to begin'}
             </div>
@@ -82,7 +82,7 @@ export default function BotStatusCard() {
           <StatusBadge status={botSettings.autoPaperTradingEnabled ? 'ok' : 'neutral'}>
             Auto Paper Trading: {botSettings.autoPaperTradingEnabled ? 'ON' : 'OFF'}
           </StatusBadge>
-          <StatusBadge status="danger">Live Trading: LOCKED</StatusBadge>
+          <StatusBadge status={mode === 'live' ? 'danger' : 'neutral'}>Live Trading: {mode === 'live' ? 'ACTIVE' : 'LOCKED'}</StatusBadge>
         </div>
       </div>
     </Panel>

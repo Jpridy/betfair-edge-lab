@@ -9,11 +9,10 @@
     "botMode": {
       "type": "string",
       "enum": [
-        "research",
-        "paper",
-        "live_locked"
+        "demo",
+        "live"
       ],
-      "default": "research"
+      "default": "demo"
     },
     "scanIntervalSeconds": {
       "type": "number",

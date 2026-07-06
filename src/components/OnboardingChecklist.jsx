@@ -10,9 +10,9 @@ export default function OnboardingChecklist() {
 
   const steps = [
     {
-      label: 'Choose Paper Bot Mode',
-      detail: 'Switch from Research to Paper Bot mode',
-      done: mode === 'paper',
+      label: 'Choose Demo Mode',
+      detail: 'Demo mode for paper trading with simulated data',
+      done: mode === 'demo',
       link: '/bot-control',
     },
     {

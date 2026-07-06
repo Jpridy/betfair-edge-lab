@@ -40,7 +40,7 @@ export default function RiskManager() {
     addAuditLog('Disable Live Trading', 'emergency', 'critical', 'Risk Manager: live trading disabled from Risk Manager panel');
   };
   const handleForcePaperOnly = () => {
-    updateSettings({ forcedPaperOnlyMode: true, liveTradingEnabled: false, mode: 'paper' });
+    updateSettings({ forcedPaperOnlyMode: true, liveTradingEnabled: false, mode: 'demo' });
     addAuditLog('Force Paper-Only Mode', 'emergency', 'critical', 'Risk Manager: forced paper-only mode activated');
   };
 

@@ -36,7 +36,7 @@ export default function BotSyncControls() {
               <div className="text-xs text-muted-foreground">{passedChecks}/{connectionChecks.length} checks passed</div>
             </div>
           </div>
-          <StatusBadge status={mode === 'live_locked' ? 'warning' : mode === 'paper' ? 'info' : 'neutral'}>{mode?.toUpperCase()}</StatusBadge>
+          <StatusBadge status={mode === 'live' ? 'warning' : 'info'}>{mode?.toUpperCase()}</StatusBadge>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">

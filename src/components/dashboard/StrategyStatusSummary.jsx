@@ -1,9 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
-import { getAuditData } from '@/lib/strategyAuditData';
+import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, getPaperProgress } from '@/lib/strategyValidation';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 import { ArrowRight } from 'lucide-react';
 
 const LIGHT_CONFIG = {
@@ -14,10 +13,10 @@ const LIGHT_CONFIG = {
 };
 
 export default function StrategyStatusSummary() {
-  const { settings } = useApp();
+  const { settings, strategyLibrary, paperOrders, strategyStats } = useApp();
 
-  const strategies = DEMO_STRATEGY_LIBRARY.map(s => {
-    const audit = getAuditData(s.name);
+  const strategies = (strategyLibrary || []).map(s => {
+    const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
     const status = computeTrafficLight(s, audit, settings);
     const progress = getPaperProgress(audit);
     return { ...s, audit, status, progress };

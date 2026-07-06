@@ -22,10 +22,10 @@ export default function StatusStrip() {
     },
     {
       label: 'Mode',
-      value: emergencyStop ? 'Emergency' : mode === 'paper' ? 'Paper Bot' : mode === 'research' ? 'Research' : 'Live Locked',
+      value: emergencyStop ? 'Emergency' : mode === 'live' ? 'Live' : 'Demo',
       icon: null,
-      color: emergencyStop ? 'text-chart-5' : mode === 'paper' ? 'text-chart-4' : 'text-muted-foreground',
-      dot: emergencyStop ? 'bg-chart-5' : mode === 'paper' ? 'bg-chart-4' : 'bg-muted-foreground',
+      color: emergencyStop ? 'text-chart-5' : mode === 'live' ? 'text-chart-5' : 'text-chart-3',
+      dot: emergencyStop ? 'bg-chart-5' : mode === 'live' ? 'bg-chart-5' : 'bg-chart-3',
     },
     {
       label: 'Data',

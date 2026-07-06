@@ -40,7 +40,7 @@ export default function Layout() {
           <div className="bg-destructive/20 border-b border-destructive/50 px-4 md:px-6 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-destructive font-bold text-xs md:text-sm">
               <AlertOctagon className="h-4 w-4 animate-pulse shrink-0" />
-              <span>EMERGENCY STOP ACTIVE — All trading halted. Live mode disabled. Open paper orders cancelled.</span>
+              <span>EMERGENCY STOP ACTIVE — All trading halted. Reverted to demo mode. Open paper orders cancelled.</span>
             </div>
             <Button size="sm" variant="outline" onClick={clearEmergencyStop} className="h-7 text-xs border-destructive/50 text-destructive hover:bg-destructive/10 shrink-0 ml-3">
               Clear

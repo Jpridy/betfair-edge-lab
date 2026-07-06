@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, HelpCircle, Menu, GraduationCap, Cog } from 'lucide-react';
+import { Bell, HelpCircle, Menu, FlaskConical, Zap } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
 export default function TopBar({ title, subtitle, onMenuClick }) {
-  const { apiConnected, demoMode, jurisdiction, setJurisdiction, notifications, mode, emergencyStop, beginnerMode, setBeginnerMode } = useApp();
+  const { apiConnected, demoMode, jurisdiction, setJurisdiction, notifications, mode, emergencyStop, changeMode } = useApp();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -14,7 +14,7 @@ export default function TopBar({ title, subtitle, onMenuClick }) {
     return () => clearInterval(timer);
   }, []);
 
-  const modeLabel = emergencyStop ? 'EMERGENCY STOP' : mode === 'paper' ? 'PAPER BOT' : mode === 'research' ? 'RESEARCH' : 'LIVE LOCKED';
+  const modeLabel = emergencyStop ? 'EMERGENCY STOP' : mode === 'live' ? 'LIVE' : 'DEMO';
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-card border-b border-border flex items-center justify-between px-4 md:px-6">
@@ -37,9 +37,8 @@ export default function TopBar({ title, subtitle, onMenuClick }) {
         <Badge variant="outline" className={cn(
           'text-xs font-bold border',
           emergencyStop ? 'bg-destructive/10 text-destructive border-destructive/30'
-          : mode === 'paper' ? 'bg-chart-4/10 text-chart-4 border-chart-4/30'
-          : mode === 'research' ? 'bg-muted text-muted-foreground border-border'
-          : 'bg-destructive/10 text-destructive border-destructive/30'
+          : mode === 'live' ? 'bg-chart-5/10 text-chart-5 border-chart-5/30'
+          : 'bg-chart-3/10 text-chart-3 border-chart-3/30'
         )}>
           {modeLabel}
         </Badge>
@@ -49,15 +48,18 @@ export default function TopBar({ title, subtitle, onMenuClick }) {
         </div>
 
         <button
-          onClick={() => setBeginnerMode(!beginnerMode)}
+          onClick={() => changeMode(mode === 'demo' ? 'live' : 'demo')}
+          disabled={!apiConnected && mode === 'demo'}
           className={cn(
             'h-8 px-3 rounded-md text-xs font-bold border flex items-center gap-1.5 transition-colors shrink-0',
-            beginnerMode
-              ? 'bg-chart-3/10 text-chart-3 border-chart-3/30'
-              : 'bg-muted text-muted-foreground border-border'
+            mode === 'live'
+              ? 'bg-chart-5/10 text-chart-5 border-chart-5/30'
+              : 'bg-chart-3/10 text-chart-3 border-chart-3/30',
+            !apiConnected && mode === 'demo' && 'opacity-50 cursor-not-allowed'
           )}
+          title={mode === 'demo' && !apiConnected ? 'Connect Betfair API in Settings to enable Live mode' : `Switch to ${mode === 'demo' ? 'Live' : 'Demo'} mode`}
         >
-          {beginnerMode ? <><GraduationCap className="h-3.5 w-3.5" /> Beginner</> : <><Cog className="h-3.5 w-3.5" /> Advanced</>}
+          {mode === 'live' ? <><Zap className="h-3.5 w-3.5" /> LIVE</> : <><FlaskConical className="h-3.5 w-3.5" /> DEMO</>}
         </button>
         <Select value={jurisdiction} onValueChange={setJurisdiction}>
           <SelectTrigger className="h-8 w-[140px] md:w-[180px] text-xs hidden sm:flex">

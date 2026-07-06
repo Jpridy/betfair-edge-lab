@@ -13,7 +13,7 @@ export default function DashboardHero() {
 
   const statusText = emergencyStop ? 'Emergency Stop' : isRunning ? 'Bot Running' : isPaused ? 'Bot Paused' : 'Bot Stopped';
   const dotColor = emergencyStop ? 'bg-chart-5' : isRunning ? 'bg-chart-1' : isPaused ? 'bg-chart-4' : 'bg-muted-foreground';
-  const modeLabel = mode === 'paper' ? 'Paper Trading' : mode === 'research' ? 'Research' : 'Live Locked';
+  const modeLabel = mode === 'live' ? 'Live Mode' : 'Demo Mode';
 
   const stats = [
     { label: "Today's P/L", value: `${positive ? '+' : ''}$${Math.abs(todayPL).toFixed(2)}`, color: positive ? 'text-chart-1' : 'text-chart-5' },

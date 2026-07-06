@@ -5,11 +5,10 @@
     "mode": {
       "type": "string",
       "enum": [
-        "research",
-        "paper",
-        "live_locked"
+        "demo",
+        "live"
       ],
-      "default": "paper"
+      "default": "demo"
     },
     "defaultCommissionRate": {
       "type": "number",

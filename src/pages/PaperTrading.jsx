@@ -32,7 +32,7 @@ export default function PaperTrading() {
 
   const handleSubmit = () => {
     if (!form.runnerId || !selectedRunner) return;
-    if (emergencyStop || mode === 'live_locked') return;
+    if (emergencyStop || mode === 'live') return;
 
     // Risk checks
     const riskChecks = [];

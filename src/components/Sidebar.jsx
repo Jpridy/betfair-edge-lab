@@ -70,7 +70,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
           <div className="bg-sidebar-accent/50 rounded-lg p-3 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {mode === 'paper' ? 'Paper Bot' : mode === 'research' ? 'Research' : 'Live Locked'}
+                {mode === 'live' ? 'Live Mode' : 'Demo Mode'}
               </span>
               {emergencyStop && <span className="text-[10px] font-bold text-destructive animate-pulse">STOPPED</span>}
             </div>
