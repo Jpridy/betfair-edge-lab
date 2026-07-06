@@ -238,11 +238,9 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     failures.push({ field: 'duplicate', reason: 'Duplicate order already exists for this strategy/market/runner' });
   }
 
-  // ── Data Freshness Check ──
-  if (connectionState) {
-    if (!connectionState.dataFresh) {
-      failures.push({ field: 'dataFreshness', reason: 'Data feed is stale — refusing to place orders on stale data' });
-    }
+  // ── Data Freshness Check (live mode only) ──
+  if (connectionState?.apiConnected && !connectionState.dataFresh) {
+    failures.push({ field: 'dataFreshness', reason: 'Data feed is stale — refusing to place orders on stale data' });
   }
 
   // ── Betfair Connection Check (live mode only) ──
