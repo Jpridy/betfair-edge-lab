@@ -125,12 +125,206 @@ function isBz2(data) {
   return data.length >= 2 && data[0] === 0x42 && data[1] === 0x5a;
 }
 
-// BZ2 decompression — uses esm.sh hosted bzip2 library
-async function decompressBz2(data) {
-  const bzip2Module = await import('https://esm.sh/bzip2@0.0.1');
-  const bzip2 = bzip2Module.default || bzip2Module;
-  const bits = bzip2.array(data);
-  return bzip2.simple(bits);
+// Inlined bzip2 decompressor (antimatter15/bzip2.js, MIT license)
+// Returns decompressed data as Uint8Array
+function decompressBz2(data) {
+  var BITMASK = [0, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF];
+  var bit = 0, byteIdx = 0;
+  function bits(n) {
+    var result = 0;
+    while (n > 0) {
+      var left = 8 - bit;
+      if (n >= left) {
+        result <<= left;
+        result |= (BITMASK[left] & data[byteIdx++]);
+        bit = 0;
+        n -= left;
+      } else {
+        result <<= n;
+        result |= ((data[byteIdx] & (BITMASK[n] << (8 - n - bit))) >> (8 - n - bit));
+        bit += n;
+        n = 0;
+      }
+    }
+    return result;
+  }
+
+  // Header
+  if (bits(24) !== 4348520) throw new Error('No bzip2 magic number');
+  var size = bits(8) - 48;
+  if (size < 1 || size > 9) throw new Error('Invalid bzip2 block size');
+
+  var MAX_HUFCODE_BITS = 20;
+  var MAX_SYMBOLS = 258;
+  var SYMBOL_RUNA = 0;
+  var SYMBOL_RUNB = 1;
+  var GROUP_SIZE = 50;
+  var bufsize = 100000 * size;
+  var allBuf = [];
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    var h = '';
+    for (var hi = 0; hi < 6; hi++) h += bits(8).toString(16);
+    if (h === '177245385090') break; // last block
+    if (h !== '314159265359') throw new Error('Invalid bzip2 block header');
+    bits(32); // CRC
+    if (bits(1)) throw new Error('Unsupported obsolete bzip2 version');
+    var origPtr = bits(24);
+    if (origPtr > bufsize) throw new Error('Initial position larger than buffer');
+
+    var t = bits(16);
+    var symToByte = new Uint8Array(256);
+    var symTotal = 0;
+    for (var i = 0; i < 16; i++) {
+      if (t & (1 << (15 - i))) {
+        var k = bits(16);
+        for (var j = 0; j < 16; j++) {
+          if (k & (1 << (15 - j))) symToByte[symTotal++] = (16 * i) + j;
+        }
+      }
+    }
+
+    var groupCount = bits(3);
+    if (groupCount < 2 || groupCount > 6) throw new Error('Invalid group count');
+    var nSelectors = bits(15);
+    if (nSelectors === 0) throw new Error('No selectors');
+    var mtfSymbol = [];
+    for (var mi = 0; mi < groupCount; mi++) mtfSymbol[mi] = mi;
+    var selectors = new Uint8Array(32768);
+
+    for (var si = 0; si < nSelectors; si++) {
+      for (var sj = 0; bits(1); sj++) if (sj >= groupCount) throw new Error('Selector error');
+      var uc = mtfSymbol[sj];
+      mtfSymbol.splice(sj, 1);
+      mtfSymbol.splice(0, 0, uc);
+      selectors[si] = uc;
+    }
+
+    var symCount = symTotal + 2;
+    var groups = [];
+    for (var gj = 0; gj < groupCount; gj++) {
+      var length = new Uint8Array(MAX_SYMBOLS);
+      var temp = new Uint8Array(MAX_HUFCODE_BITS + 1);
+      t = bits(5);
+      for (var li = 0; li < symCount; li++) {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          if (t < 1 || t > MAX_HUFCODE_BITS) throw new Error('Invalid Huffman code length');
+          if (!bits(1)) break;
+          if (!bits(1)) t++; else t--;
+        }
+        length[li] = t;
+      }
+      var minLen, maxLen;
+      minLen = maxLen = length[0];
+      for (var ci = 1; ci < symCount; ci++) {
+        if (length[ci] > maxLen) maxLen = length[ci];
+        else if (length[ci] < minLen) minLen = length[ci];
+      }
+      var hufGroup = {};
+      hufGroup.permute = new Uint32Array(MAX_SYMBOLS);
+      hufGroup.limit = new Uint32Array(MAX_HUFCODE_BITS + 1);
+      hufGroup.base = new Uint32Array(MAX_HUFCODE_BITS + 1);
+      hufGroup.minLen = minLen;
+      hufGroup.maxLen = maxLen;
+      var base = hufGroup.base.subarray(1);
+      var limit = hufGroup.limit.subarray(1);
+      var pp = 0;
+      for (var bi = minLen; bi <= maxLen; bi++)
+        for (var bt = 0; bt < symCount; bt++)
+          if (length[bt] === bi) hufGroup.permute[pp++] = bt;
+      for (i = minLen; i <= maxLen; i++) temp[i] = limit[i] = 0;
+      for (i = 0; i < symCount; i++) temp[length[i]]++;
+      pp = t = 0;
+      for (i = minLen; i < maxLen; i++) {
+        pp += temp[i];
+        limit[i] = pp - 1;
+        pp <<= 1;
+        base[i + 1] = pp - (t += temp[i]);
+      }
+      limit[maxLen] = pp + temp[maxLen] - 1;
+      base[minLen] = 0;
+      groups[gj] = hufGroup;
+    }
+
+    var byteCount = new Uint32Array(256);
+    for (i = 0; i < 256; i++) mtfSymbol[i] = i;
+    var runPos = 0, count = 0, symCount2 = 0, selector = 0;
+    var buf = new Uint32Array(bufsize);
+    var nextSym;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (!(symCount2--)) {
+        symCount2 = GROUP_SIZE - 1;
+        if (selector >= nSelectors) throw new Error('Too many selectors');
+        hufGroup = groups[selectors[selector++]];
+        base = hufGroup.base.subarray(1);
+        limit = hufGroup.limit.subarray(1);
+      }
+      i = hufGroup.minLen;
+      j = bits(i);
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (i > hufGroup.maxLen) throw new Error('Huffman decode error');
+        if (j <= limit[i]) break;
+        i++;
+        j = (j << 1) | bits(1);
+      }
+      j -= base[i];
+      if (j < 0 || j >= MAX_SYMBOLS) throw new Error('Symbol out of range');
+      nextSym = hufGroup.permute[j];
+      if (nextSym === SYMBOL_RUNA || nextSym === SYMBOL_RUNB) {
+        if (!runPos) { runPos = 1; t = 0; }
+        if (nextSym === SYMBOL_RUNA) t += runPos; else t += 2 * runPos;
+        runPos <<= 1;
+        continue;
+      }
+      if (runPos) {
+        runPos = 0;
+        if (count + t >= bufsize) throw new Error('Buffer overflow');
+        uc = symToByte[mtfSymbol[0]];
+        byteCount[uc] += t;
+        while (t--) buf[count++] = uc;
+      }
+      if (nextSym > symTotal) break;
+      if (count >= bufsize) throw new Error('Buffer overflow');
+      i = nextSym - 1;
+      uc = mtfSymbol[i];
+      mtfSymbol.splice(i, 1);
+      mtfSymbol.splice(0, 0, uc);
+      uc = symToByte[uc];
+      byteCount[uc]++;
+      buf[count++] = uc;
+    }
+
+    if (origPtr < 0 || origPtr >= count) throw new Error('Invalid origPtr');
+    j = 0;
+    for (i = 0; i < 256; i++) { k = j + byteCount[i]; byteCount[i] = j; j = k; }
+    for (i = 0; i < count; i++) { uc = buf[i] & 0xff; buf[byteCount[uc]] |= (i << 8); byteCount[uc]++; }
+
+    var pos = buf[origPtr];
+    var current = pos & 0xff;
+    pos >>= 8;
+    var run = -1;
+    var copies, previous, outbyte;
+
+    while (count) {
+      count--;
+      previous = current;
+      pos = buf[pos];
+      current = pos & 0xff;
+      pos >>= 8;
+      if (run++ === 3) { copies = current; outbyte = previous; current = -1; }
+      else { copies = 1; outbyte = current; }
+      while (copies--) { allBuf.push(outbyte); }
+      if (current !== previous) run = 0;
+    }
+  }
+
+  var result = new Uint8Array(allBuf.length);
+  for (var ri = 0; ri < allBuf.length; ri++) result[ri] = allBuf[ri];
+  return result;
 }
 
 // Extract best back/lay from runner change — handles all Betfair field variants
