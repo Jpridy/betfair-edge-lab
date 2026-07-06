@@ -31,7 +31,12 @@ export async function getBetfairConfig() {
  * endpoints block serverless/cloud IPs).
  */
 export async function connectWithSessionToken(sessionToken) {
-  const res = await base44.functions.invoke('betfairLogin', { sessionToken });
+  let res;
+  try {
+    res = await base44.functions.invoke('betfairLogin', { sessionToken });
+  } catch (err) {
+    throw new Error(err.response?.data?.error || `Connection failed (${err.response?.status || err.message}). Try refreshing the page and pasting a fresh session token.`);
+  }
   const data = res.data;
 
   if (data.status === 'error') {
