@@ -116,8 +116,11 @@ export default function Orders() {
                 <SelectItem value="matched">Matched</SelectItem>
                 <SelectItem value="partially_matched">Partially Matched</SelectItem>
                 <SelectItem value="unmatched">Unmatched</SelectItem>
+                <SelectItem value="settled">Settled</SelectItem>
+                <SelectItem value="lapsed">Lapsed</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
               </SelectContent>
             </Select>
           </div>

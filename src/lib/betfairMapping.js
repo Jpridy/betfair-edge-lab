@@ -311,6 +311,7 @@ export function isOrderOpen(status) {
   return [
     ORDER_STATUSES.PENDING,
     ORDER_STATUSES.EXECUTABLE,
+    ORDER_STATUSES.MATCHED,
     ORDER_STATUSES.UNMATCHED,
     ORDER_STATUSES.PARTIALLY_MATCHED,
   ].includes(status);

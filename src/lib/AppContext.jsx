@@ -141,6 +141,8 @@ export function AppProvider({ children }) {
     maxDrawdown: 0,
     wins: 0,
     losses: 0,
+    roi: 0,
+    strikeRate: 0,
   });
   const [riskStatus] = useState({
     dailyLossLimit: 500, weeklyLossLimit: 2500, maxMarketExposure: 1000,
@@ -282,6 +284,10 @@ export function AppProvider({ children }) {
       if (dd < maxDD) maxDD = dd;
     }
 
+    const totalStake = settled.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
+    const roi = totalStake > 0 ? (totalPL / totalStake) * 100 : 0;
+    const strikeRate = settled.length > 0 ? (wins / settled.length) * 100 : 0;
+
     setBankrollStats(prev => ({
       ...prev,
       bankroll: currentBankroll,
@@ -296,6 +302,8 @@ export function AppProvider({ children }) {
       maxDrawdown: maxDD,
       wins,
       losses,
+      roi,
+      strikeRate,
     }));
   }, [paperOrders, settings.paperBankroll, settings.bankroll]);
 

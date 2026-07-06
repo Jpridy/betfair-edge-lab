@@ -112,9 +112,10 @@ export default function PaperTrading() {
     setShowForm(false);
   };
 
+  const startingBankroll = settings.paperBankroll || settings.bankroll;
   const equityCurve = paperOrders.slice(0, 20).reverse().map((o, i) => ({
     idx: i + 1,
-    equity: 10000 + paperOrders.slice(0, i + 1).reduce((sum, p) => sum + (p.netProfit || 0), 0),
+    equity: startingBankroll + paperOrders.slice(0, i + 1).reduce((sum, p) => sum + (p.netProfit || 0), 0),
   }));
 
   const openOrders = paperOrders.filter(o => o.result === 'pending');
@@ -283,7 +284,7 @@ export default function PaperTrading() {
                 Best Lay: <span className="font-mono text-chart-5">{selectedRunner.bestLayPrice.toFixed(2)}</span> ·
                 Implied Prob: <span className="font-mono">{selectedRunner.impliedProbability.toFixed(1)}%</span> ·
                 Spread: <span className="font-mono">{selectedRunner.spreadTicks || '—'} ticks</span> ·
-                MBR: <span className="font-mono">{(markets.find(m => m.id === form.marketId)?.marketBaseRate * 100).toFixed(1)}%</span>
+                MBR: <span className="font-mono">{((markets.find(m => m.id === form.marketId)?.marketBaseRate || 0) * 100).toFixed(1)}%</span>
               </div>
             )}
             {form.persistenceType === 'PERSIST' && (
