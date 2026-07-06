@@ -4,7 +4,7 @@ import { fetchBetfairMarkets } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
-import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY, BETFAIR_MARKETS, BETFAIR_RUNNERS } from '@/lib/demoData';
 
 const AppContext = createContext(null);
 
@@ -122,8 +122,8 @@ export function AppProvider({ children }) {
 
   // ── Data State — loaded from database, no demo fallback ──
   const [dataLoading, setDataLoading] = useState(true);
-  const [markets, setMarkets] = useState([]);
-  const [runners, setRunners] = useState([]);
+  const [markets, setMarkets] = useState(BETFAIR_MARKETS);
+  const [runners, setRunners] = useState(BETFAIR_RUNNERS);
   const [paperOrders, setPaperOrders] = useState([]);
   const [strategySignals, setStrategySignals] = useState([]);
   const [bankrollStats, setBankrollStats] = useState({
