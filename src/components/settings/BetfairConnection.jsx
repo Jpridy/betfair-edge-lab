@@ -4,8 +4,8 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink } from 'lucide-react';
-import { connectToBetfair } from '@/lib/betfairApi';
+import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink, KeyRound } from 'lucide-react';
+import { connectToBetfair, connectWithSessionToken } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
   const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, setMode, addAuditLog } = useApp();
@@ -13,6 +13,7 @@ export default function BetfairConnection() {
   const [error, setError] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [sessionTokenInput, setSessionTokenInput] = useState('');
 
   const handleQuickConnect = async () => {
     setLoading(true);
@@ -21,7 +22,7 @@ export default function BetfairConnection() {
       const account = await connectToBetfair();
       finishConnect(account, '(stored credentials)');
     } catch (err) {
-      setError(err.message || 'Quick connect failed — try entering your credentials manually below');
+      setError(err.message || 'Quick connect failed — try using a session token below');
       addAuditLog('Betfair Quick Connect Failed', 'api', 'error', err.message || 'Unknown error');
     } finally {
       setLoading(false);
@@ -38,11 +39,29 @@ export default function BetfairConnection() {
     try {
       const account = await connectToBetfair(usernameInput.trim(), passwordInput);
       finishConnect(account, usernameInput.trim());
-      finishConnect(account, usernameInput.trim());
       setPasswordInput('');
     } catch (err) {
       setError(err.message || 'Connection failed');
       addAuditLog('Betfair Login Failed', 'api', 'error', err.message || 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSessionTokenConnect = async () => {
+    if (!sessionTokenInput.trim()) {
+      setError('Please paste your Betfair session token');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const account = await connectWithSessionToken(sessionTokenInput.trim());
+      finishConnect(account, '(session token)');
+      setSessionTokenInput('');
+    } catch (err) {
+      setError(err.message || 'Session token connection failed');
+      addAuditLog('Betfair Session Token Failed', 'api', 'error', err.message || 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -75,6 +94,7 @@ export default function BetfairConnection() {
     setBetfairSessionToken(null);
     setUsernameInput('');
     setPasswordInput('');
+    setSessionTokenInput('');
     addAuditLog('Betfair Account Unlinked', 'api', 'warning', 'Betfair account disconnected');
   };
 
@@ -86,7 +106,7 @@ export default function BetfairConnection() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold text-foreground">Connect Your Betfair Account</div>
-                <div className="text-xs text-muted-foreground mt-1">Log in with your Betfair username and password.</div>
+                <div className="text-xs text-muted-foreground mt-1">Use a session token from your browser for the most reliable connection.</div>
               </div>
               <StatusBadge status="warning">Not Connected</StatusBadge>
             </div>
@@ -101,77 +121,67 @@ export default function BetfairConnection() {
               </div>
             )}
 
-            <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Auth Method</span>
-                <span className="font-mono text-foreground">Username &amp; Password</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Required Secret</span>
-                <span className="font-mono text-foreground">BETFAIR_APP_KEY</span>
-              </div>
-            </div>
-
+            {/* Session Token Method — recommended */}
             <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="bf-username" className="text-xs font-medium">Betfair Username</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="bf-username"
-                    type="text"
-                    placeholder="Your Betfair username"
-                    value={usernameInput}
-                    onChange={(e) => setUsernameInput(e.target.value)}
-                    className="pl-9 text-sm"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
-                  />
-                </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <KeyRound className="h-3.5 w-3.5 text-chart-1" />
+                Session Token (Recommended)
               </div>
+
+              <div className="bg-chart-1/5 border border-chart-1/20 rounded-lg p-3 text-xs text-muted-foreground space-y-2">
+                <div className="font-semibold text-foreground">How to get your session token:</div>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Log into <a href="https://www.betfair.com.au" target="_blank" rel="noopener noreferrer" className="text-chart-3 underline inline-flex items-center gap-0.5">betfair.com.au <ExternalLink className="h-3 w-3" /></a> in your browser</li>
+                  <li>After logging in, open a new tab and visit <a href="https://identitysso.betfair.com/api/keepAlive" target="_blank" rel="noopener noreferrer" className="text-chart-3 underline inline-flex items-center gap-0.5">this link <ExternalLink className="h-3 w-3" /></a></li>
+                  <li>Copy the <span className="font-mono text-foreground">token</span> value from the JSON response</li>
+                  <li>Paste it below</li>
+                </ol>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="bf-password" className="text-xs font-medium">Betfair Password</Label>
+                <Label htmlFor="bf-session-token" className="text-xs font-medium">Betfair Session Token</Label>
                 <Input
-                  id="bf-password"
-                  type="password"
-                  placeholder="Your Betfair password"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="text-sm"
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
+                  id="bf-session-token"
+                  type="text"
+                  placeholder="Paste your session token here"
+                  value={sessionTokenInput}
+                  onChange={(e) => setSessionTokenInput(e.target.value)}
+                  className="text-sm font-mono"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSessionTokenConnect(); }}
                 />
               </div>
+
+              <Button onClick={handleSessionTokenConnect} disabled={loading || !sessionTokenInput.trim()} variant="default" className="w-full h-11 font-medium">
+                {loading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
+                ) : (
+                  <><KeyRound className="h-4 w-4 mr-2" /> Connect with Session Token</>
+                )}
+              </Button>
             </div>
+
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <div className="flex-1 border-t border-border" />
+              <span>OR TRY STORED CREDENTIALS</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            <Button onClick={handleQuickConnect} disabled={loading} variant="outline" className="w-full h-11 font-medium">
+              {loading ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
+              ) : (
+                <><Link2 className="h-4 w-4 mr-2" /> Quick Connect (Stored Credentials)</>
+              )}
+            </Button>
 
             <div className="bg-muted/20 border border-border rounded-lg p-3 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-chart-4" />
                 <div>
-                  Login is handled securely through a Cloudflare Worker proxy that bypasses Betfair's bot protection. Your credentials are never stored. If the connection fails, ensure the <span className="font-mono text-foreground">BETFAIR_PROXY_URL</span> secret is set to your deployed Worker URL.
+                  Betfair blocks automated login from serverless/cloud IPs. The session token method is the most reliable — it uses your browser's authenticated session. Session tokens expire periodically; just grab a fresh one from the link above when that happens.
                 </div>
               </div>
             </div>
-
-            <Button onClick={handleQuickConnect} disabled={loading} variant="default" className="w-full h-11 font-medium">
-              {loading ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting to Betfair...</>
-              ) : (
-                <><Link2 className="h-4 w-4 mr-2" /> Quick Connect (Saved Credentials)</>
-              )}
-            </Button>
-
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <div className="flex-1 border-t border-border" />
-              <span>OR ENTER MANUALLY</span>
-              <div className="flex-1 border-t border-border" />
-            </div>
-
-            <Button onClick={handleConnect} disabled={loading || !usernameInput.trim() || !passwordInput.trim()} variant="outline" className="w-full h-11 font-medium">
-              {loading ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
-              ) : (
-                <><Link2 className="h-4 w-4 mr-2" /> Connect with Entered Credentials</>
-              )}
-            </Button>
           </>
         ) : (
           <>

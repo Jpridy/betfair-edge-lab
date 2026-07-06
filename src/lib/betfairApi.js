@@ -25,6 +25,37 @@ export async function getBetfairConfig() {
 }
 
 /**
+ * Connect to Betfair using a session token obtained from the browser.
+ * The user logs into Betfair in their browser, retrieves their session token,
+ * and pastes it here. This bypasses the login flow entirely (Betfair's login
+ * endpoints block serverless/cloud IPs).
+ */
+export async function connectWithSessionToken(sessionToken) {
+  const res = await base44.functions.invoke('betfairLogin', { sessionToken });
+  const data = res.data;
+
+  if (data.status === 'error') {
+    throw new Error(data.error);
+  }
+
+  _config = data;
+
+  return {
+    sessionToken: data.sessionToken,
+    jurisdiction: data.jurisdiction,
+    balance: data.account?.balance ?? null,
+    exposure: data.account?.exposure ?? null,
+    exposureLimit: data.account?.exposureLimit ?? null,
+    discountRate: data.account?.discountRate ?? null,
+    pointsBalance: data.account?.pointsBalance ?? null,
+    currency: data.account?.currency ?? null,
+    firstName: data.account?.firstName ?? null,
+    lastName: data.account?.lastName ?? null,
+    locale: data.account?.locale ?? null,
+  };
+}
+
+/**
  * Connect to Betfair by logging in through the backend (which uses the proxy).
  * Returns account info + session token on success, throws on failure.
  */

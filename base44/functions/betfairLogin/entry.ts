@@ -21,23 +21,6 @@ Deno.serve(async (req) => {
     let body;
     try { body = await req.json(); } catch { body = {}; }
 
-    const username = body?.username || envUsername;
-    const password = body?.password || envPassword;
-
-    // No login requested — return config only
-    if (!username || !password) {
-      return Response.json(config);
-    }
-
-    // Login requested — need proxy to bypass Cloudflare
-    if (!proxyUrl) {
-      return Response.json({
-        ...config,
-        status: 'error',
-        error: 'BETFAIR_PROXY_URL not configured. All Betfair endpoints are behind Cloudflare WAF and blocked from serverless IPs. Deploy a proxy (Cloudflare Worker recommended) and set the URL as the BETFAIR_PROXY_URL secret.',
-      });
-    }
-
     // Helper: call Betfair through the proxy
     async function callBetfair(targetUrl, headers, bodyStr) {
       const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
@@ -49,8 +32,82 @@ Deno.serve(async (req) => {
       return res;
     }
 
-    // Step 1: Login
-    const loginUrl = 'https://identitysso.betfair.com/api/login';
+    // Helper: validate a session token by fetching account data
+    async function validateSession(sessionToken) {
+      const accountHeaders = {
+        'X-Authentication': sessionToken,
+        'X-Application': appKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+
+      let funds = null;
+      try {
+        const fundsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, accountHeaders, '{}');
+        if (fundsRes.ok) funds = await fundsRes.json();
+      } catch {}
+
+      let details = null;
+      try {
+        const detailsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, accountHeaders, '{}');
+        if (detailsRes.ok) details = await detailsRes.json();
+      } catch {}
+
+      return { funds, details };
+    }
+
+    // ─── Session token mode ───
+    // User provides a session token obtained from their browser after logging into Betfair.
+    // This bypasses the login flow entirely (Betfair's login endpoints block serverless/cloud IPs).
+    if (body?.sessionToken) {
+      if (!proxyUrl) {
+        return Response.json({ ...config, status: 'error', error: 'BETFAIR_PROXY_URL not configured. Set the proxy URL secret to route API calls through your Cloudflare Worker.' });
+      }
+
+      const { funds, details } = await validateSession(body.sessionToken);
+
+      // If funds is null, the token is likely invalid/expired
+      if (!funds && !details) {
+        return Response.json({ ...config, status: 'error', error: 'Session token is invalid or expired. Log into Betfair in your browser and get a fresh session token.' });
+      }
+
+      return Response.json({
+        ...config,
+        status: 'success',
+        sessionToken: body.sessionToken,
+        account: {
+          balance: funds?.availableToBetBalance ?? null,
+          exposure: funds?.exposure ?? null,
+          exposureLimit: funds?.exposureLimit ?? null,
+          discountRate: funds?.discountRate ?? null,
+          pointsBalance: funds?.pointsBalance ?? null,
+          currency: details?.currencyCode ?? null,
+          firstName: details?.firstName ?? null,
+          lastName: details?.lastName ?? null,
+          locale: details?.localeCode ?? null,
+        },
+      });
+    }
+
+    // ─── Username/password login mode ───
+    const username = body?.username || envUsername;
+    const password = body?.password || envPassword;
+
+    // No login requested — return config only
+    if (!username || !password) {
+      return Response.json(config);
+    }
+
+    if (!proxyUrl) {
+      return Response.json({
+        ...config,
+        status: 'error',
+        error: 'BETFAIR_PROXY_URL not configured. Deploy a Cloudflare Worker proxy and set the URL as the BETFAIR_PROXY_URL secret.',
+      });
+    }
+
+    // Try certlogin endpoint (not behind WAF bot protection)
+    const loginUrl = 'https://identitysso-cert.betfair.com/api/certlogin';
     const loginBody = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
     const loginHeaders = {
       'X-Application': appKey,
@@ -61,40 +118,33 @@ Deno.serve(async (req) => {
     const loginRes = await callBetfair(loginUrl, loginHeaders, loginBody);
     const loginText = await loginRes.text();
 
-    if (loginText.includes('<!DOCTYPE') || loginText.includes('<html')) {
-      return Response.json({ ...config, status: 'error', error: 'Betfair login blocked by Cloudflare even through proxy. Ensure your proxy runs on a non-blocked network (Cloudflare Workers recommended).' });
-    }
-
     let loginData;
     try { loginData = JSON.parse(loginText); } catch {
-      return Response.json({ ...config, status: 'error', error: `Betfair login returned unexpected response (HTTP ${loginRes.status}): ${loginText.substring(0, 200)}` });
+      return Response.json({
+        ...config,
+        status: 'error',
+        error: `Login endpoint returned non-JSON (HTTP ${loginRes.status}). Betfair may require certificate-based authentication for automated login. Use a session token instead — log into Betfair in your browser, then paste your session token into the app.`,
+      });
+    }
+
+    if (loginData.loginStatus && loginData.loginStatus !== 'SUCCESS') {
+      return Response.json({
+        ...config,
+        status: 'error',
+        error: `Betfair login: ${loginData.loginStatus}. Automated username/password login may require a client certificate. Use a session token instead — log into Betfair in your browser, then paste your session token into the app.`,
+      });
     }
 
     if (loginData.status !== 'SUCCESS' || !loginData.token) {
-      return Response.json({ ...config, status: 'error', error: `Betfair login failed: ${loginData.error || 'Invalid credentials'}` });
+      return Response.json({
+        ...config,
+        status: 'error',
+        error: `Betfair login failed: ${loginData.error || loginData.loginStatus || 'Unknown error'}. Use a session token instead — log into Betfair in your browser, then paste your session token into the app.`,
+      });
     }
 
     const sessionToken = loginData.token;
-
-    // Step 2: Get account funds and details
-    const accountHeaders = {
-      'X-Authentication': sessionToken,
-      'X-Application': appKey,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    let funds = null;
-    try {
-      const fundsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, accountHeaders, '{}');
-      if (fundsRes.ok) funds = await fundsRes.json();
-    } catch {}
-
-    let details = null;
-    try {
-      const detailsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, accountHeaders, '{}');
-      if (detailsRes.ok) details = await detailsRes.json();
-    } catch {}
+    const { funds, details } = await validateSession(sessionToken);
 
     return Response.json({
       ...config,
