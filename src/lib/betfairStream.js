@@ -83,6 +83,10 @@ export class BetfairStreamClient {
       this._handleStatus(data);
     } else if (data.op === 'mcm') {
       this._handleMarketChange(data);
+    } else if (data.op === 'diag') {
+      // Diagnostic message from the Cloudflare Worker — surface it for debugging
+      this._lastDiag = data.message;
+      if (this.onError) this.onError(`[worker] ${data.message}`);
     }
   }
 
@@ -347,14 +351,20 @@ export class BetfairStreamClient {
 
   _onClose(event) {
     if (this.onStatusChange) this.onStatusChange('disconnected');
-    // Reconnect only on abnormal close (not on clean close or auth failure)
-    // Limit retries to avoid infinite loops when the worker isn't deployed yet
-    if (this.shouldReconnect && event.code !== 1000) {
+    if (!this.shouldReconnect) return;
+
+    // Don't reconnect if we got an explicit auth failure (shouldReconnect was set false)
+    // But DO reconnect on clean close (1000) if we never fully connected — Betfair may
+    // have closed the TCP stream before responding, or the worker's TCP socket failed
+    const neverConnected = !this.subscribed;
+    const shouldRetry = event.code !== 1000 || neverConnected;
+
+    if (shouldRetry) {
       this._reconnectAttempts = (this._reconnectAttempts || 0) + 1;
       if (this._reconnectAttempts <= 3) {
         this.reconnectTimer = setTimeout(() => this.connect(), 5000);
       } else {
-        if (this.onError) this.onError('Stream disconnected after 3 reconnection attempts. Ensure the Cloudflare Worker is updated with the WebSocket-to-TCP bridge code.');
+        if (this.onError) this.onError(`Stream disconnected after 3 attempts. Last worker diagnostic: ${this._lastDiag || 'none'}. Check the Logs page for details.`);
         if (this.onStatusChange) this.onStatusChange('error');
       }
     }
