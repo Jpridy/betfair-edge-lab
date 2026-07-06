@@ -24,6 +24,7 @@ import { isCommissionValidForLive, isInPlayLocked, isOrderOpen } from './betfair
  */
 export function runPreOrderChecks(order, market, runner, strategy, settings, bankrollStats, existingOrders, connectionState) {
   const failures = [];
+  const isLiveMode = connectionState?.apiConnected === true;
 
   // ── Market Checks ──
   if (!market) {
@@ -88,8 +89,6 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
       }
     }
   }
-
-  const isLiveMode = connectionState?.apiConnected === true;
 
   // ── Market Open Check ──
   if (market.status !== 'OPEN') {
