@@ -796,12 +796,17 @@ export function AppProvider({ children }) {
 
         if (marketRunners.length > 0) {
           // Step 5: Create Signal — prefer runners with real prices and sufficient liquidity
+          // Step 5: Create Signal — only runners with a back price
           const runnable = marketRunners
             .filter(r => r.bestBackPrice > 0)
             .sort((a, b) => (b.bestBackSize || 0) - (a.bestBackSize || 0));
-          const runner = (runnable.length > 0 ? runnable : marketRunners)[
-            Math.floor(Math.random() * Math.min(runnable.length > 0 ? runnable.length : marketRunners.length, 5))
-          ];
+          const runner = runnable[Math.floor(Math.random() * Math.min(runnable.length, 5))];
+
+          if (!runner) {
+            steps[4].status = 'blocked';
+            steps[4].reason = 'No runners with back prices available yet — waiting for stream data.';
+            notes.push('No runners with back prices');
+          } else {
           const signal = createSignal(strategyName, market, runner, s.settings);
           signalCreated = signal;
           signalsCreated = 1;
@@ -861,8 +866,6 @@ export function AppProvider({ children }) {
                 base44.entities.PaperOrder.create(order).catch(() => {});
                 setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
 
-                // Settle a previous pending order (demo data mode only — when connected to
-                // the live stream, settlement happens via real market closure events)
                 const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
                 if (!s.apiConnected && pending.length > 0 && Math.random() > 0.5) {
                   const toSettle = pending[0];
@@ -890,6 +893,7 @@ export function AppProvider({ children }) {
                 notes.push('Bot paused or auto trading disabled');
               }
             }
+          }
           }
         } else {
           steps[4].status = 'failed';
