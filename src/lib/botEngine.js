@@ -157,31 +157,37 @@ export function createPaperOrder(signal, market, runner, settings) {
   });
 
   // Simulate matching — only match if price was realistically available
-  const availableSize = signal.side === 'BACK' ? runner.bestBackSize : runner.bestLaySize;
+  const availableSize = signal.side === 'BACK' ? (runner.bestBackSize || 0) : (runner.bestLaySize || 0);
   const availablePrice = signal.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
-  
+
   // Paper matching rules:
   // - Only match if price was realistically available
-  // - Respect availableToBack and availableToLay sizes
-  // - Respect spread
   // - Respect market status (must be OPEN)
-  // - Respect in-play lockout
-  const canMatch = 
+  // - Respect in-play lockout (pre-off strategies)
+  // In live mode, available size at best price is often thin ($2–50).
+  // We match whatever is available (partial fill) rather than requiring 80%+
+  // of the full stake — this mirrors real Betfair partial matching.
+  const canMatch =
     market.status === 'OPEN' &&
-    !market.inPlay &&  // Pre-off only (for pre-off strategies)
+    !market.inPlay &&
     availablePrice > 0 &&
-    availableSize >= signal.stakeSuggestion * 0.8; // Allow partial fill if 80%+ available
+    availableSize > 0;
 
   const matched = canMatch && Math.random() > 0.15;
-  
+
+  // Partial fill: match the lesser of requested stake and available size
+  const matchedStakeAmount = matched
+    ? Math.min(signal.stakeSuggestion, Math.max(availableSize, signal.stakeSuggestion * 0.1))
+    : 0;
+
   // Calculate slippage (difference between requested and matched price)
   const slippage = matched ? (Math.random() * 0.02) : 0; // 0-2% slippage
   const matchedPrice = matched ? Math.round((signal.odds + slippage) * 100) / 100 : null;
 
   // Determine simulation quality
   let simQuality = 'Basic';
-  if (availableSize > signal.stakeSuggestion * 2 && signal.spreadTicks <= 2) simQuality = 'High';
-  else if (availableSize > signal.stakeSuggestion * 1.5) simQuality = 'Good';
+  if (availableSize > matchedStakeAmount * 2 && signal.spreadTicks <= 2) simQuality = 'High';
+  else if (availableSize > matchedStakeAmount * 1.5) simQuality = 'Good';
 
   return {
     ...orderStructure,
@@ -195,8 +201,18 @@ export function createPaperOrder(signal, market, runner, settings) {
     requestedOdds: signal.odds,
     matchedOdds: matched ? matchedPrice : null,
     requestedStake: signal.stakeSuggestion,
-    matchedStake: matched ? signal.stakeSuggestion : 0,
+    matchedStake: matched ? matchedStakeAmount : 0,
     status: matched ? 'matched' : 'unmatched',
+    // ── Sync Betfair-style tracking fields with match result ──
+    matched_size: matched ? matchedStakeAmount : 0,
+    remaining_size: matched ? Math.max(0, signal.stakeSuggestion - matchedStakeAmount) : signal.stakeSuggestion,
+    average_price_matched: matched ? matchedPrice : 0,
+    matched_price: matched ? matchedPrice : null,
+    requested_price: signal.odds,
+    requested_size: signal.stakeSuggestion,
+    size: signal.stakeSuggestion,
+    price: signal.odds,
+    matched_date: matched ? new Date().toISOString() : null,
     expectedValue: signal.expectedValue,
     result: 'pending',
     grossProfit: 0,
@@ -205,7 +221,7 @@ export function createPaperOrder(signal, market, runner, settings) {
     paper_mode: true,
     liveMode: false,
     paperSimulationQuality: simQuality,
-    simulatedMatchedSize: matched ? signal.stakeSuggestion : 0,
+    simulatedMatchedSize: matched ? matchedStakeAmount : 0,
     simulatedAveragePrice: matched ? matchedPrice : 0,
     simulatedStatus: matched ? 'matched' : 'unmatched',
     simulatedSlippage: slippage,
