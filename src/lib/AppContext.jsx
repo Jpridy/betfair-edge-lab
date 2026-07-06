@@ -776,7 +776,7 @@ export function AppProvider({ children }) {
       })
       .sort((a, b) => a.distance - b.distance);
 
-    const market = sorted.length > 0 ? sorted[0].market : null;
+    let market = sorted.length > 0 ? sorted[0].market : null;
     // Also try other markets if the closest one has no valid runners
     const marketCandidates = sorted.map(s => s.market);
 
@@ -792,23 +792,54 @@ export function AppProvider({ children }) {
       steps[3].status = enabled.length > 0 ? 'passed' : 'blocked';
       if (steps[3].status === 'blocked') steps[3].reason = 'No eligible strategies enabled. Fav/Outsider is failing, archived strategies are disabled.';
 
-      if (enabled.length > 0) {
-        const strategyName = enabled[Math.floor(Math.random() * enabled.length)];
-        const strategy = s.strategyLibrary?.find(sl => sl.name === strategyName);
-        const marketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
+      let strategyName = null, strategy = null, runner = null;
+      const minOdds = s.settings.minOdds || 1.5;
+      const maxOdds = s.settings.maxOdds || 20;
+      const maxTradesPerMarket = s.settings.maxTradesPerMarket || 5;
+      const openStatuses = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
-        if (marketRunners.length > 0) {
-          // Step 5: Create Signal — runners with prices on BOTH sides, within odds range,
-          // and (for scalping) with a tight enough spread. Sorted by the weaker side's size.
-          const minOdds = s.settings.minOdds || 1.5;
-          const maxOdds = s.settings.maxOdds || 20;
-          const isScalping = strategyName === 'Pre-Off Scalping';
-          const runnable = marketRunners
-            .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) > 0 && (r.bestLaySize || 0) > 0)
-            .filter(r => (r.bestBackPrice >= minOdds && r.bestBackPrice <= maxOdds) || (r.bestLayPrice >= minOdds && r.bestLayPrice <= maxOdds))
-            .filter(r => !isScalping || countTicksBetween(r.bestBackPrice, r.bestLayPrice) <= 3)
-            .sort((a, b) => Math.min(b.bestBackSize || 0, b.bestLaySize || 0) - Math.min(a.bestBackSize || 0, a.bestLaySize || 0));
-          const runner = runnable[Math.floor(Math.random() * Math.min(runnable.length, 5))];
+      if (enabled.length > 0) {
+        // Search across markets × strategies to find a runner that doesn't
+        // duplicate an existing open order. Previously the bot only ever
+        // picked the single closest market + one random strategy, so once
+        // every runner on that market had an open order it was stuck
+        // hitting "duplicate order" every cycle.
+        for (const candidateMarket of marketCandidates) {
+          // Skip markets already at the per-market trade limit
+          const marketOpenCount = s.paperOrders.filter(o =>
+            (o.marketId === candidateMarket.id || o.betfairMarketId === candidateMarket.betfairMarketId) &&
+            openStatuses.includes(o.status)
+          ).length;
+          if (marketOpenCount >= maxTradesPerMarket) continue;
+
+          const marketRunners = s.runners.filter(r => r.marketId === candidateMarket.id && r.status === 'ACTIVE');
+          if (marketRunners.length === 0) continue;
+
+          for (const candidateStrategyName of enabled) {
+            const candidateStrategy = s.strategyLibrary?.find(sl => sl.name === candidateStrategyName);
+            const isScalping = candidateStrategyName === 'Pre-Off Scalping';
+            const runnable = marketRunners
+              .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) > 0 && (r.bestLaySize || 0) > 0)
+              .filter(r => (r.bestBackPrice >= minOdds && r.bestBackPrice <= maxOdds) || (r.bestLayPrice >= minOdds && r.bestLayPrice <= maxOdds))
+              .filter(r => !isScalping || countTicksBetween(r.bestBackPrice, r.bestLayPrice) <= 3)
+              .filter(r => !s.paperOrders.some(o =>
+                (o.marketId === candidateMarket.id || o.betfairMarketId === candidateMarket.betfairMarketId) &&
+                (o.selectionId === r.betfairSelectionId || o.runnerId === r.id) &&
+                o.strategyName === candidateStrategyName &&
+                openStatuses.includes(o.status)
+              ))
+              .sort((a, b) => Math.min(b.bestBackSize || 0, b.bestLaySize || 0) - Math.min(a.bestBackSize || 0, a.bestLaySize || 0));
+
+            if (runnable.length > 0) {
+              strategyName = candidateStrategyName;
+              strategy = candidateStrategy;
+              runner = runnable[Math.floor(Math.random() * Math.min(runnable.length, 5))];
+              market = candidateMarket;
+              break;
+            }
+          }
+          if (runner) break;
+        }
 
           if (!runner) {
             steps[4].status = 'blocked';
@@ -903,12 +934,7 @@ export function AppProvider({ children }) {
             }
           }
           }
-        } else {
-          steps[4].status = 'failed';
-          steps[4].reason = 'No active runners found for the selected market.';
-          errors++;
-          notes.push('No active runners found');
-        }
+
       }
     }
 
