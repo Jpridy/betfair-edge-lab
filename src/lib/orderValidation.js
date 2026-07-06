@@ -118,10 +118,7 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
       failures.push({ field: 'strategyStatus', reason: 'Strategy is locked/disabled' });
     }
 
-    // Fav/Outsider is failing
-    if (strategy.name === 'Fav/Outsider') {
-      failures.push({ field: 'strategyStatus', reason: 'Fav/Outsider is failing — strategy locked' });
-    }
+
   }
 
   // ── Time Window Check ──

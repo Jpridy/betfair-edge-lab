@@ -105,7 +105,7 @@ export function AppProvider({ children }) {
     // Strategy Toggles
     strategyValueBetEnabled: true,
     strategyScalpingEnabled: true,
-    strategyFavOutsiderEnabled: false, // Failing — disabled by default
+    strategyFavOutsiderEnabled: true,
     strategySteamDriftEnabled: true,
     strategyCrossMarketEnabled: true,
     favouriteSideEnabled: true,
@@ -787,7 +787,7 @@ export function AppProvider({ children }) {
       // Step 4: Check Strategies
       const enabled = getEnabledStrategies(s.settings).filter(name => {
         const strat = s.strategyLibrary?.find(sl => sl.name === name);
-        return strat && strat.status !== 'archived' && strat.status !== 'failing';
+        return strat && strat.status !== 'archived';
       });
       steps[3].status = enabled.length > 0 ? 'passed' : 'blocked';
       if (steps[3].status === 'blocked') steps[3].reason = 'No eligible strategies enabled. Fav/Outsider is failing, archived strategies are disabled.';
