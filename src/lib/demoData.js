@@ -661,9 +661,9 @@ const STRATEGY_BETFAIR_FIELDS = {
     requiresCommission: true,
     requiresCLV: true,
     paperOnly: true,
-    validationStatus: 'failing',
-    statusLabel: 'Failing — Locked',
-    status: 'failing',
+    validationStatus: 'needs_more_data',
+    statusLabel: 'Paper Testing',
+    status: 'active',
   },
   'Steam/Drift': {
     allowInPlay: false,

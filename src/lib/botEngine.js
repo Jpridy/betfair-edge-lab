@@ -52,7 +52,7 @@ export function calcEdge(modelProb, odds) {
 
 export function createSignal(strategyName, market, runner, settings) {
   // Use best back price for BACK signals, best lay for LAY
-  const isBack = strategyName !== 'Fav/Outsider' ? true : !runner.isFavourite;
+  const isBack = strategyName !== 'Fav/Outsider' ? true : runner.isFavourite;
   const odds = isBack
     ? (runner.bestBackPrice || runner.lastTradedPrice || 3.0)
     : (runner.bestLayPrice || runner.lastTradedPrice || 3.0);
