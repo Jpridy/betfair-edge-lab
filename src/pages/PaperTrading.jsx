@@ -306,8 +306,8 @@ export default function PaperTrading() {
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="text-xs">Time</TableHead>
               <TableHead className="text-xs">Strategy</TableHead>
-              <TableHead className="text-xs">Market</TableHead>
-              <TableHead className="text-xs">Runner</TableHead>
+              <TableHead className="text-xs">Race</TableHead>
+              <TableHead className="text-xs">Horse</TableHead>
               <TableHead className="text-xs">Side</TableHead>
               <TableHead className="text-xs text-right">Odds</TableHead>
               <TableHead className="text-xs text-right">Stake</TableHead>
@@ -324,8 +324,11 @@ export default function PaperTrading() {
               <TableRow key={o.id} className="border-border">
                 <TableCell className="text-xs text-muted-foreground">{new Date(o.created_date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
                 <TableCell className="text-xs">{o.strategyName}</TableCell>
-                <TableCell className="text-xs">{o.marketName}</TableCell>
-                <TableCell className="text-xs">{o.runnerName}</TableCell>
+                <TableCell className="text-xs">
+                  <div className="font-medium">{o.venue || '—'}</div>
+                  <div className="text-muted-foreground">{o.marketName}</div>
+                </TableCell>
+                <TableCell className="text-xs font-medium">{o.runnerName}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${o.matchedStake || 0}</TableCell>
