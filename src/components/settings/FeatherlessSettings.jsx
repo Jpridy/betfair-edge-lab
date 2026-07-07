@@ -4,8 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Wifi, RefreshCw, Brain, AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Save, Wifi, RefreshCw, Brain, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
 const DEFAULT_FEATHERLESS = {
@@ -27,13 +26,6 @@ const DEFAULT_FEATHERLESS = {
   timeWindowEnd: 30,
   stakingMode: 'confidence_weighted_fractional_kelly',
 };
-
-const STAKING_MODES = [
-  { value: 'flat', label: 'Flat Stake' },
-  { value: 'percent_bankroll', label: 'Percent Bankroll' },
-  { value: 'fractional_kelly', label: 'Fractional Kelly (25%)' },
-  { value: 'confidence_weighted_fractional_kelly', label: 'Confidence-Weighted 25% Kelly' },
-];
 
 export default function FeatherlessSettings({ settings, onSave }) {
   const [local, setLocal] = useState({ ...DEFAULT_FEATHERLESS, ...settings });
@@ -155,33 +147,8 @@ export default function FeatherlessSettings({ settings, onSave }) {
               <Label className="text-xs">Time Window End (sec before jump)</Label>
               <Input type="number" value={local.timeWindowEnd} onChange={e => update('timeWindowEnd', +e.target.value)} className="mt-1" />
             </div>
-            <div>
-              <Label className="text-xs">Staking Mode</Label>
-              <Select value={local.stakingMode} onValueChange={v => update('stakingMode', v)}>
-                <SelectTrigger className="h-9 mt-1 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STAKING_MODES.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         </div>
-
-        {/* Safety Toggles */}
-        <div className="pt-3 border-t border-border space-y-3">
-          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Safety & Mode</div>
-          <ToggleRow label="Paper Trade Only Mode" checked={local.paperTradeOnly} onChange={v => update('paperTradeOnly', v)} />
-          <ToggleRow label="Allow Live Bet Handoff (to Bot Control Centre)" checked={local.allowLiveHandoff} onChange={v => update('allowLiveHandoff', v)} />
-          <ToggleRow label="Store Full AI Request/Response Logs" checked={local.storeLogs} onChange={v => update('storeLogs', v)} />
-        </div>
-
-        {/* Live Warning */}
-        {local.allowLiveHandoff && (
-          <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3">
-            <div className="text-xs font-bold text-chart-5 flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Live AI Betting Warning</div>
-            <div className="text-xs text-muted-foreground mt-1">AI betting is experimental. Use paper trading first. Live mode should only be enabled after enough profitable paper-trading evidence.</div>
-          </div>
-        )}
 
         <div className="flex justify-end pt-3 border-t border-border">
           <Button size="sm" onClick={handleSave}><Save className="h-4 w-4 mr-1" /> Save Featherless Settings</Button>

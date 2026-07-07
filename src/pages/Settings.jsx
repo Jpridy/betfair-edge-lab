@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw, Trash2 } from 'lucide-react';
 import BetfairConnection from '@/components/settings/BetfairConnection';
@@ -16,7 +15,6 @@ export default function Settings() {
   const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected, resetAllPaperTrading, featherlessSettings, setFeatherlessSettings } = useApp();
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
-  const [liveConfirmText, setLiveConfirmText] = useState('');
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResults, setTestResults] = useState(null);
 
@@ -154,24 +152,12 @@ export default function Settings() {
         <TabsContent value="general">
           <Panel title="General Settings">
             <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Field label="Starting Bankroll ($)"><Input type="number" value={local.bankroll} onChange={e => update('bankroll', +e.target.value)} /></Field>
               <Field label="Paper Bankroll ($)"><Input type="number" value={local.paperBankroll || local.bankroll} onChange={e => update('paperBankroll', +e.target.value)} /></Field>
               <Field label="Base Stake ($)"><Input type="number" value={local.baseStake} onChange={e => update('baseStake', +e.target.value)} /></Field>
               <Field label="Max Stake ($)"><Input type="number" value={local.maxStake} onChange={e => update('maxStake', +e.target.value)} /></Field>
               <Field label="Max Stake % of Bankroll"><Input type="number" value={local.maxStakePercent} onChange={e => update('maxStakePercent', +e.target.value)} /></Field>
               <Field label="Max Lay Liability ($)"><Input type="number" value={local.maxLayLiability || 1500} onChange={e => update('maxLayLiability', +e.target.value)} /></Field>
-              <Field label="Jurisdiction">
-                <Select value={local.selectedJurisdiction || 'AU'} onValueChange={v => update('selectedJurisdiction', v)}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AU">Australia</SelectItem>
-                    <SelectItem value="UK">United Kingdom</SelectItem>
-                    <SelectItem value="ES">Spain</SelectItem>
-                    <SelectItem value="IT">Italy</SelectItem>
-                    <SelectItem value="RO">Romania</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
+
             </div>
           </Panel>
         </TabsContent>
@@ -272,48 +258,13 @@ export default function Settings() {
                 <Field label="Login Status">
                   <div className="pt-2"><StatusBadge status={betfairConnection.loginStatus === 'connected' ? 'ok' : 'danger'}>{betfairConnection.loginStatus}</StatusBadge></div>
                 </Field>
-                <Field label="API Environment">
-                  <Select value={betfairConnection.apiEnvironment} onValueChange={v => updateBetfairConnection({ apiEnvironment: v })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="production">Production</SelectItem>
-                      <SelectItem value="integration">Integration (Test)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Jurisdiction">
-                  <Select value={betfairConnection.jisdiction || 'AU'} onValueChange={v => updateBetfairConnection({ jurisdiction: v })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="AU">Australia</SelectItem>
-                      <SelectItem value="UK">United Kingdom</SelectItem>
-                      <SelectItem value="ES">Spain</SelectItem>
-                      <SelectItem value="IT">Italy</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Market Data Refresh Rate (seconds)">
-                  <Input type="number" value={betfairConnection.marketDataRefreshRate} onChange={e => updateBetfairConnection({ marketDataRefreshRate: +e.target.value })} />
-                </Field>
                 <Field label="Data Freshness Limit (seconds)">
                   <Input type="number" value={betfairConnection.dataFreshnessLimit} onChange={e => updateBetfairConnection({ dataFreshnessLimit: +e.target.value })} />
                 </Field>
-                <Field label="Commission Source">
-                  <div className="pt-2 text-xs text-muted-foreground">{local.useMarketBaseRate ? 'Market Base Rate' : 'Default Fallback'}</div>
-                </Field>
-                <Field label="Default Market Base Rate Fallback (%)">
-                  <Input type="number" step="0.1" value={(local.defaultCommissionRate || 0.05) * 100} onChange={e => update('defaultCommissionRate', +e.target.value / 100)} />
-                </Field>
+
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm">Stream API Enabled</Label>
-                    <div className="text-xs text-muted-foreground mt-1">Exchange Stream API for real-time updates</div>
-                  </div>
-                  <Switch checked={betfairConnection.streamApiEnabled} onCheckedChange={v => updateBetfairConnection({ streamApiEnabled: v })} />
-                </div>
                 <Field label="Stream Connection Status">
                   <div className="pt-2"><StatusBadge status={betfairConnection.streamConnectionStatus === 'connected' ? 'ok' : 'neutral'}>{betfairConnection.streamConnectionStatus}</StatusBadge></div>
                 </Field>
@@ -399,20 +350,12 @@ export default function Settings() {
         <TabsContent value="bot">
           <Panel title="Bot Settings">
             <div className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="Scan Interval (seconds)"><Input type="number" value={botLocal.scanIntervalSeconds} onChange={e => setBotLocal(prev => ({ ...prev, scanIntervalSeconds: +e.target.value }))} /></Field>
-                <Field label="Max Bot Cycles Per Hour"><Input type="number" value={botLocal.maxBotCyclesPerHour} onChange={e => setBotLocal(prev => ({ ...prev, maxBotCyclesPerHour: +e.target.value }))} /></Field>
-                <Field label="Live Confirmation Text"><Input value={liveConfirmText} onChange={e => setLiveConfirmText(e.target.value)} placeholder="ENABLE LIVE TRADING" /></Field>
               </div>
               <div className="pt-4 border-t border-border space-y-3">
                 <ToggleRow label="Enable Auto Paper Trading" checked={botLocal.autoPaperTradingEnabled} onChange={v => setBotLocal(prev => ({ ...prev, autoPaperTradingEnabled: v }))} />
-                <ToggleRow label="Stop on API Error" checked={botLocal.stopOnApiError} onChange={v => setBotLocal(prev => ({ ...prev, stopOnApiError: v }))} />
-                <ToggleRow label="Stop on Daily Loss" checked={botLocal.stopOnDailyLoss} onChange={v => setBotLocal(prev => ({ ...prev, stopOnDailyLoss: v }))} />
-                <ToggleRow label="Stop on Max Drawdown" checked={botLocal.stopOnMaxDrawdown} onChange={v => setBotLocal(prev => ({ ...prev, stopOnMaxDrawdown: v }))} />
-                <ToggleRow label="Stop on Losing Streak" checked={botLocal.stopOnLosingStreak} onChange={v => setBotLocal(prev => ({ ...prev, stopOnLosingStreak: v }))} />
-                <ToggleRow label="Stop on Emergency" checked={botLocal.stopOnEmergency} onChange={v => setBotLocal(prev => ({ ...prev, stopOnEmergency: v }))} />
                 <ToggleRow label="Require Live Confirmation Text" checked={botLocal.requireLiveConfirmationText} onChange={v => setBotLocal(prev => ({ ...prev, requireLiveConfirmationText: v }))} />
-                <ToggleRow label="Live Trading Locked" checked={botLocal.liveTradingLocked} onChange={v => setBotLocal(prev => ({ ...prev, liveTradingLocked: v }))} />
               </div>
               <div className="flex justify-end pt-4 border-t border-border">
                 <Button size="sm" onClick={() => updateBotSettings(botLocal)}><Save className="h-4 w-4 mr-1" /> Save Bot Settings</Button>
