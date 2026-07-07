@@ -555,9 +555,10 @@ Deno.serve(async (req) => {
 
     // Build race object — pass raceFormProfiles so the AI can use Betfair metadata when available
     const hasFormProfiles = raceFormProfiles && raceFormProfiles.length > 0;
+    const hasWebResearch = webResearch && webResearch.research_summary;
     const dataSource = hasFormProfiles
       ? (raceFormProfiles.some(fp => fp.externalFormData) ? 'EXTERNAL_FORM_PLUS_MARKET' : 'BETFAIR_METADATA_PLUS_MARKET')
-      : 'MARKET_ONLY';
+      : hasWebResearch ? 'EXTERNAL_FORM_PLUS_MARKET' : 'MARKET_ONLY';
     const raceObject = buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles, webResearch);
 
     // Build messages

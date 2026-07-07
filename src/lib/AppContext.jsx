@@ -102,12 +102,14 @@ export function AppProvider({ children }) {
     dataFreshnessLimit: 30,
     streamApiEnabled: false,
 
-    // Strategy Toggles
-    strategyValueBetEnabled: true,
-    strategyScalpingEnabled: true,
-    strategyFavOutsiderEnabled: true,
-    strategySteamDriftEnabled: true,
-    strategyCrossMarketEnabled: true,
+    // Strategy Toggles — non-AI strategies disabled by default; they rely on
+    // market-only microstructure data which is blocked by the form-data gate.
+    // Only the Featherless AI strategy (with web research) can place bets.
+    strategyValueBetEnabled: false,
+    strategyScalpingEnabled: false,
+    strategyFavOutsiderEnabled: false,
+    strategySteamDriftEnabled: false,
+    strategyCrossMarketEnabled: false,
     favouriteSideEnabled: true,
     outsiderSideEnabled: true,
 
@@ -213,7 +215,7 @@ export function AppProvider({ children }) {
 
   // ── Featherless AI ──
   const [featherlessSettings, setFeatherlessSettings] = useState({
-    enabled: false,
+    enabled: true,
     modelName: 'deepseek-ai/DeepSeek-V4-Flash',
     temperature: 0.1,
     maxTokens: 4000,
@@ -230,7 +232,7 @@ export function AppProvider({ children }) {
     timeWindowStart: 300,
     timeWindowEnd: 30,
     stakingMode: 'confidence_weighted_fractional_kelly',
-    webResearchEnabled: false,
+    webResearchEnabled: true,
   });
   const [aiDecisions, setAiDecisions] = useState([]);
 
