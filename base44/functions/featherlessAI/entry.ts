@@ -401,40 +401,22 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
-    let user;
-    try {
-      user = await base44.auth.me();
-    } catch (_) {
-      return Response.json({ error: 'Authentication required. Please log in and try again.' }, { status: 401 });
-    }
-    if (!user) return Response.json({ error: 'Authentication required. Please log in and try again.' }, { status: 401 });
-
     const body = await req.json();
     const { market, runners, settings, strategySettings, bankrollStats, action } = body;
 
-    if (action === 'test') {
+    // Connection test and model listing don't need user auth — they only
+    // validate the server-side FEATHERLESS_API_KEY.
+    if (action === 'test' || action === 'models') {
       const apiKey = Deno.env.get('FEATHERLESS_API_KEY');
       if (!apiKey) return Response.json({ error: 'FEATHERLESS_API_KEY not set' }, { status: 500 });
       try {
         const resp = await fetch(`${FEATHERLESS_BASE_URL}/models`, {
           headers: { 'Authorization': `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(action === 'models' ? 15000 : 10000),
         });
-        return Response.json({ connected: resp.ok, status: resp.status });
-      } catch (err) {
-        return Response.json({ connected: false, error: err.message }, { status: 500 });
-      }
-    }
-
-    if (action === 'models') {
-      const apiKey = Deno.env.get('FEATHERLESS_API_KEY');
-      if (!apiKey) return Response.json({ error: 'FEATHERLESS_API_KEY not set' }, { status: 500 });
-      try {
-        const resp = await fetch(`${FEATHERLESS_BASE_URL}/models`, {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(15000),
-        });
+        if (action === 'test') {
+          return Response.json({ connected: resp.ok, status: resp.status });
+        }
         const data = await resp.json();
         const all = (data.data || data || []).map((m: any) => m.id || m).sort();
         const flagships = all.filter((id: string) =>
@@ -448,6 +430,15 @@ Deno.serve(async (req) => {
         return Response.json({ connected: false, error: err.message }, { status: 500 });
       }
     }
+
+    const base44 = createClientFromRequest(req);
+    let user;
+    try {
+      user = await base44.auth.me();
+    } catch (_) {
+      return Response.json({ error: 'Authentication required. Please log in and try again.' }, { status: 401 });
+    }
+    if (!user) return Response.json({ error: 'Authentication required. Please log in and try again.' }, { status: 401 });
 
     if (!market) return Response.json({ error: 'market is required' }, { status: 400 });
 
