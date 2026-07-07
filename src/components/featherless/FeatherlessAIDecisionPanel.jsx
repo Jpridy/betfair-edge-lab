@@ -147,8 +147,16 @@ export default function FeatherlessAIDecisionPanel() {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.message);
-      addAuditLog('Featherless AI Error', 'api', 'error', err.response?.data?.error || err.message);
+      const errMsg = err.response?.data?.error || err.message;
+      const isAuthError = err.response?.status === 401 || errMsg.includes('401') || errMsg.toLowerCase().includes('authentication');
+      if (isAuthError) {
+        setError('Your session has expired. Redirecting to login...');
+        addAuditLog('Session Expired', 'system', 'critical', 'User session token expired. Redirecting to login.');
+        setTimeout(() => { window.location.href = '/login'; }, 1500);
+      } else {
+        setError(errMsg);
+        addAuditLog('Featherless AI Error', 'api', 'error', errMsg);
+      }
     }
     setAnalysing(false);
   };

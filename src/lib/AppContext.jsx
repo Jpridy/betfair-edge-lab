@@ -997,11 +997,13 @@ export function AppProvider({ children }) {
               }
             }
           } catch (err) {
+            const errMsg = err.response?.data?.error || err.message;
+            const isAuthError = err.response?.status === 401 || errMsg.includes('401') || errMsg.toLowerCase().includes('authentication');
             steps[4].status = 'failed';
-            steps[4].reason = `AI error: ${err.message}`;
+            steps[4].reason = isAuthError ? 'Session expired — redirecting to login...' : `AI error: ${errMsg}`;
             notes.push(steps[4].reason);
             errors = 1;
-            if (err.message?.includes('401')) {
+            if (isAuthError) {
               stopBot();
               addAuditLog('Bot Stopped — Session Expired', 'system', 'critical', 'User session token expired. Redirecting to login for a fresh token.');
               setTimeout(() => { window.location.href = '/login'; }, 1500);
