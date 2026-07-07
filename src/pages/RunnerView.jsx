@@ -38,12 +38,12 @@ function generateLadder(bestBack, bestLay) {
 }
 
 export default function RunnerView() {
-  const { markets, runners, addPaperOrder, settings, bankrollStats, mode, emergencyStop, addAuditLog } = useApp();
+  const { markets, runners, addPaperOrder, settings, bankrollStats, emergencyStop, addAuditLog } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const marketParam = searchParams.get('market');
   const [showPaperForm, setShowPaperForm] = useState(false);
-  const [paperForm, setPaperForm] = useState({ side: 'BACK', stake: settings.baseStake, strategy: 'Value Bet' });
+  const [paperForm, setPaperForm] = useState({ side: 'BACK', stake: settings.baseStake, strategy: 'Featherless AI Value Decision Engine' });
   const [selectedMarket, setSelectedMarket] = useState(marketParam || markets[0]?.id || '');
   const marketRunners = useMemo(() => runners.filter(r => r.marketId === selectedMarket), [runners, selectedMarket]);
   const [selectedRunner, setSelectedRunner] = useState(marketRunners[0]?.id || '');
@@ -107,7 +107,7 @@ export default function RunnerView() {
   const volatility = Math.sqrt(priceHistory.reduce((sum, p, i, arr) => i > 0 ? sum + Math.pow(p.price - arr[i-1].price, 2) : 0, 0) / priceHistory.length);
 
   const handleCreatePaperOrder = () => {
-    if (emergencyStop || mode === 'live') return;
+    if (emergencyStop) return;
     const price = paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
     const order = {
       strategyName: paperForm.strategy,

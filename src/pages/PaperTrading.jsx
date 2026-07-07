@@ -15,7 +15,7 @@ import { exportToCSV } from '@/lib/csvExport';
 const ORDER_STATUSES = ['pending', 'executable', 'execution_complete', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'voided', 'settled', 'rejected'];
 
 export default function PaperTrading() {
-  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, emergencyStop, addAuditLog, cancelUnmatchedOrders } = useApp();
+  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, emergencyStop, addAuditLog, cancelUnmatchedOrders, recalculateMetrics } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     marketId: markets[0]?.id || '',
@@ -128,7 +128,7 @@ export default function PaperTrading() {
   };
 
   const handleRecalculate = () => {
-    addAuditLog('Recalculate Paper Results', 'system', 'info', 'Paper trading results recalculated from settled orders');
+    recalculateMetrics();
   };
 
   const handleExportCSV = () => {

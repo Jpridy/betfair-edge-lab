@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 export default function Backtesting() {
   const { settings, addBacktestRun, backtestRuns } = useApp();
-  const [selectedStrategies, setSelectedStrategies] = useState(['Value Bet']);
+  const [selectedStrategies, setSelectedStrategies] = useState(['Featherless AI Value Decision Engine']);
   const [numRaces, setNumRaces] = useState(100);
   const [startingBankroll, setStartingBankroll] = useState(settings.bankroll);
   const [daysBack, setDaysBack] = useState(90);

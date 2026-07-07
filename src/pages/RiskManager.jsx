@@ -27,14 +27,14 @@ const RISK_RULES = [
 ];
 
 export default function RiskManager() {
-  const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus, paperOrders, addAuditLog, updateSettings } = useApp();
+  const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus, paperOrders, addAuditLog, updateSettings, cancelUnmatchedOrders } = useApp();
 
   const paperExposure = paperOrders.filter(o => o.result === 'pending' && o.paper_mode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
   const liveExposure = paperOrders.filter(o => o.result === 'pending' && o.liveMode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
   const unmatchedPaper = paperOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched').length;
 
   const handleCancelUnmatched = () => {
-    addAuditLog('Cancel All Unmatched Orders', 'emergency', 'critical', `Risk Manager: cancelled ${unmatchedPaper} unmatched/partially matched orders`);
+    cancelUnmatchedOrders();
   };
   const handleDisableLive = () => {
     updateSettings({ liveTradingEnabled: false, emergencyStopActive: true });

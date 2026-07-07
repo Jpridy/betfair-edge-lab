@@ -10,7 +10,7 @@ const navItems = [
   { label: 'Bot Control Centre', path: '/bot-control', icon: Bot },
   { label: 'Market Scanner', path: '/scanner', icon: Radar },
   { label: 'Strategy Library', path: '/strategy-library', icon: BookOpen },
-  { label: 'Strategy Research Hub', path: '/strategy', icon: FlaskConical },
+  { label: 'AI Strategy Editor', path: '/strategy', icon: FlaskConical },
   { label: 'Runner View', path: '/runner', icon: Eye },
   { label: 'Paper Bot Orders', path: '/paper-trading', icon: FileText },
   { label: 'Backtesting', path: '/backtesting', icon: History },

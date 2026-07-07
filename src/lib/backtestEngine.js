@@ -256,11 +256,39 @@ function simulateSteamDriftSignal(market, runner, settings) {
   };
 }
 
+function simulateFeatherlessAISignal(market, runner, settings) {
+  const odds = runner.bestBackPrice;
+  if (odds < 2.0 || odds > 12.0) return null;
+
+  const baseProb = impliedProb(odds);
+  const modelProb = Math.min(0.95, Math.max(0.05, baseProb * randFloat(0.97, 1.15)));
+  const edge = calcEdge(modelProb, odds);
+  const ev = calcEVBack(modelProb, odds, settings.commissionRate || 0.05);
+
+  if (edge < 5.0 || ev <= 0) return null;
+
+  const stake = Math.min(
+    Math.round(randFloat(settings.baseStake || 100, settings.maxStake || 500)),
+    settings.maxStake || 500
+  );
+
+  return {
+    strategyName: 'Featherless AI Value Decision Engine',
+    marketId: market.id,
+    runnerId: runner.id,
+    side: 'BACK',
+    odds,
+    stakeSuggestion: stake,
+    modelProbability: modelProb,
+    impliedProbability: baseProb,
+    edgePercent: edge,
+    expectedValue: ev,
+    runnerName: runner.runnerName,
+  };
+}
+
 const STRATEGY_SIMULATORS = {
-  'Value Bet': simulateValueBetSignal,
-  'Pre-Off Scalping': simulateScalpingSignal,
-  'Fav/Outsider': simulateFavOutsiderSignal,
-  'Steam/Drift': simulateSteamDriftSignal,
+  'Featherless AI Value Decision Engine': simulateFeatherlessAISignal,
 };
 
 // ─── Risk check (backtest version) ────────────────────────────────
@@ -476,4 +504,4 @@ export function runBacktest({ strategies, numRaces, startingBankroll, settings, 
   };
 }
 
-export const AVAILABLE_STRATEGIES = ['Value Bet', 'Pre-Off Scalping', 'Fav/Outsider', 'Steam/Drift'];
+export const AVAILABLE_STRATEGIES = ['Featherless AI Value Decision Engine'];

@@ -32,6 +32,7 @@ export default function FeatherlessSettings({ settings, onSave }) {
   const [local, setLocal] = useState({ ...DEFAULT_FEATHERLESS, ...settings });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [saved, setSaved] = useState(false);
 
   const update = (key, value) => setLocal(prev => ({ ...prev, [key]: value }));
 
@@ -49,6 +50,8 @@ export default function FeatherlessSettings({ settings, onSave }) {
 
   const handleSave = () => {
     onSave(local);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -161,7 +164,9 @@ export default function FeatherlessSettings({ settings, onSave }) {
         </div>
 
         <div className="flex justify-end pt-3 border-t border-border">
-          <Button size="sm" onClick={handleSave}><Save className="h-4 w-4 mr-1" /> Save Featherless Settings</Button>
+          <Button size="sm" onClick={handleSave}>
+            {saved ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Featherless Settings</>}
+          </Button>
         </div>
       </div>
     </Panel>

@@ -17,11 +17,14 @@ export default function Settings() {
   const [botLocal, setBotLocal] = useState(botSettings);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResults, setTestResults] = useState(null);
+  const [savedSection, setSavedSection] = useState(null);
 
   const update = (key, value) => setLocal(prev => ({ ...prev, [key]: value }));
 
-  const handleSave = () => {
+  const handleSave = (section) => {
     updateSettings(local);
+    setSavedSection(section);
+    setTimeout(() => setSavedSection(null), 2000);
   };
 
   const handleExport = () => {
@@ -78,7 +81,7 @@ export default function Settings() {
               <Upload className="h-4 w-4 mr-1" /> Import JSON
             </span>
           </label>
-          <Button size="sm" onClick={handleSave}><Save className="h-4 w-4 mr-1" /> Save Settings</Button>
+          <Button size="sm" onClick={() => handleSave('all')}>{savedSection === 'all' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Settings</>}</Button>
         </div>
       </div>
 
@@ -145,6 +148,12 @@ export default function Settings() {
                   <div className="text-xs text-muted-foreground mt-1">Market Base Rate required before live use. Set a default commission rate or enable Market Base Rate.</div>
                 )}
               </div>
+
+              <div className="flex justify-end pt-4 border-t border-border">
+                <Button size="sm" onClick={() => handleSave('commission')}>
+                  {savedSection === 'commission' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Commission Settings</>}
+                </Button>
+              </div>
             </div>
           </Panel>
         </TabsContent>
@@ -158,6 +167,11 @@ export default function Settings() {
               <Field label="Max Stake % of Bankroll"><Input type="number" value={local.maxStakePercent} onChange={e => update('maxStakePercent', +e.target.value)} /></Field>
               <Field label="Max Lay Liability ($)"><Input type="number" value={local.maxLayLiability || 1500} onChange={e => update('maxLayLiability', +e.target.value)} /></Field>
 
+            </div>
+            <div className="flex justify-end px-4 pb-4 pt-2 border-t border-border">
+              <Button size="sm" onClick={() => handleSave('general')}>
+                {savedSection === 'general' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save General Settings</>}
+              </Button>
             </div>
           </Panel>
         </TabsContent>
@@ -187,6 +201,11 @@ export default function Settings() {
               <div className="flex items-center gap-3 pt-6">
                 <Switch checked={local.persistApproved || false} onCheckedChange={v => update('persistApproved', v)} />
                 <Label className="text-sm">Admin Approve PERSIST for Pre-Off</Label>
+              </div>
+              <div className="md:col-span-3 flex justify-end pt-4 border-t border-border">
+                <Button size="sm" onClick={() => handleSave('risk')}>
+                  {savedSection === 'risk' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Risk Limits</>}
+                </Button>
               </div>
             </div>
           </Panel>
@@ -372,6 +391,12 @@ export default function Settings() {
               <div className="space-y-3">
                 <ToggleRow label="Forced Paper-Only Mode (locks out live trading entirely)" checked={local.forcedPaperOnlyMode || false} onChange={v => update('forcedPaperOnlyMode', v)} />
                 <ToggleRow label="Daily Deposit/Loss Reminder" checked={local.dailyDepositReminderEnabled || false} onChange={v => update('dailyDepositReminderEnabled', v)} />
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-border">
+                <Button size="sm" onClick={() => handleSave('compliance')}>
+                  {savedSection === 'compliance' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Compliance Settings</>}
+                </Button>
               </div>
 
               <div className="bg-card border border-border rounded-lg p-4">
