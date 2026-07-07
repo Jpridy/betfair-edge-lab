@@ -230,6 +230,7 @@ export function AppProvider({ children }) {
     timeWindowStart: 300,
     timeWindowEnd: 30,
     stakingMode: 'confidence_weighted_fractional_kelly',
+    webResearchEnabled: false,
   });
   const [aiDecisions, setAiDecisions] = useState([]);
 
@@ -970,10 +971,25 @@ export function AppProvider({ children }) {
             if (strategyName === 'Featherless AI Value Decision Engine') {
               try {
                 const aiMarketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
+                // Optional: gather web research before AI analysis (adds ~10-30s latency)
+                let webResearch = null;
+                if (s.featherlessSettings?.webResearchEnabled) {
+                  try {
+                    const researchResp = await base44.functions.invoke('raceWebResearch', {
+                      market, runners: aiMarketRunners,
+                    });
+                    if (researchResp.data?.research) {
+                      webResearch = researchResp.data.research;
+                    }
+                  } catch (err) {
+                    notes.push(`Web research error: ${err.message}`);
+                  }
+                }
                 const resp = await base44.functions.invoke('featherlessAI', {
                   market, runners: aiMarketRunners, settings: s.settings,
                   strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
                   raceFormProfiles: aiMarketRunners.map(r => r.raceFormProfile).filter(Boolean),
+                  webResearch,
                 });
                 if (resp.data?.error) throw new Error(resp.data.error);
                 const decision = resp.data?.decision;

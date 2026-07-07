@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Brain, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock, Target, Zap } from 'lucide-react';
+import { Brain, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock, Target, Zap, Globe } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { base44 } from '@/api/base44Client';
+import WebResearchPanel from './WebResearchPanel';
 
 export default function FeatherlessAIDecisionPanel() {
   const { markets, runners, settings, bankrollStats, featherlessSettings, addPaperOrder, addAuditLog, aiDecisions } = useApp();
@@ -12,6 +13,8 @@ export default function FeatherlessAIDecisionPanel() {
   const [analysing, setAnalysing] = useState(false);
   const [error, setError] = useState(null);
   const [latestDecision, setLatestDecision] = useState(null);
+  const [webResearch, setWebResearch] = useState(null);
+  const [researchLoading, setResearchLoading] = useState(false);
 
   const eligibleMarkets = markets.filter(m =>
     m.status === 'OPEN' && !m.inPlay &&
@@ -41,8 +44,27 @@ export default function FeatherlessAIDecisionPanel() {
     setAnalysing(true);
     setError(null);
     setLatestDecision(null);
+    setWebResearch(null);
 
     try {
+      // Step 1: Gather public race-day information via OpenAI web search
+      let research = null;
+      setResearchLoading(true);
+      try {
+        const researchResp = await base44.functions.invoke('raceWebResearch', {
+          market: selectedMarket,
+          runners: marketRunners,
+        });
+        if (researchResp.data?.research) {
+          research = researchResp.data.research;
+          setWebResearch(research);
+        }
+      } catch (_) {
+        // Research failed — continue without it (graceful degradation)
+      }
+      setResearchLoading(false);
+
+      // Step 2: Run Featherless AI with Betfair data + web research
       const resp = await base44.functions.invoke('featherlessAI', {
         market: selectedMarket,
         runners: marketRunners,
@@ -50,6 +72,7 @@ export default function FeatherlessAIDecisionPanel() {
         strategySettings: featherlessSettings,
         bankrollStats,
         raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
+        webResearch: research,
       });
 
       if (resp.data?.error) {
@@ -162,7 +185,7 @@ export default function FeatherlessAIDecisionPanel() {
           </div>
           <Button size="sm" onClick={handleAnalyse} disabled={analysing || !selectedMarket}>
             {analysing ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <Brain className="h-3 w-3 mr-1" />}
-            {analysing ? 'Analysing...' : 'Run AI Analysis'}
+            {researchLoading ? 'Researching...' : analysing ? 'Analysing...' : 'Run AI Analysis'}
           </Button>
         </div>
 
@@ -177,6 +200,11 @@ export default function FeatherlessAIDecisionPanel() {
           <div className="flex items-start gap-2 text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-3">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
           </div>
+        )}
+
+        {/* Web Research Summary */}
+        {(researchLoading || webResearch) && (
+          <WebResearchPanel research={webResearch} loading={researchLoading} />
         )}
 
         {/* AI Decision Results */}
@@ -242,6 +270,22 @@ export default function FeatherlessAIDecisionPanel() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Web Research Assessment from AI */}
+            {latestDecision.webResearchAssessment && (
+              <div className="rounded-lg p-3 border bg-chart-3/5 border-chart-3/20">
+                <div className="flex items-center gap-2 text-xs font-bold mb-1">
+                  <Globe className="h-4 w-4 text-chart-3" />
+                  Web Research Assessment
+                  <StatusBadge status={latestDecision.webResearchAssessment === 'supports' ? 'ok' : latestDecision.webResearchAssessment === 'conflicts' ? 'danger' : latestDecision.webResearchAssessment === 'missing' ? 'neutral' : 'info'}>
+                    {latestDecision.webResearchAssessment}
+                  </StatusBadge>
+                </div>
+                {latestDecision.webResearchSummary && (
+                  <div className="text-xs text-muted-foreground">{latestDecision.webResearchSummary}</div>
+                )}
               </div>
             )}
 

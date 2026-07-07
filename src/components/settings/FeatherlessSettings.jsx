@@ -25,6 +25,7 @@ const DEFAULT_FEATHERLESS = {
   timeWindowStart: 300,
   timeWindowEnd: 30,
   stakingMode: 'confidence_weighted_fractional_kelly',
+  webResearchEnabled: false,
 };
 
 export default function FeatherlessSettings({ settings, onSave }) {
@@ -81,6 +82,15 @@ export default function FeatherlessSettings({ settings, onSave }) {
             {testResult.connected ? 'Connection successful — API key valid' : `Connection failed: ${testResult.error || 'Unknown error'}`}
           </div>
         )}
+
+        {/* Web Research Toggle */}
+        <div className="flex items-center justify-between py-2 border-b border-border">
+          <div>
+            <Label className="text-sm font-bold">OpenAI Web Search Research</Label>
+            <div className="text-xs text-muted-foreground mt-1">Gathers public race-day info (form, scratchings, track, tips) via OpenAI web search before AI analysis. Adds ~10-30s latency per bot cycle. API key stored securely (OPENAI_API_KEY).</div>
+          </div>
+          <Switch checked={local.webResearchEnabled} onCheckedChange={v => update('webResearchEnabled', v)} />
+        </div>
 
         {/* Model Settings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border">

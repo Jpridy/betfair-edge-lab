@@ -150,6 +150,27 @@
         "BETFAIR_METADATA_PLUS_MARKET",
         "EXTERNAL_FORM_PLUS_MARKET"
       ]
+    },
+    "webResearchSummary": {
+      "type": "string"
+    },
+    "webResearchSourceLinks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "webResearchAssessment": {
+      "type": "string",
+      "enum": [
+        "supports",
+        "conflicts",
+        "neutral",
+        "missing"
+      ]
+    },
+    "webResearchDataQuality": {
+      "type": "string"
     }
   },
   "required": [

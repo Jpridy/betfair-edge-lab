@@ -46,6 +46,15 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
    - Cap at 1% of bankroll for any single bet.
    - If kelly_fraction ≤ 0, do not bet.
 
+6. WEB RESEARCH CONTEXT
+   - You may receive web_research data containing public race-day information gathered from web search (track conditions, scratchings, form, tips, etc.).
+   - This is SUPPLEMENTARY context only. Use it to inform your probability estimates and risk assessment.
+   - Do NOT bet based solely on public tips or media previews. The Betfair market is your primary signal.
+   - If web research CONFLICTS with Betfair market data (e.g. market says horse is favourite but tips say it won't perform), lower your confidence by 10-20 points.
+   - If web research is MISSING, unclear, or poor quality, note this as a risk and rely on market data.
+   - If web research SUPPORTS the Betfair data (e.g. track suits the favourite, no scratchings, good form), you may increase confidence slightly (max +5 points).
+   - Never let web tips override market-derived probability. A tipster's opinion is not worth more than thousands of dollars of matched money.
+
 Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.`;
 
 const USER_PROMPT = `Analyse this race object and make one paper-trading decision.
@@ -79,7 +88,20 @@ Return ONLY this JSON (no markdown, no commentary):
   }
 }
 
-If NO_BET or WATCH, set selected_bet fields to empty strings and zeros. Probabilities across all runners should sum to ~1.0.`;
+If NO_BET or WATCH, set selected_bet fields to empty strings and zeros. Probabilities across all runners should sum to ~1.0.
+
+If web_research data is included in the race object, also return:
+{
+  "web_research_assessment": {
+    "assessment": "supports" | "conflicts" | "neutral" | "missing",
+    "key_findings": "<max 30 words summarising what the web research says>",
+    "impact_on_confidence": <number, -10 to +5>,
+    "supports_betfair_data": <boolean>,
+    "conflicts_with_betfair_data": <boolean>
+  }
+}
+
+If no web_research data is provided, set assessment to "missing" and all other fields to defaults.`;
 
 const RESPONSE_SCHEMA = {
   type: 'object',
@@ -171,12 +193,22 @@ const RESPONSE_SCHEMA = {
         reason: { type: 'string' }
       }
     },
-    warnings: { type: 'array', items: { type: 'string' } }
+    warnings: { type: 'array', items: { type: 'string' } },
+    web_research_assessment: {
+      type: 'object',
+      properties: {
+        assessment: { type: 'string', enum: ['supports', 'conflicts', 'neutral', 'missing'] },
+        key_findings: { type: 'string' },
+        impact_on_confidence: { type: 'number' },
+        supports_betfair_data: { type: 'boolean' },
+        conflicts_with_betfair_data: { type: 'boolean' }
+      }
+    }
   },
   required: ['race_decision', 'selected_bet', 'most_likely_winner', 'runner_assessments', 'decision_checks', 'recommended_app_action']
 };
 
-function buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles) {
+function buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles, webResearch) {
   const marketRunners = runners.filter(r => r.marketId === market.id || r.marketId === market.betfairMarketId);
   const startTime = market.startTime || market.marketStartTime;
   const timeBeforeJump = startTime ? Math.round((new Date(startTime).getTime() - Date.now()) / 1000) : null;
@@ -252,7 +284,8 @@ function buildRaceObject(market, runners, settings, strategySettings, raceFormPr
       kelly_fraction: 0.25,
       max_stake_percent_bankroll: 0.01
     },
-    runners: runnerObjects
+    runners: runnerObjects,
+    web_research: webResearch || null
   };
 }
 
@@ -432,7 +465,7 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const { market, runners, settings, strategySettings, bankrollStats, action, raceFormProfiles } = body;
+    const { market, runners, settings, strategySettings, bankrollStats, action, raceFormProfiles, webResearch } = body;
 
     // Connection test and model listing don't need user auth — they only
     // validate the server-side FEATHERLESS_API_KEY.
@@ -525,7 +558,7 @@ Deno.serve(async (req) => {
     const dataSource = hasFormProfiles
       ? (raceFormProfiles.some(fp => fp.externalFormData) ? 'EXTERNAL_FORM_PLUS_MARKET' : 'BETFAIR_METADATA_PLUS_MARKET')
       : 'MARKET_ONLY';
-    const raceObject = buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles);
+    const raceObject = buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles, webResearch);
 
     // Build messages
     const messages = [
@@ -657,6 +690,10 @@ Deno.serve(async (req) => {
       raceContextJson: JSON.stringify(raceObject).slice(0, 10000),
       noBetReason: decision.primary_no_bet_reason || (safetyGate.passed ? '' : safetyGate.failures?.[0] || ''),
       dataSource,
+      webResearchSummary: webResearch?.research_summary || null,
+      webResearchSourceLinks: webResearch?.source_links || [],
+      webResearchAssessment: parsed.web_research_assessment?.assessment || (webResearch ? 'neutral' : 'missing'),
+      webResearchDataQuality: webResearch?.data_quality || null,
     };
 
     // Save to database
