@@ -157,16 +157,11 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     }
   }
 
-  // ── Liquidity Check (runner-level depth) ──
-  // Instead of a flat market-total gate (which blocks newly opened markets
-  // that have sufficient depth at the target price), check that the runner
-  // has enough available size at the best price for a partial fill, and use
-  // a lower market-total threshold as a rough maturity proxy.
-  const minLiquidity = strategy?.minLiquidity || settings.minimumLiquidity || 5000;
+  // ── Liquidity Check (runner-level depth only) ──
+  // Market total traded volume is not a reliable gate for early AU racing
+  // markets. The real test is whether the target runner has available size
+  // at the best price for a partial fill.
   const availableAtPrice = order.side === 'BACK' ? (runner?.bestBackSize || 0) : (runner?.bestLaySize || 0);
-  if (!riskDisabled && !isLiveMode && market.totalMatched < minLiquidity * 0.25) {
-    failures.push({ field: 'liquidity', reason: `Market liquidity $${market.totalMatched?.toFixed(0)} below minimum $${(minLiquidity * 0.25).toFixed(0)}` });
-  }
   if (!riskDisabled && availableAtPrice < 2) {
     failures.push({ field: 'runnerLiquidity', reason: `Runner has no available size at best price ($${availableAtPrice.toFixed(2)})` });
   }

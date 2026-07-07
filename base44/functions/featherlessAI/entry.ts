@@ -25,7 +25,7 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
    - The minimum_edge and minimum_expected_roi from strategy_settings are your thresholds — do NOT require more than those.
 
 3. RISK ASSESSMENT
-   - LIQUIDITY RISK: Markets with < $5K traded are dangerous — your bet may not get matched, or may move the price against you.
+   - LIQUIDITY RISK: The key test is whether there is sufficient size available at the target runner's best price (at least $2). Total market traded volume is a secondary signal only — early markets naturally have low volume but can still offer value. Do NOT reject solely because total traded volume is low if the runner has available size at the best price.
    - SPREAD RISK: Spreads > 5 ticks indicate uncertainty or manipulation. Avoid betting in these markets.
    - TIMING RISK: The ideal trading window is 300s-30s before the jump. Outside this window, prices are volatile and unreliable.
    - FIELD SIZE RISK: Races with > 12 runners have higher variance. Lower confidence.
@@ -417,12 +417,9 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
     failures.push(`Expected ROI ${bet.expected_roi} is not positive`);
   }
 
-  // 14. Liquidity — runner-level depth at target price (not flat market total)
-  const minLiquidity = strategySettings.minLiquidity || settings.minimumLiquidity || 5000;
+  // 14. Liquidity — runner-level depth at target price only
+  // Market total traded volume is not a reliable gate for early AU racing markets.
   const runnerBackSize = selectedRunner.betfair_back_size || 0;
-  if (ctx.total_traded_volume < minLiquidity * 0.25) {
-    failures.push(`Liquidity $${ctx.total_traded_volume} below minimum $${(minLiquidity * 0.25).toFixed(0)}`);
-  }
   if (runnerBackSize < 2) {
     failures.push(`Runner back size $${runnerBackSize} too thin at best price`);
   }

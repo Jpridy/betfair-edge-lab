@@ -83,8 +83,8 @@ export function AppProvider({ children }) {
     maxTradesPerDay: 50,
 
     // Market Filters
-    minimumLiquidity: 5000,
-    minimumTradedVolume: 10000,
+    minimumLiquidity: 500,
+    minimumTradedVolume: 1000,
     minOdds: 1.5,
     maxOdds: 20,
 

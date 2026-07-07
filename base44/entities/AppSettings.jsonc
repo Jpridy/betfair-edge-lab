@@ -86,11 +86,11 @@
     },
     "minimumLiquidity": {
       "type": "number",
-      "default": 5000
+      "default": 500
     },
     "minimumTradedVolume": {
       "type": "number",
-      "default": 10000
+      "default": 1000
     },
     "minOdds": {
       "type": "number",
