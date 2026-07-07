@@ -109,9 +109,12 @@ export function createSignal(strategyName, market, runner, settings, formData = 
   const ev = side === 'BACK' ? calcEVBack(modelProb, odds, commRate) : calcEVLay(modelProb, odds, commRate);
   const edge = side === 'BACK' ? calcEdge(modelProb, odds) : calcEdgeLay(modelProb, odds);
 
-  // Enforce strategy's minimum edge threshold — if the computed edge doesn't
-  // meet the strategy's entry criteria, no signal is created.
-  if (edge < minEdge) {
+  // Net edge after commission — commission is charged on gross winnings,
+  // reducing the effective edge. The strategy's minEdge threshold is compared
+  // against this net figure so only genuinely profitable signals pass.
+  const netEdge = edge - (commRate * 100);
+
+  if (netEdge < minEdge) {
     return null;
   }
 
@@ -139,6 +142,7 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     impliedProbability: baseProb,
     fairOdds: 1 / modelProb,
     edgePercent: edge,
+    netEdge,
     expectedValue: ev,
     confidence: formData?.confidence != null ? formData.confidence / 100 : 0.5 + Math.random() * 0.4,
     signalStatus: 'active',
@@ -154,10 +158,10 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     externalFormScore: formData?.external_form_score ?? null,
     finalScore: formData?.final_score ?? null,
     reason: formData?.form_assessment
-      ? `${strategyName}: ${formData.form_assessment} (edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, data: ${dataSource})`
+      ? `${strategyName}: ${formData.form_assessment} (net edge ${netEdge.toFixed(2)}% after ${commRate * 100}% comm, EV $${ev.toFixed(2)}, data: ${dataSource})`
       : dataSource === 'MARKET_ONLY'
-        ? `${strategyName}: market-derived edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks (market microstructure only — no horse form data)`
-        : `${strategyName}: edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks (data: ${dataSource})`,
+        ? `${strategyName}: market-derived net edge ${netEdge.toFixed(2)}% after ${commRate * 100}% comm, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks (market microstructure only — no horse form data)`
+        : `${strategyName}: net edge ${netEdge.toFixed(2)}% after ${commRate * 100}% comm, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks (data: ${dataSource})`,
   };
 }
 

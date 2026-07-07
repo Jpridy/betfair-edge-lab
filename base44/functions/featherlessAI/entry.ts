@@ -404,10 +404,11 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
     failures.push(`Back price ${selectedRunner.betfair_back_price} below minimum acceptable ${bet.minimum_acceptable_odds}`);
   }
 
-  // 12. Back price above fair odds by minimum edge
-  const minEdge = (strategySettings.minEdge || 5) / 100;
+  // 12. Back price above fair odds by minimum edge (after commission)
+  const commRate = ctx.commission_rate || 0.05;
+  const minEdge = (strategySettings.minEdge || 5) / 100 + commRate;
   if (bet.fair_odds && selectedRunner.betfair_back_price < bet.fair_odds * (1 + minEdge)) {
-    failures.push(`Back price ${selectedRunner.betfair_back_price} not above fair odds ${bet.fair_odds} by ${minEdge * 100}% edge`);
+    failures.push(`Back price ${selectedRunner.betfair_back_price} not above fair odds ${bet.fair_odds} by ${(minEdge * 100).toFixed(1)}% edge (incl. ${(commRate * 100).toFixed(1)}% commission)`);
   }
 
   // 13. Expected ROI positive after commission
@@ -415,10 +416,14 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
     failures.push(`Expected ROI ${bet.expected_roi} is not positive`);
   }
 
-  // 14. Liquidity above minimum
+  // 14. Liquidity — runner-level depth at target price (not flat market total)
   const minLiquidity = strategySettings.minLiquidity || settings.minimumLiquidity || 5000;
-  if (ctx.total_traded_volume < minLiquidity) {
-    failures.push(`Liquidity $${ctx.total_traded_volume} below minimum $${minLiquidity}`);
+  const runnerBackSize = selectedRunner.betfair_back_size || 0;
+  if (ctx.total_traded_volume < minLiquidity * 0.25) {
+    failures.push(`Liquidity $${ctx.total_traded_volume} below minimum $${(minLiquidity * 0.25).toFixed(0)}`);
+  }
+  if (runnerBackSize < 2) {
+    failures.push(`Runner back size $${runnerBackSize} too thin at best price`);
   }
 
   // 15. Spread acceptable
