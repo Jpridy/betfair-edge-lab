@@ -46,7 +46,7 @@ export default function RiskManager() {
   };
 
   const toggleRiskLimits = (checked) => {
-    updateSettings({ ...settings, riskLimitsDisabled: checked });
+    updateSettings({ riskLimitsDisabled: checked });
     addAuditLog(
       checked ? 'Risk Limits Disabled' : 'Risk Limits Enabled',
       'risk',

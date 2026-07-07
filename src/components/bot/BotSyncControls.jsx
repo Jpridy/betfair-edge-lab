@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Wifi, WifiOff, Clock, Zap } from 'lucide-react';
 
 export default function BotSyncControls() {
-  const { apiConnected, betfairConnection, syncMarkets, syncCurrentOrders, syncClearedOrders, recalculateRiskState, settings, addAuditLog, mode, markets, runners } = useApp();
+  const { apiConnected, betfairConnection, syncMarkets, syncCurrentOrders, syncClearedOrders, recalculateRiskState, settings, addAuditLog, appMode, markets, runners } = useApp();
 
   const isStreaming = betfairConnection?.streamConnectionStatus === 'connected';
 
@@ -41,7 +41,7 @@ export default function BotSyncControls() {
           </div>
           <div className="flex items-center gap-2">
             {isStreaming && <StatusBadge status="ok">STREAMING</StatusBadge>}
-            <StatusBadge status={mode === 'live' ? 'warning' : 'info'}>{mode?.toUpperCase()}</StatusBadge>
+            <StatusBadge status={apiConnected ? 'ok' : 'info'}>{appMode === 'connected_paper' ? 'PAPER' : 'DEMO'}</StatusBadge>
           </div>
         </div>
 

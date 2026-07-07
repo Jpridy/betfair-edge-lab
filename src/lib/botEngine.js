@@ -222,9 +222,10 @@ export function createPaperOrder(signal, market, runner, settings) {
 
   const matched = canMatch;
 
-  // Partial fill: match the lesser of requested stake and available size
+  // Partial fill: match the lesser of requested stake and available size.
+  // Never match more than what's actually available in the order book.
   const matchedStakeAmount = matched
-    ? Math.min(signal.stakeSuggestion, Math.max(availableSize, signal.stakeSuggestion * 0.1))
+    ? Math.min(signal.stakeSuggestion, availableSize)
     : 0;
 
   // Calculate slippage (difference between requested and matched price)

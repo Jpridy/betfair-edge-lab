@@ -4,7 +4,7 @@ import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Wifi, WifiOff, Database, ShieldCheck, AlertTriangle, Globe } from 'lucide-react';
 
 export default function RiskOverview() {
-  const { bankrollStats, settings, emergencyStop, apiConnected, demoMode } = useApp();
+  const { bankrollStats, settings, emergencyStop, apiConnected, appMode } = useApp();
 
   const weeklyPL = bankrollStats.totalPL * 0.35;
   const weeklyLossLimit = settings.dailyLossLimit * 5;
@@ -57,7 +57,7 @@ export default function RiskOverview() {
             <div>
               <div className="text-xs text-muted-foreground">Betfair API</div>
               <div className={`text-sm font-bold ${apiConnected ? 'text-chart-1' : 'text-chart-4'}`}>
-                {apiConnected ? 'Connected' : demoMode ? 'Demo Mode' : 'Disconnected'}
+                {apiConnected ? 'Connected' : appMode === 'paper' ? 'Paper (No Data)' : 'Disconnected'}
               </div>
             </div>
           </div>

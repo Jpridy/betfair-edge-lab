@@ -5,39 +5,33 @@ import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 
 export default function OnboardingChecklist() {
-  const { mode, demoMode, apiConnected, settings, botState, paperOrders } = useApp();
+  const { apiConnected, appMode, settings, botState, paperOrders } = useApp();
   const [collapsed, setCollapsed] = useState(false);
 
   const steps = [
     {
-      label: 'Choose Demo Mode',
-      detail: 'Demo mode for paper trading with simulated data',
-      done: mode === 'demo',
-      link: '/bot-control',
-    },
-    {
-      label: 'Confirm demo data or connect Betfair API',
-      detail: demoMode ? 'Using demo data — ready to go' : (apiConnected ? 'Betfair API connected' : 'Connect your Betfair API in Settings'),
-      done: demoMode || apiConnected,
+      label: 'Connect Betfair market data',
+      detail: apiConnected ? 'Betfair stream connected — live market data flowing' : 'Connect your Betfair account in Settings for live market data',
+      done: apiConnected,
       link: '/settings',
     },
     {
       label: 'Set your bankroll',
-      detail: `Current bankroll: $${settings.bankroll.toLocaleString()}`,
-      done: settings.bankroll >= 100,
+      detail: `Current paper bankroll: $${(settings.paperBankroll || settings.bankroll || 0).toLocaleString()}`,
+      done: (settings.paperBankroll || settings.bankroll || 0) >= 100,
       link: '/settings',
     },
     {
       label: 'Set risk limits',
       detail: `Daily loss limit: $${settings.dailyLossLimit} · Max stake: $${settings.maxStake}`,
       done: settings.dailyLossLimit > 0 && settings.maxStake > 0,
-      link: '/risk',
+      link: '/settings',
     },
     {
-      label: 'Select strategies',
-      detail: 'Enable at least one trading strategy',
-      done: settings.strategyValueBetEnabled || settings.strategyScalpingEnabled || settings.strategyFavOutsiderEnabled || settings.strategyCrossMarketEnabled,
-      link: '/strategy',
+      label: 'Enable Featherless AI strategy',
+      detail: 'The AI Value Decision Engine is the only active strategy — enable it in Bot Control',
+      done: true,
+      link: '/bot-control',
     },
     {
       label: 'Start the Paper Bot',

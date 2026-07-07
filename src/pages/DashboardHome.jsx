@@ -45,7 +45,7 @@ export default function DashboardHome() {
 
   let nextAction = null;
   if (emergencyStop) {
-    nextAction = { text: 'Emergency stop is active. Clear it from the Risk Manager to resume.', link: '/risk', linkText: 'Go to Risk Manager' };
+    nextAction = { text: 'Emergency stop is active. Clear it from Settings → Risk to resume.', link: '/settings', linkText: 'Go to Settings' };
   } else if (!botState.running) {
     nextAction = { text: 'The bot is stopped. Start it to begin scanning and trading.', link: '/bot-control', linkText: 'Start Bot' };
   } else if (isPaused) {
@@ -62,7 +62,7 @@ export default function DashboardHome() {
           <div className="text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">Betfair Edge Lab — Strategy Validation System.</span>{' '}
             All trades are <span className="text-chart-1 font-medium">simulated paper trades</span>. No strategy goes live until it passes 200+ settled trades, positive CLV, profit factor &gt; 1.20, and admin review.
-            Start at the <Link to="/scanner" className="text-chart-3 hover:underline">Market Scanner</Link>, then flow through Runner View → Paper Order → Orders → Analytics.
+            Start at <Link to="/scanner" className="text-chart-3 hover:underline">Markets</Link>, then flow through <Link to="/bot-control" className="text-chart-3 hover:underline">Bot</Link> → <Link to="/paper-trading" className="text-chart-3 hover:underline">Paper Orders</Link> → <Link to="/performance-analytics" className="text-chart-3 hover:underline">Analytics</Link>.
           </div>
       </div>
 

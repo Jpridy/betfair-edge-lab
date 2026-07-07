@@ -78,7 +78,9 @@ export default function BotStatusCard() {
           <StatusBadge status={apiConnected ? 'ok' : 'info'}>
             {apiConnected ? 'Live API Connected' : 'API Disconnected'}
           </StatusBadge>
-          <StatusBadge status="ok">API Health: OK</StatusBadge>
+          <StatusBadge status={apiConnected ? 'ok' : 'warning'}>
+            {apiConnected ? 'API Health: Connected' : 'API Health: Disconnected'}
+          </StatusBadge>
           <StatusBadge status={botSettings.autoPaperTradingEnabled ? 'ok' : 'neutral'}>
             Auto Paper Trading: {botSettings.autoPaperTradingEnabled ? 'ON' : 'OFF'}
           </StatusBadge>

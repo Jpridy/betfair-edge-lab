@@ -554,17 +554,19 @@ export function AppProvider({ children }) {
     addToBotActivity('Strategy data reset', 'All strategy stats, signals, and AI decisions cleared');
   };
 
-  const updateSettings = (newSettings) => {
+  // Partial merge — never replaces the whole settings object
+  const updateSettings = (patch) => {
     const oldSettings = settings;
-    setSettings(newSettings);
+    setSettings(prev => ({ ...prev, ...patch }));
     addAuditLog('Settings Updated', 'settings', 'info', 'App settings updated', {
       beforeValue: JSON.stringify({ commissionRate: oldSettings.commissionRate, allowInPlay: oldSettings.allowInPlay }),
-      afterValue: JSON.stringify({ commissionRate: newSettings.commissionRate, allowInPlay: newSettings.allowInPlay }),
+      afterValue: JSON.stringify({ commissionRate: patch.commissionRate ?? oldSettings.commissionRate, allowInPlay: patch.allowInPlay ?? oldSettings.allowInPlay }),
     });
   };
 
-  const updateBotSettings = (newSettings) => {
-    setBotSettings(newSettings);
+  // Partial merge for bot settings too
+  const updateBotSettings = (patch) => {
+    setBotSettings(prev => ({ ...prev, ...patch }));
     addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
   };
 
@@ -1345,14 +1347,19 @@ export function AppProvider({ children }) {
     };
   }, [apiConnected, betfairSessionToken]);
 
-
+  // ── Derived mode state — single source of truth ──
+  // appMode: 'paper' (no Betfair data) or 'connected_paper' (Betfair stream active, still paper trading)
+  // demoMode: true when not connected to Betfair (using empty/local state only)
+  // apiConnected: true only when Betfair session/API is connected
+  const appMode = apiConnected ? 'connected_paper' : 'paper';
+  const demoMode = !apiConnected;
 
   const value = {
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     betfairConnection, updateBetfairConnection, testBetfairConnection,
-    settings, updateSettings,
+    settings, updateSettings, appMode, demoMode,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
     auditLogs, backtestRuns, plData, dataLoading,
     addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,

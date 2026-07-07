@@ -1,33 +1,25 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Radar, Eye, FlaskConical, FileText, History, ListOrdered, Shield, Settings, ScrollText, AlertOctagon, X, Bot, BookOpen, BarChart3 } from 'lucide-react';
+import { Home, Bot, Radar, FileText, BarChart3, Settings, AlertOctagon, X } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { label: 'Home Dashboard', path: '/', icon: Home },
-  { label: 'Bot Control Centre', path: '/bot-control', icon: Bot },
-  { label: 'Market Scanner', path: '/scanner', icon: Radar },
-  { label: 'Strategy Library', path: '/strategy-library', icon: BookOpen },
-  { label: 'AI Strategy Editor', path: '/strategy', icon: FlaskConical },
-  { label: 'Runner View', path: '/runner', icon: Eye },
-  { label: 'Paper Bot Orders', path: '/paper-trading', icon: FileText },
-  { label: 'Backtesting', path: '/backtesting', icon: History },
-  { label: 'Performance Analytics', path: '/performance-analytics', icon: BarChart3 },
-  { label: 'Orders', path: '/orders', icon: ListOrdered },
-  { label: 'Risk Manager', path: '/risk', icon: Shield },
+  { label: 'Dashboard', path: '/', icon: Home },
+  { label: 'Bot', path: '/bot-control', icon: Bot },
+  { label: 'Markets', path: '/scanner', icon: Radar },
+  { label: 'Paper Orders', path: '/paper-trading', icon: FileText },
+  { label: 'Analytics', path: '/performance-analytics', icon: BarChart3 },
   { label: 'Settings', path: '/settings', icon: Settings },
-  { label: 'Logs / Audit', path: '/logs', icon: ScrollText },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const location = useLocation();
-  const { emergencyStop, triggerEmergencyStop, bankrollStats } = useApp();
+  const { emergencyStop, triggerEmergencyStop, bankrollStats, apiConnected } = useApp();
 
   return (
     <>
-      {/* Mobile overlay */}
       {mobileOpen && <div className="fixed inset-0 z-30 bg-black/60 md:hidden" onClick={onClose} />}
       <aside className={cn(
         'fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col transition-transform duration-200',
@@ -72,8 +64,16 @@ export default function Sidebar({ mobileOpen, onClose }) {
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 Paper Trading
               </span>
-              {emergencyStop && <span className="text-[10px] font-bold text-destructive animate-pulse">STOPPED</span>}
+              <span className={cn(
+                'text-[10px] font-bold',
+                apiConnected ? 'text-chart-1' : 'text-muted-foreground'
+              )}>
+                {apiConnected ? 'CONNECTED' : 'PAPER ONLY'}
+              </span>
             </div>
+            {emergencyStop && (
+              <div className="text-[10px] font-bold text-destructive animate-pulse">EMERGENCY STOP ACTIVE</div>
+            )}
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Bankroll</span>
               <span className="font-mono font-semibold text-sidebar-foreground">${(bankrollStats.bankroll || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -83,16 +83,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
               <span className={`font-mono font-semibold ${(bankrollStats.todayPL || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(bankrollStats.todayPL || 0) >= 0 ? '+' : '-'}${Math.abs(bankrollStats.todayPL || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Total P/L</span>
-              <span className={`font-mono font-semibold ${(bankrollStats.totalPL || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{(bankrollStats.totalPL || 0) >= 0 ? '+' : '-'}${Math.abs(bankrollStats.totalPL || 0).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Exposure</span>
               <span className="font-mono font-semibold text-sidebar-foreground">${((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Available</span>
-              <span className="font-mono font-semibold text-sidebar-foreground">${(bankrollStats.available || 0).toFixed(2)}</span>
             </div>
           </div>
 
