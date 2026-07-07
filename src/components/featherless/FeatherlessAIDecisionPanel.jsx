@@ -167,7 +167,7 @@ export default function FeatherlessAIDecisionPanel() {
 
         {selectedMarket && (
           <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
-            {marketRunners.length} active runners · Traded volume ${selectedMarket.totalMatched?.toLocaleString() || 0} · Status: {selectedMarket.status}
+            {selectedMarket.venue ? `${selectedMarket.venue}` : 'Unknown venue'}{selectedMarket.raceNumber ? ` · R${selectedMarket.raceNumber}` : ''} · {marketRunners.length} runners · ${selectedMarket.totalMatched?.toLocaleString() || 0} traded · {selectedMarket.status}
           </div>
         )}
 
