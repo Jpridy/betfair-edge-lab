@@ -14,15 +14,15 @@ const QUICK_ACCENTS = {
   blue: 'bg-chart-3/10 text-chart-3',
   green: 'bg-chart-1/10 text-chart-1',
   yellow: 'bg-chart-4/10 text-chart-4',
-  red: 'bg-chart-5/10 text-chart-5',
+  red: 'bg-chart-5/10 text-chart-5'
 };
 
 function QuickAction({ to, icon: Icon, label, sub, accent }) {
   return (
     <Link
       to={to}
-      className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 hover:border-primary/40 transition-all"
-    >
+      className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 hover:border-primary/40 transition-all">
+      
       <div className="flex items-center gap-3">
         <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${QUICK_ACCENTS[accent]}`}>
           <Icon className="h-5 w-5" />
@@ -33,8 +33,8 @@ function QuickAction({ to, icon: Icon, label, sub, accent }) {
         </div>
         <ArrowRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all shrink-0" />
       </div>
-    </Link>
-  );
+    </Link>);
+
 }
 
 export default function DashboardHome() {
@@ -57,7 +57,7 @@ export default function DashboardHome() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Welcome banner */}
-      <div className="flex items-start gap-2.5 rounded-xl border border-chart-3/20 bg-chart-3/5 px-4 py-3">
+      <div className="flex items-start gap-2.5 rounded-xl border border-chart-3/20 bg-chart-3/5 px-4 py-3 hidden">
           <Info className="h-4 w-4 text-chart-3 shrink-0 mt-0.5" />
           <div className="text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">Betfair Edge Lab — Strategy Validation System.</span>{' '}
@@ -70,19 +70,19 @@ export default function DashboardHome() {
       <DashboardHero />
 
       {/* Next action */}
-      {nextAction && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
+      {nextAction &&
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
           <div className="flex items-center gap-2.5">
             <ArrowRight className="h-4 w-4 text-chart-3 shrink-0" />
             <span className="text-xs text-foreground">{nextAction.text}</span>
           </div>
-          {nextAction.link && (
-            <Link to={nextAction.link} className="text-xs font-bold text-chart-3 hover:underline shrink-0 flex items-center gap-1">
+          {nextAction.link &&
+        <Link to={nextAction.link} className="text-xs font-bold text-chart-3 hover:underline shrink-0 flex items-center gap-1">
               {nextAction.linkText} <ArrowRight className="h-3 w-3" />
             </Link>
-          )}
+        }
         </div>
-      )}
+      }
 
       {/* Stat Cards */}
       <DashboardStatCards />
@@ -143,6 +143,6 @@ export default function DashboardHome() {
           <span className="px-2.5 py-1 rounded-md bg-chart-1/10 text-chart-1 border border-chart-1/30">Live Approval Review</span>
         </div>
       </div>
-    </div>
-  );
+    </div>);
+
 }
