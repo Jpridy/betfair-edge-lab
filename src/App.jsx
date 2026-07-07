@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -22,6 +22,11 @@ import BotControlCentre from '@/pages/BotControlCentre';
 import PerformanceAnalytics from '@/pages/PerformanceAnalytics';
 import StrategyLibrary from '@/pages/StrategyLibrary';
 import StrategyDetail from '@/pages/StrategyDetail';
+import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import { AppProvider } from '@/lib/AppContext';
 
 const AuthenticatedApp = () => {
@@ -47,21 +52,27 @@ const AuthenticatedApp = () => {
   return (
     <AppProvider>
       <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<DashboardHome />} />
-          <Route path="/bot-control" element={<BotControlCentre />} />
-          <Route path="/scanner" element={<MarketScanner />} />
-          <Route path="/runner" element={<RunnerView />} />
-          <Route path="/strategy" element={<StrategyLab />} />
-          <Route path="/paper-trading" element={<PaperTrading />} />
-          <Route path="/backtesting" element={<Backtesting />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/risk" element={<RiskManager />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/logs" element={<LogsAudit />} />
-          <Route path="/performance-analytics" element={<PerformanceAnalytics />} />
-          <Route path="/strategy-library" element={<StrategyLibrary />} />
-          <Route path="/strategy/:id" element={<StrategyDetail />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+          <Route element={<Layout />}>
+            <Route path="/" element={<DashboardHome />} />
+            <Route path="/bot-control" element={<BotControlCentre />} />
+            <Route path="/scanner" element={<MarketScanner />} />
+            <Route path="/runner" element={<RunnerView />} />
+            <Route path="/strategy" element={<StrategyLab />} />
+            <Route path="/paper-trading" element={<PaperTrading />} />
+            <Route path="/backtesting" element={<Backtesting />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/risk" element={<RiskManager />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/logs" element={<LogsAudit />} />
+            <Route path="/performance-analytics" element={<PerformanceAnalytics />} />
+            <Route path="/strategy-library" element={<StrategyLibrary />} />
+            <Route path="/strategy/:id" element={<StrategyDetail />} />
+          </Route>
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
