@@ -222,23 +222,12 @@ export default function Settings() {
         <TabsContent value="strategy">
           <Panel title="Strategy Toggles">
             <div className="p-4 space-y-4">
-              <ToggleRow label="Value Bet Strategy (Promising — Paper Testing)" checked={local.strategyValueBetEnabled} onChange={v => update('strategyValueBetEnabled', v)} />
-              <ToggleRow label="Pre-Off Scalping Strategy (Promising — Paper Testing)" checked={local.strategyScalpingEnabled} onChange={v => update('strategyScalpingEnabled', v)} />
-              <ToggleRow label="Fav/Outsider Strategy (Failing — Locked)" checked={local.strategyFavOutsiderEnabled} onChange={v => update('strategyFavOutsiderEnabled', v)} />
-              <ToggleRow label="Steam/Drift Strategy (Needs More Data — Paper Only)" checked={local.strategySteamDriftEnabled || local.strategyCrossMarketEnabled} onChange={v => update('strategySteamDriftEnabled', v)} />
               <div className="pt-2 border-t border-border">
                 <div className="text-xs font-bold text-primary uppercase tracking-wider mb-2">AI Strategy</div>
                 <ToggleRow label="Featherless AI Value Decision Engine" checked={featherlessSettings?.enabled || false} onChange={v => {
                   setFeatherlessSettings({ ...featherlessSettings, enabled: v });
                   addAuditLog('Featherless AI Strategy Toggled', 'strategy', v ? 'info' : 'warning', `Featherless AI ${v ? 'enabled' : 'disabled'}`);
                 }} />
-              </div>
-              <div className="pt-4 border-t border-border">
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Archived Strategies (Disabled)</div>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <div>• In-Play Front Runner — Archived (no signal generation, no orders, greyed out)</div>
-                  <div>• Cross-Market Arbitrage — Archived (no signal generation, no orders, greyed out)</div>
-                </div>
               </div>
             </div>
           </Panel>

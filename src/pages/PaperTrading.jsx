@@ -23,7 +23,7 @@ export default function PaperTrading() {
     side: 'BACK',
     odds: 3.0,
     stake: settings.baseStake,
-    strategy: 'Value Bet',
+    strategy: 'Featherless AI Value Decision Engine',
     persistenceType: 'LAPSE',
   });
 
@@ -244,10 +244,7 @@ export default function PaperTrading() {
               <Select value={form.strategy} onValueChange={v => setForm({...form, strategy: v})}>
                 <SelectTrigger className="h-9 mt-1 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Value Bet">Value Bet</SelectItem>
-                  <SelectItem value="Pre-Off Scalping">Pre-Off Scalping</SelectItem>
-                  <SelectItem value="Fav/Outsider">Fav/Outsider</SelectItem>
-                  <SelectItem value="Steam/Drift">Steam/Drift</SelectItem>
+                  <SelectItem value="Featherless AI Value Decision Engine">Featherless AI</SelectItem>
                 </SelectContent>
               </Select>
             </div>
