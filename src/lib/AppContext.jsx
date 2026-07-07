@@ -818,10 +818,12 @@ export function AppProvider({ children }) {
       steps[2].status = 'passed';
 
       // Step 4: Check Strategies
-      const enabled = getEnabledStrategies(s.settings).filter(name => {
-        const strat = s.strategyLibrary?.find(sl => sl.name === name);
-        return strat && strat.status !== 'archived';
-      });
+      const enabled = getEnabledStrategies(s.settings, s.featherlessSettings?.enabled)
+        .filter(name => name !== 'Featherless AI Value Decision Engine') // AI strategy is driven by the manual AI panel, not createSignal
+        .filter(name => {
+          const strat = s.strategyLibrary?.find(sl => sl.name === name);
+          return strat && strat.status !== 'archived';
+        });
       steps[3].status = enabled.length > 0 ? 'passed' : 'blocked';
       if (steps[3].status === 'blocked') steps[3].reason = 'No eligible strategies enabled. Fav/Outsider is failing, archived strategies are disabled.';
 

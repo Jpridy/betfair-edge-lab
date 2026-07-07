@@ -27,12 +27,13 @@ export const STRATEGY_LABELS = {
   archived: { text: 'Archived', status: 'neutral' },
 };
 
-export function getEnabledStrategies(settings) {
+export function getEnabledStrategies(settings, featherlessEnabled) {
   const strategies = [];
   if (settings.strategyValueBetEnabled) strategies.push('Value Bet');
   if (settings.strategyScalpingEnabled) strategies.push('Pre-Off Scalping');
   if (settings.strategyFavOutsiderEnabled) strategies.push('Fav/Outsider');
   if (settings.strategySteamDriftEnabled || settings.strategyCrossMarketEnabled) strategies.push('Steam/Drift');
+  if (featherlessEnabled) strategies.push('Featherless AI Value Decision Engine');
   return strategies;
 }
 

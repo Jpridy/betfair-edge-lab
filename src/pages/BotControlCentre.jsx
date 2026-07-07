@@ -6,11 +6,13 @@ import BotRulesPanel from '@/components/bot/BotRulesPanel';
 import LiveBotLockPanel from '@/components/bot/LiveBotLockPanel';
 import BotScanStats from '@/components/bot/BotScanStats';
 import BotSyncControls from '@/components/bot/BotSyncControls';
+import StrategyControlPanel from '@/components/bot/StrategyControlPanel';
 
 export default function BotControlCentre() {
   return (
     <div className="space-y-5">
       <BotControls />
+      <StrategyControlPanel />
       <BotSyncControls />
       <BotScanStats />
       <BotStatusCard />

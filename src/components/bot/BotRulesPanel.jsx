@@ -1,12 +1,15 @@
 import React from 'react';
 import { Panel } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
+import { getEnabledStrategies } from '@/lib/botEngine';
 
 export default function BotRulesPanel() {
-  const { settings, botSettings, emergencyStop } = useApp();
+  const { settings, botSettings, emergencyStop, featherlessSettings } = useApp();
+
+  const enabledStrategies = getEnabledStrategies(settings, featherlessSettings?.enabled);
 
   const rules = [
-    { label: 'Selected Strategies', value: botSettings.selectedStrategies.join(', ') },
+    { label: 'Selected Strategies', value: enabledStrategies.length > 0 ? enabledStrategies.join(', ') : 'None enabled' },
     { label: 'Market Filters', value: 'Horse Racing, WIN, Pre-race' },
     { label: 'Time Window Before Start', value: `${settings.defaultTimeWindowStartSeconds}s - ${settings.defaultTimeWindowEndSeconds}s` },
     { label: 'Minimum Liquidity', value: `$${settings.minimumLiquidity.toLocaleString()}` },
