@@ -263,8 +263,24 @@ export function AppProvider({ children }) {
     const subscribe = (entityName, setter, maxItems = 200) => {
       try {
         const unsub = base44.entities[entityName].subscribe((event) => {
-          if (event.type === 'create') setter(prev => [event.data, ...prev].slice(0, maxItems));
-          else if (event.type === 'update') setter(prev => prev.map(i => i.id === event.data.id ? { ...i, ...event.data } : i));
+          if (event.type === 'create') {
+            setter(prev => {
+              // Deduplicate: if a local optimistic copy already exists (matched by
+              // customerRef for orders, or by the same created_date), replace it
+              // with the real DB record instead of adding a second entry.
+              const dupIdx = prev.findIndex(i =>
+                (i.customerRef && event.data.customerRef && i.customerRef === event.data.customerRef) ||
+                (i.created_date && event.data.created_date && i.created_date === event.data.created_date)
+              );
+              if (dupIdx >= 0) {
+                const updated = [...prev];
+                updated[dupIdx] = { ...prev[dupIdx], ...event.data };
+                return updated;
+              }
+              if (prev.some(i => i.id === event.data.id)) return prev;
+              return [event.data, ...prev].slice(0, maxItems);
+            });
+          } else if (event.type === 'update') setter(prev => prev.map(i => i.id === event.data.id ? { ...i, ...event.data } : i));
           else if (event.type === 'delete') setter(prev => prev.filter(i => i.id !== event.data.id));
         });
         unsubs.push(unsub);
