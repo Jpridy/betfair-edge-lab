@@ -274,7 +274,7 @@ function buildRaceObject(market, runners, settings, strategySettings) {
       track_condition: '',
       weather: '',
       start_time: startTime || '',
-      time_before_jump_seconds: timeBeforeJump || 0,
+      time_before_jump_seconds: timeBeforeJump === null ? -1 : timeBeforeJump,
       commission_rate: commissionRate,
       market_status: market.status || 'OPEN',
       in_play: market.inPlay || false,
@@ -519,10 +519,50 @@ Deno.serve(async (req) => {
 
     if (!market) return Response.json({ error: 'market is required' }, { status: 400 });
 
+    // ── Hard pre-check: don't call the AI if the race is outside the trading window ──
+    // Saves API credits and guarantees the time-window rule is enforced even if the
+    // model or safety gate has a bug.
+    const _startTime = market.startTime || market.marketStartTime;
+    const _windowStart = strategySettings?.timeWindowStart || settings?.defaultTimeWindowStartSeconds || 300;
+    const _windowEnd = strategySettings?.timeWindowEnd || settings?.defaultTimeWindowEndSeconds || 30;
+    if (!_startTime) {
+      return Response.json({
+        success: true,
+        decision: {
+          strategyName: 'Featherless AI Value Decision Engine',
+          marketId: market.id || market.betfairMarketId,
+          betfairMarketId: market.betfairMarketId,
+          decision: 'NO_BET',
+          noBetReason: `No market start time — cannot verify trading window (must be within ${_windowEnd}s–${_windowStart}s of jump)`,
+          safetyGatePassed: false,
+          safetyGateFailures: ['No market start time — cannot verify trading window'],
+          validationStatus: 'valid',
+          validationErrors: [],
+        },
+      });
+    }
+    const _timeBeforeJump = Math.round((new Date(_startTime).getTime() - Date.now()) / 1000);
+    if (_timeBeforeJump > _windowStart) {
+      return Response.json({
+        success: true,
+        decision: {
+          strategyName: 'Featherless AI Value Decision Engine',
+          marketId: market.id || market.betfairMarketId,
+          betfairMarketId: market.betfairMarketId,
+          decision: 'NO_BET',
+          noBetReason: `Race starts in ${_timeBeforeJump}s — outside ${_windowStart}s trading window`,
+          safetyGatePassed: false,
+          safetyGateFailures: [`Race starts in ${_timeBeforeJump}s — outside ${_windowStart}s window`],
+          validationStatus: 'valid',
+          validationErrors: [],
+        },
+      });
+    }
+
     const apiKey = Deno.env.get('FEATHERLESS_API_KEY');
     if (!apiKey) return Response.json({ error: 'FEATHERLESS_API_KEY not set' }, { status: 500 });
 
-    const modelName = strategySettings?.modelName || 'meta-llama/Llama-3.3-70B-Instruct';
+    const modelName = strategySettings?.modelName || 'Qwen/Qwen2.5-7B-Instruct';
     const temperature = strategySettings?.temperature ?? 0.1;
     const maxTokens = strategySettings?.maxTokens || 2000;
     const timeoutMs = (strategySettings?.timeoutSeconds || 10) * 1000;
