@@ -1027,6 +1027,7 @@ export function AppProvider({ children }) {
                       persistenceType: 'LAPSE',
                       spreadTicks: countTicksBetween(aiRunner.bestBackPrice || 0, aiRunner.bestLayPrice || 0),
                       reason: `Featherless AI: ${decision.mainReason}`,
+                      dataSource: decision.dataSource || 'MARKET_ONLY',
                     };
                   }
                 }
@@ -1115,7 +1116,7 @@ export function AppProvider({ children }) {
               };
 
               const preCheck = runPreOrderChecks(
-                { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType },
+                { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType, dataSource: signal.dataSource },
                 market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
               );
 

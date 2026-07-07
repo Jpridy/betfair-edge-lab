@@ -73,6 +73,14 @@ export function createSignal(strategyName, market, runner, settings, formData = 
   const formClassification = classifyFormData(raceFormProfile);
   const dataSource = formData?.data_source || formClassification.dataSource;
 
+  // ── Hard gate: no betting without form data ──
+  // The user requires that at least Betfair metadata or external form data
+  // be available before any signal is created. MARKET_ONLY (exchange prices
+  // and microstructure alone) is insufficient.
+  if (dataSource === 'MARKET_ONLY') {
+    return null;
+  }
+
   // Determine side first so odds match the side
   let side;
   if (strategyName === 'Fav/Outsider') {

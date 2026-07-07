@@ -122,6 +122,15 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
 
   }
 
+  // ── Form Data Gate ──
+  // No orders may be placed when only market-only data is available.
+  // The signal's dataSource must be BETFAIR_METADATA_PLUS_MARKET or
+  // EXTERNAL_FORM_PLUS_MARKET. This is a secondary safety net — the
+  // primary gate is in createSignal (botEngine.js).
+  if (order.dataSource === 'MARKET_ONLY') {
+    failures.push({ field: 'dataSource', reason: 'No form data available — market-only analysis is insufficient for order placement' });
+  }
+
   // ── Time Window Check ──
   // In live mode, the market selection already picks the market closest to
   // the trading window. Most live markets are further out than 5 minutes, so
