@@ -32,7 +32,7 @@ const TABS = [
 
 export default function StrategyLibrary() {
   const navigate = useNavigate();
-  const { settings, addAuditLog, resetStrategyData } = useApp();
+  const { settings, addAuditLog, resetStrategyData, strategyDataReset } = useApp();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('all');
   const [view, setView] = useState('grid');
@@ -44,15 +44,29 @@ export default function StrategyLibrary() {
   };
 
   const strategiesWithStatus = useMemo(() => {
+    const ZEROED_AUDIT = {
+      totalSignals: 0, totalPaperOrders: 0, matchedOrders: 0, unmatchedOrders: 0,
+      wins: 0, losses: 0, strikeRate: 0,
+      totalStake: 0, totalLiability: 0,
+      grossProfit: 0, commissionPaid: 0, netProfit: 0,
+      grossLoss: 0, roi: 0, liabilityRoi: 0, profitFactor: 0,
+      maxDrawdown: 0, longestLosingStreak: 0,
+      averageOdds: 0, averageStake: 0, averageEdge: 0, averageMatchedPrice: 0,
+      closingPrice: 0, closingLineValue: 0, slippage: 0,
+      equityCurve: [], drawdownCurve: [], clvHistory: [],
+      strikeRateHistory: [], weeklyROI: [],
+      profitByMarketType: [], profitByOddsRange: [], profitByTimeWindow: [],
+    };
     return DEMO_STRATEGY_LIBRARY.map(s => {
-      const audit = getAuditData(s.name);
+      const rawAudit = getAuditData(s.name);
+      const audit = strategyDataReset ? { ...ZEROED_AUDIT, ...rawAudit && Object.fromEntries(Object.keys(rawAudit).map(k => [k, Array.isArray(rawAudit[k]) ? [] : 0])) } : rawAudit;
       const status = computeTrafficLight(s, audit, settings);
       const dq = computeDataQuality(s, audit);
       const progress = getPaperProgress(audit);
       const recon = reconcileMetrics(audit);
       return { ...s, audit, status, dataQuality: dq, progress, reconValid: recon.valid };
     });
-  }, [settings]);
+  }, [settings, strategyDataReset]);
 
   const filtered = useMemo(() => {
     return strategiesWithStatus.filter(s => {
