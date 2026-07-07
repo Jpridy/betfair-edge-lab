@@ -344,13 +344,36 @@ export class BetfairStreamClient {
     }
   }
 
-  _getMarketsArray() {
+  _getActiveMarkets() {
+    const now = Date.now();
     const markets = [];
     for (const m of this.markets.values()) {
-      // Skip closed/settled markets
       if (m.status === 'CLOSED' || m.status === 'SETTLED') continue;
+      // Today's markets only — skip races that aren't today
+      if (m.startTime) {
+        const start = new Date(m.startTime).getTime();
+        if (!isNaN(start)) {
+          // Skip markets that jumped more than 30 min ago (in-play/settling, not tradeable pre-off)
+          if (start < now - 30 * 60 * 1000) continue;
+          // Skip markets more than 24h away (tomorrow+, not today)
+          if (start > now + 24 * 60 * 60 * 1000) continue;
+        }
+      }
+      markets.push(m);
+    }
+    // Sort by next to jump (earliest start time first)
+    markets.sort((a, b) => {
+      const aTime = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+      const bTime = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+      return aTime - bTime;
+    });
+    return markets;
+  }
+
+  _getMarketsArray() {
+    return this._getActiveMarkets().map(m => {
       const runnerCount = m.runners.size;
-      markets.push({
+      return {
         id: m.id,
         betfairMarketId: m.betfairMarketId,
         eventType: m.eventType,
@@ -369,15 +392,13 @@ export class BetfairStreamClient {
         bspMarket: m.bspMarket,
         marketBaseRate: m.marketBaseRate,
         watched: m.watched,
-      });
-    }
-    return markets;
+      };
+    });
   }
 
   _getRunnersArray() {
     const runners = [];
-    for (const m of this.markets.values()) {
-      if (m.status === 'CLOSED' || m.status === 'SETTLED') continue;
+    for (const m of this._getActiveMarkets()) {
       for (const r of m.runners.values()) {
         // Skip removed runners
         if (r.status === 'REMOVED') continue;
