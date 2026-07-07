@@ -272,7 +272,10 @@ export function createPaperOrder(signal, market, runner, settings) {
 
 export function settleOrder(order, market, settings, outcome = null) {
   // outcome: 'won' | 'lost' from real market results, or null for random (demo data mode)
-  const won = outcome === 'won' ? true : outcome === 'lost' ? false : Math.random() > 0.45;
+  // outcome represents whether the HORSE won the race — NOT whether the bet won.
+  // For BACK: bet wins when horse wins. For LAY: bet wins when horse loses.
+  const horseWon = outcome === 'won' ? true : outcome === 'lost' ? false : Math.random() > 0.45;
+  const won = order.side === 'LAY' ? !horseWon : horseWon;
   
   // Calculate commission using Market Base Rate model
   const commResult = calculateCommission(
@@ -318,7 +321,7 @@ export function settleOrder(order, market, settings, outcome = null) {
       matched_price: order.matchedOdds,
       closingOdds,
       clv,
-      exitReason: 'Race settled — runner won',
+      exitReason: `Race settled — runner ${horseWon ? 'won' : 'lost'}`,
     };
   } else {
     let gross;
@@ -350,7 +353,7 @@ export function settleOrder(order, market, settings, outcome = null) {
       matched_price: order.matchedOdds,
       closingOdds,
       clv,
-      exitReason: 'Race settled — runner lost',
+      exitReason: `Race settled — runner ${horseWon ? 'won' : 'lost'}`,
     };
   }
 }
