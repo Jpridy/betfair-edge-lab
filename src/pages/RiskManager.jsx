@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, ArrowRight, FlaskConical } from 'lucide-react';
 import GlobalStopRules from '@/components/risk/GlobalStopRules';
 import RiskOverview from '@/components/risk/RiskOverview';
@@ -28,6 +29,8 @@ const RISK_RULES = [
 
 export default function RiskManager() {
   const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus, paperOrders, addAuditLog, updateSettings, cancelUnmatchedOrders } = useApp();
+  const [confirmText, setConfirmText] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const paperExposure = paperOrders.filter(o => o.result === 'pending' && o.paper_mode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
   const liveExposure = paperOrders.filter(o => o.result === 'pending' && o.liveMode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
@@ -45,14 +48,26 @@ export default function RiskManager() {
     addAuditLog('Force Paper-Only Mode', 'emergency', 'critical', 'Risk Manager: forced paper-only mode activated');
   };
 
+  const CONFIRM_PHRASE = 'DISABLE RISK LIMITS';
+
   const toggleRiskLimits = (checked) => {
-    updateSettings({ riskLimitsDisabled: checked });
-    addAuditLog(
-      checked ? 'Risk Limits Disabled' : 'Risk Limits Enabled',
-      'risk',
-      checked ? 'warning' : 'info',
-      checked ? 'ALL risk limits bypassed for testing — orders will not be blocked by risk checks' : 'Risk limits re-enabled — all checks active'
-    );
+    if (checked) {
+      setShowConfirm(true);
+      setConfirmText('');
+      return;
+    }
+    // Disabling the bypass is always allowed
+    updateSettings({ riskLimitsDisabled: false });
+    setShowConfirm(false);
+    addAuditLog('Risk Limits Enabled', 'risk', 'info', 'Risk limits re-enabled — all checks active');
+  };
+
+  const confirmDisableRiskLimits = () => {
+    if (confirmText.trim().toUpperCase() !== CONFIRM_PHRASE) return;
+    updateSettings({ riskLimitsDisabled: true });
+    setShowConfirm(false);
+    setConfirmText('');
+    addAuditLog('Risk Limits Disabled', 'risk', 'warning', 'ALL risk limits bypassed for testing — orders will not be blocked by risk checks. Confirmed via typed phrase.');
   };
 
   return (
@@ -75,6 +90,36 @@ export default function RiskManager() {
           </div>
           <Switch checked={settings.riskLimitsDisabled || false} onCheckedChange={toggleRiskLimits} />
         </div>
+        {showConfirm && !settings.riskLimitsDisabled && (
+          <div className="mt-4 rounded-lg border border-chart-4/40 bg-chart-4/5 p-4 space-y-3">
+            <div className="text-xs font-bold text-chart-4 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> Type Confirmation Required
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Type <span className="font-mono font-bold text-foreground">DISABLE RISK LIMITS</span> to bypass all risk checks. This is for testing only.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={confirmText}
+                onChange={e => setConfirmText(e.target.value)}
+                placeholder="Type the confirmation phrase..."
+                className="flex-1"
+                onKeyDown={e => { if (e.key === 'Enter') confirmDisableRiskLimits(); }}
+              />
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={confirmDisableRiskLimits}
+                disabled={confirmText.trim().toUpperCase() !== CONFIRM_PHRASE}
+              >
+                Confirm
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setShowConfirm(false); setConfirmText(''); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Emergency Stop Banner */}

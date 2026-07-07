@@ -89,7 +89,7 @@ export default function Backtesting() {
   return (
     <div className="space-y-5">
       {/* Configuration */}
-      <Panel title="Backtest Configuration">
+      <Panel title="Synthetic Backtest Configuration">
         <div className="p-4 space-y-4">
           <div className="bg-chart-3/10 border border-chart-3/30 rounded-lg p-3 text-xs text-muted-foreground">
             <span className="text-chart-3 font-medium">How it works:</span> Select your active strategies, choose how many historical races to simulate, and the engine will replay each race in time order — generating signals, running risk checks, placing simulated orders, and settling them against the actual race outcome. Results include equity curve, drawdown, profit factor, and CLV.

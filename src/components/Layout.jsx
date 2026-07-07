@@ -15,7 +15,7 @@ const PAGE_TITLES = {
   '/runner': { title: 'Runner View', subtitle: 'Back/lay prices, edge, CLV estimate, and strategy suitability per runner' },
   '/strategy': { title: 'Strategy Research Hub', subtitle: 'Strategy modules and signal generation' },
   '/paper-trading': { title: 'Paper Trading', subtitle: 'Safe testing centre — place, track, and settle simulated orders before going live' },
-  '/backtesting': { title: 'Backtesting', subtitle: 'Replay historical races to validate strategy performance before paper trading' },
+  '/backtesting': { title: 'Synthetic Backtest', subtitle: 'Replay simulated historical races to validate strategy performance before paper trading' },
   '/performance-analytics': { title: 'Performance Analytics', subtitle: 'Equity curves, drawdown, CLV trends, and profit breakdowns by strategy and market' },
   '/orders': { title: 'Orders', subtitle: 'Complete paper and live order history with full audit trail and filtering' },
   '/risk': { title: 'Risk Manager', subtitle: 'Global risk state, loss limits, exposure, and emergency controls for all trading' },

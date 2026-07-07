@@ -179,6 +179,14 @@
     "dailyDepositReminderEnabled": {
       "type": "boolean",
       "default": false
+    },
+    "riskLimitsDisabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "minimumPaperTrades": {
+      "type": "number",
+      "default": 200
     }
   },
   "required": [

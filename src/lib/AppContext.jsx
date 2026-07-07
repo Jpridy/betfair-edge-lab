@@ -10,6 +10,8 @@ import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 const AppContext = createContext(null);
 
 const DEFAULT_BOT_SETTINGS = {
+  botEnabled: false,
+  botMode: 'demo',
   scanIntervalSeconds: 30,
   selectedStrategies: ['Featherless AI Value Decision Engine'],
   autoPaperTradingEnabled: true,
@@ -227,6 +229,10 @@ export function AppProvider({ children }) {
   });
   const [aiDecisions, setAiDecisions] = useState([]);
 
+  // Refs for DB record IDs (for settings persistence)
+  const settingsRecordId = useRef(null);
+  const botSettingsRecordId = useRef(null);
+
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
   stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings };
@@ -254,7 +260,7 @@ export function AppProvider({ children }) {
     const loadAll = async () => {
       try {
         setDataLoading(true);
-        const [orders, signals, cycles, logs, runs, stats, aiDecls] = await Promise.all([
+        const [orders, signals, cycles, logs, runs, stats, aiDecls, appSettingsRecs, botSettingsRecs] = await Promise.all([
           base44.entities.PaperOrder.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.StrategySignal.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.BotCycle.filter({}, '-created_date', 100).catch(() => []),
@@ -262,6 +268,8 @@ export function AppProvider({ children }) {
           base44.entities.BacktestRun.filter({}, '-created_date', 50).catch(() => []),
           base44.entities.StrategyStats.filter({}, '-created_date', 50).catch(() => []),
           base44.entities.FeatherlessAIDecision.filter({}, '-created_date', 100).catch(() => []),
+          base44.entities.AppSettings.list('-created_date', 1).catch(() => []),
+          base44.entities.BotSettings.list('-created_date', 1).catch(() => []),
         ]);
         if (cancelled) return;
         setPaperOrders(orders);
@@ -271,6 +279,17 @@ export function AppProvider({ children }) {
         setBacktestRuns(runs);
         setStrategyStats(stats);
         setAiDecisions(aiDecls);
+        // Load persisted settings — merge with defaults so new fields are never lost
+        if (appSettingsRecs && appSettingsRecs.length > 0) {
+          const rec = appSettingsRecs[0];
+          settingsRecordId.current = rec.id;
+          setSettings(prev => ({ ...prev, ...rec }));
+        }
+        if (botSettingsRecs && botSettingsRecs.length > 0) {
+          const rec = botSettingsRecs[0];
+          botSettingsRecordId.current = rec.id;
+          setBotSettings(prev => ({ ...prev, ...rec }));
+        }
       } catch (err) {
         // silently fail — app starts empty
       } finally {
@@ -554,20 +573,35 @@ export function AppProvider({ children }) {
     addToBotActivity('Strategy data reset', 'All strategy stats, signals, and AI decisions cleared');
   };
 
-  // Partial merge — never replaces the whole settings object
+  // Partial merge — never replaces the whole settings object. Persists to DB.
   const updateSettings = (patch) => {
     const oldSettings = settings;
-    setSettings(prev => ({ ...prev, ...patch }));
+    const merged = { ...settings, ...patch };
+    setSettings(merged);
     addAuditLog('Settings Updated', 'settings', 'info', 'App settings updated', {
       beforeValue: JSON.stringify({ commissionRate: oldSettings.commissionRate, allowInPlay: oldSettings.allowInPlay }),
       afterValue: JSON.stringify({ commissionRate: patch.commissionRate ?? oldSettings.commissionRate, allowInPlay: patch.allowInPlay ?? oldSettings.allowInPlay }),
     });
+    // Persist to AppSettings entity (upsert)
+    const payload = { ...merged, mode: 'demo' };
+    if (settingsRecordId.current) {
+      base44.entities.AppSettings.update(settingsRecordId.current, payload).catch(() => {});
+    } else {
+      base44.entities.AppSettings.create(payload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+    }
   };
 
-  // Partial merge for bot settings too
+  // Partial merge for bot settings too. Persists to DB.
   const updateBotSettings = (patch) => {
-    setBotSettings(prev => ({ ...prev, ...patch }));
+    const merged = { ...botSettings, ...patch };
+    setBotSettings(merged);
     addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
+    const payload = { ...merged, botMode: 'demo' };
+    if (botSettingsRecordId.current) {
+      base44.entities.BotSettings.update(botSettingsRecordId.current, payload).catch(() => {});
+    } else {
+      base44.entities.BotSettings.create(payload).then(rec => { if (rec) botSettingsRecordId.current = rec.id; }).catch(() => {});
+    }
   };
 
   // ── Betfair Connection ──

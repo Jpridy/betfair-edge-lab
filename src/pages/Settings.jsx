@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Input } from '@/components/ui/input';
@@ -18,11 +18,17 @@ export default function Settings() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResults, setTestResults] = useState(null);
   const [savedSection, setSavedSection] = useState(null);
+  const [importError, setImportError] = useState(null);
+
+  // Sync local state when context settings change (e.g. after DB load)
+  useEffect(() => { setLocal(settings); }, [settings]);
+  useEffect(() => { setBotLocal(botSettings); }, [botSettings]);
 
   const update = (key, value) => setLocal(prev => ({ ...prev, [key]: value }));
 
   const handleSave = (section) => {
     updateSettings(local);
+    if (section === 'bot') updateBotSettings(botLocal);
     setSavedSection(section);
     setTimeout(() => setSavedSection(null), 2000);
   };
@@ -42,14 +48,20 @@ export default function Settings() {
   const handleImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setImportError(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target.result);
-        setLocal(imported);
-        addAuditLog('Settings Imported', 'settings', 'info', 'Settings JSON imported');
+        if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) {
+          setImportError('Invalid file: expected a settings JSON object.');
+          return;
+        }
+        // Merge with current defaults so missing fields keep their values
+        setLocal(prev => ({ ...prev, ...imported }));
+        addAuditLog('Settings Imported', 'settings', 'info', 'Settings JSON imported and merged with defaults');
       } catch (err) {
-        // Invalid JSON
+        setImportError('Invalid JSON file: could not parse.');
       }
     };
     reader.readAsText(file);
@@ -84,6 +96,12 @@ export default function Settings() {
           <Button size="sm" onClick={() => handleSave('all')}>{savedSection === 'all' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Settings</>}</Button>
         </div>
       </div>
+
+      {importError && (
+        <div className="flex items-center gap-2 text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" /> {importError}
+        </div>
+      )}
 
       <Tabs defaultValue="commission">
         <TabsList className="bg-card border border-border flex-wrap">
@@ -366,7 +384,9 @@ export default function Settings() {
                 <ToggleRow label="Require Live Confirmation Text" checked={botLocal.requireLiveConfirmationText} onChange={v => setBotLocal(prev => ({ ...prev, requireLiveConfirmationText: v }))} />
               </div>
               <div className="flex justify-end pt-4 border-t border-border">
-                <Button size="sm" onClick={() => updateBotSettings(botLocal)}><Save className="h-4 w-4 mr-1" /> Save Bot Settings</Button>
+                <Button size="sm" onClick={() => handleSave('bot')}>
+                  {savedSection === 'bot' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Bot Settings</>}
+                </Button>
               </div>
             </div>
           </Panel>
