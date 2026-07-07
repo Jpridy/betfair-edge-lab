@@ -5,11 +5,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Download, AlertTriangle } from 'lucide-react';
+import { Download, AlertTriangle, Inbox } from 'lucide-react';
 import { exportToCSV } from '@/lib/csvExport';
+import EmptyState from '@/components/EmptyState';
 
 export default function Orders() {
-  const { paperOrders } = useApp();
+  const { paperOrders, dataLoading } = useApp();
   const [statusFilter, setStatusFilter] = useState('all');
   const [sideFilter, setSideFilter] = useState('all');
   const [strategyFilter, setStrategyFilter] = useState('all');
@@ -210,7 +211,21 @@ export default function Orders() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map(o => (
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={19} className="py-0">
+                  {paperOrders.length === 0 && !dataLoading ? (
+                    <EmptyState
+                      icon={Inbox}
+                      title="No paper orders yet"
+                      message="Orders will appear here once the bot creates paper trades or you place manual orders from the Paper Trading page."
+                    />
+                  ) : (
+                    <EmptyState icon={Inbox} title="No orders match your filters" message="Try clearing some filters to see more orders." />
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : filtered.map(o => (
               <TableRow key={o.id} className="border-border">
                 <TableCell className="text-xs text-muted-foreground">{new Date(o.created_date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
                 <TableCell className="text-xs">{o.strategyName}</TableCell>

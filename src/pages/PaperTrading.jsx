@@ -8,14 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Plus, XCircle, RefreshCw, Download, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Plus, XCircle, RefreshCw, Download, ArrowRight, AlertTriangle, Inbox, TrendingUp } from 'lucide-react';
 import PaperProgress from '@/components/paper/PaperProgress';
 import { exportToCSV } from '@/lib/csvExport';
+import EmptyState from '@/components/EmptyState';
 
 const ORDER_STATUSES = ['pending', 'executable', 'execution_complete', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'voided', 'settled', 'rejected'];
 
 export default function PaperTrading() {
-  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, emergencyStop, addAuditLog, cancelUnmatchedOrders, recalculateMetrics } = useApp();
+  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, emergencyStop, addAuditLog, cancelUnmatchedOrders, recalculateMetrics, dataLoading } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     marketId: markets[0]?.id || '',
@@ -205,15 +206,19 @@ export default function PaperTrading() {
       {/* Equity Curve */}
       <Panel title="Equity Curve">
         <div className="p-4">
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={equityCurve}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-              <XAxis dataKey="idx" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-              <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} domain={['auto', 'auto']} />
-              <Tooltip contentStyle={{ background: 'hsl(222 47% 9%)', border: '1px solid hsl(217 33% 17%)', borderRadius: '8px', fontSize: '12px' }} />
-              <Line type="monotone" dataKey="equity" stroke="hsl(142 71% 45%)" strokeWidth={2} dot={false} name="Bankroll $" />
-            </LineChart>
-          </ResponsiveContainer>
+          {equityCurve.length === 0 ? (
+            <EmptyState icon={TrendingUp} title="No equity data yet" message="Settled paper orders will build the equity curve over time." className="h-[200px]" />
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={equityCurve}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                <XAxis dataKey="idx" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} domain={['auto', 'auto']} />
+                <Tooltip contentStyle={{ background: 'hsl(222 47% 9%)', border: '1px solid hsl(217 33% 17%)', borderRadius: '8px', fontSize: '12px' }} />
+                <Line type="monotone" dataKey="equity" stroke="hsl(142 71% 45%)" strokeWidth={2} dot={false} name="Bankroll $" />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </Panel>
 
@@ -320,7 +325,17 @@ export default function PaperTrading() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paperOrders.map(o => (
+            {paperOrders.length === 0 && !dataLoading ? (
+              <TableRow>
+                <TableCell colSpan={13} className="py-0">
+                  <EmptyState
+                    icon={Inbox}
+                    title="No paper orders yet"
+                    message="Create a manual paper order above, or start the bot from the Bot Control Centre to begin automated paper trading."
+                  />
+                </TableCell>
+              </TableRow>
+            ) : paperOrders.map(o => (
               <TableRow key={o.id} className="border-border">
                 <TableCell className="text-xs text-muted-foreground">{new Date(o.created_date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
                 <TableCell className="text-xs">{o.strategyName}</TableCell>

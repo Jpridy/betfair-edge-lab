@@ -8,12 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff, Filter, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, Filter, ExternalLink, AlertTriangle, WifiOff } from 'lucide-react';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { calculateSpreadTicks } from '@/lib/tickLadder';
+import EmptyState from '@/components/EmptyState';
+import { Link } from 'react-router-dom';
 
 export default function MarketScanner() {
-  const { markets, runners, toggleWatchMarket } = useApp();
+  const { markets, runners, toggleWatchMarket, apiConnected, dataLoading } = useApp();
   const navigate = useNavigate();
   const [filters, setFilters] = useState({
     eventType: 'Horse Racing',
@@ -212,7 +214,26 @@ export default function MarketScanner() {
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={20} className="text-center text-xs text-muted-foreground py-8">No markets match your filters.</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={20} className="py-0">
+                  {markets.length === 0 && !dataLoading ? (
+                    <EmptyState
+                      icon={apiConnected ? Filter : WifiOff}
+                      title={apiConnected ? 'No markets found' : 'Betfair API not connected'}
+                      message={apiConnected
+                        ? 'No open racing markets are available right now. Markets appear here when the Betfair stream delivers live data.'
+                        : 'Connect your Betfair account in Settings to stream live racing markets, runners, and prices.'}
+                      action={!apiConnected && (
+                        <Link to="/settings" className="inline-flex items-center h-8 px-4 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90">
+                          Go to Settings
+                        </Link>
+                      )}
+                    />
+                  ) : (
+                    <EmptyState icon={Filter} title="No markets match your filters" message="Try widening your filter criteria — reduce minimum volume, increase time-to-start, or clear the venue filter." />
+                  )}
+                </TableCell>
+              </TableRow>
             ) : filtered.map(m => {
               const rd = getRunnerData(m.id);
               const liq = getLiquidityStatus(m.totalMatched, filters.minLiquidity);
