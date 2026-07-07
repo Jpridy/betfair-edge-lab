@@ -201,7 +201,7 @@ export default function BetfairConnection() {
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Stream Status</div>
                 <div className="text-lg font-bold font-mono mt-1 flex items-center gap-1.5">
-                  {betfairConnection.streamConnectionStatus === 'connected' ? (
+                  {betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling' ? (
                     <><span className="h-2 w-2 rounded-full bg-chart-1 animate-pulse" /><span className="text-chart-1">LIVE</span></>
                   ) : betfairConnection.streamConnectionStatus === 'connecting' || betfairConnection.streamConnectionStatus === 'authenticating' || betfairConnection.streamConnectionStatus === 'subscribing' ? (
                     <><Loader2 className="h-3.5 w-3.5 animate-spin text-chart-4" /><span className="text-chart-4">{betfairConnection.streamConnectionStatus}</span></>

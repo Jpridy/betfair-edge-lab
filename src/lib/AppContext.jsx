@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { createBetfairStream, fetchBetfairMarkets } from '@/lib/betfairApi';
+
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
@@ -588,7 +588,7 @@ export function AppProvider({ children }) {
         }
         results.streamStatus = currentStatus;
 
-        const streamConnected = currentStatus === 'connected';
+        const streamConnected = currentStatus === 'connected' || currentStatus === 'polling';
         const hasMarketData = stateRef.current.markets.length > 0;
         if (streamConnected || hasMarketData) {
           results.marketDataAccess = true;
@@ -1128,7 +1128,7 @@ export function AppProvider({ children }) {
     // Connected — clear demo data immediately so live mode shows ONLY API data
     setMarkets([]);
     setRunners([]);
-    setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected', streamApiEnabled: false }));
+    setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected', streamApiEnabled: false, streamConnectionStatus: 'connecting' }));
 
     if (!betfairSessionToken) return;
 
@@ -1142,7 +1142,8 @@ export function AppProvider({ children }) {
     const poll = async () => {
       if (cancelled) return;
       try {
-        const result = await fetchBetfairMarkets(betfairSessionToken);
+        const res = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
+        const result = res.data;
         if (cancelled) return;
         if (result.status === 'success') {
           setMarkets(result.markets);
@@ -1212,13 +1213,25 @@ export function AppProvider({ children }) {
           addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
         }
       } catch (err) {
-        // silently retry on next interval
+        const errData = err.response?.data;
+        if (errData?.sessionExpired) {
+          setApiConnected(false);
+          setBetfairSessionToken(null);
+          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'disconnected' }));
+          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
+        } else if (errData?.error) {
+          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
+          addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${errData.error}`);
+        } else {
+          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
+          addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${err.message || err}`);
+        }
       }
     };
 
     poll();
     pollTimer = setInterval(poll, 5000);
-    addAuditLog('Betfair REST Polling Started', 'api', 'info', 'Polling Betfair REST API every 5 seconds for live market data');
+    addAuditLog('Betfair REST Polling Started', 'api', 'info', 'Polling Betfair REST API (server-side) every 5 seconds for live market data');
 
     return () => {
       cancelled = true;
