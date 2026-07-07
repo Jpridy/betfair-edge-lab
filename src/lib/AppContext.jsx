@@ -193,6 +193,28 @@ export function AppProvider({ children }) {
   // ── Rejected Orders ──
   const [rejectedOrders, setRejectedOrders] = useState([]);
 
+  // ── Featherless AI ──
+  const [featherlessSettings, setFeatherlessSettings] = useState({
+    enabled: false,
+    modelName: 'meta-llama/Llama-3.3-70B-Instruct',
+    temperature: 0.1,
+    maxTokens: 2000,
+    timeoutSeconds: 10,
+    minConfidence: 75,
+    minEdge: 5,
+    minExpectedROI: 3,
+    paperTradeOnly: true,
+    allowLiveHandoff: false,
+    storeLogs: true,
+    minOdds: 2.0,
+    maxOdds: 12.0,
+    minLiquidity: 5000,
+    timeWindowStart: 300,
+    timeWindowEnd: 30,
+    stakingMode: 'confidence_weighted_fractional_kelly',
+  });
+  const [aiDecisions, setAiDecisions] = useState([]);
+
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
   stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken };
@@ -208,13 +230,14 @@ export function AppProvider({ children }) {
     const loadAll = async () => {
       try {
         setDataLoading(true);
-        const [orders, signals, cycles, logs, runs, stats] = await Promise.all([
+        const [orders, signals, cycles, logs, runs, stats, aiDecls] = await Promise.all([
           base44.entities.PaperOrder.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.StrategySignal.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.BotCycle.filter({}, '-created_date', 100).catch(() => []),
           base44.entities.AuditLog.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.BacktestRun.filter({}, '-created_date', 50).catch(() => []),
           base44.entities.StrategyStats.filter({}, '-created_date', 50).catch(() => []),
+          base44.entities.FeatherlessAIDecision.filter({}, '-created_date', 100).catch(() => []),
         ]);
         if (cancelled) return;
         setPaperOrders(orders);
@@ -223,6 +246,7 @@ export function AppProvider({ children }) {
         setAuditLogs(logs);
         setBacktestRuns(runs);
         setStrategyStats(stats);
+        setAiDecisions(aiDecls);
       } catch (err) {
         // silently fail — app starts empty
       } finally {
@@ -249,6 +273,7 @@ export function AppProvider({ children }) {
     subscribe('AuditLog', setAuditLogs, 500);
     subscribe('BacktestRun', setBacktestRuns);
     subscribe('StrategyStats', setStrategyStats);
+    subscribe('FeatherlessAIDecision', setAiDecisions);
 
     return () => { cancelled = true; unsubs.forEach(u => { try { u(); } catch (_) {} }); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1171,6 +1196,8 @@ export function AppProvider({ children }) {
     // Emergency controls
     cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
     resetAllPaperTrading,
+    // Featherless AI
+    featherlessSettings, setFeatherlessSettings, aiDecisions,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

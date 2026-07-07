@@ -1,0 +1,151 @@
+{
+  "name": "FeatherlessAIDecision",
+  "type": "object",
+  "properties": {
+    "strategyName": {
+      "type": "string",
+      "default": "Featherless AI Value Decision Engine"
+    },
+    "marketId": {
+      "type": "string"
+    },
+    "betfairMarketId": {
+      "type": "string"
+    },
+    "snapshotId": {
+      "type": "string"
+    },
+    "modelName": {
+      "type": "string"
+    },
+    "promptVersion": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "BET",
+        "NO_BET",
+        "WATCH"
+      ]
+    },
+    "selectedRunner": {
+      "type": "string"
+    },
+    "selectionId": {
+      "type": "string"
+    },
+    "estimatedProbability": {
+      "type": "number"
+    },
+    "fairOdds": {
+      "type": "number"
+    },
+    "betfairOdds": {
+      "type": "number"
+    },
+    "minimumAcceptableOdds": {
+      "type": "number"
+    },
+    "valueEdge": {
+      "type": "number"
+    },
+    "expectedROI": {
+      "type": "number"
+    },
+    "confidence": {
+      "type": "number"
+    },
+    "raceRiskLevel": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "dataQualityScore": {
+      "type": "number"
+    },
+    "mostLikelyWinner": {
+      "type": "string"
+    },
+    "mainReason": {
+      "type": "string"
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "runnerAssessments": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "decisionChecks": {
+      "type": "object"
+    },
+    "validationStatus": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "invalid",
+        "pending"
+      ]
+    },
+    "validationErrors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "safetyGatePassed": {
+      "type": "boolean",
+      "default": false
+    },
+    "safetyGateFailures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "paperTradeCreated": {
+      "type": "boolean",
+      "default": false
+    },
+    "paperOrderId": {
+      "type": "string"
+    },
+    "recommendedStake": {
+      "type": "number"
+    },
+    "stakingMode": {
+      "type": "string"
+    },
+    "responseTimeMs": {
+      "type": "number"
+    },
+    "rawResponse": {
+      "type": "string"
+    },
+    "raceContextJson": {
+      "type": "string"
+    },
+    "noBetReason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "marketId",
+    "decision"
+  ]
+}

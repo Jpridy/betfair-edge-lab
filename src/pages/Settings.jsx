@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw, Trash2 } from 'lucide-react';
 import BetfairConnection from '@/components/settings/BetfairConnection';
+import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import { calculateCommission, getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
 
 export default function Settings() {
-  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected, resetAllPaperTrading } = useApp();
+  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected, resetAllPaperTrading, featherlessSettings, setFeatherlessSettings } = useApp();
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
   const [liveConfirmText, setLiveConfirmText] = useState('');
@@ -90,6 +91,7 @@ export default function Settings() {
           <TabsTrigger value="risk" className="text-xs">Risk Limits</TabsTrigger>
           <TabsTrigger value="strategy" className="text-xs">Strategy</TabsTrigger>
           <TabsTrigger value="betfair" className="text-xs">Betfair Connection</TabsTrigger>
+          <TabsTrigger value="ai" className="text-xs">AI / Integrations</TabsTrigger>
           <TabsTrigger value="bot" className="text-xs">Bot</TabsTrigger>
           <TabsTrigger value="compliance" className="text-xs">Compliance</TabsTrigger>
         </TabsList>
@@ -238,6 +240,13 @@ export default function Settings() {
               <ToggleRow label="Pre-Off Scalping Strategy (Promising — Paper Testing)" checked={local.strategyScalpingEnabled} onChange={v => update('strategyScalpingEnabled', v)} />
               <ToggleRow label="Fav/Outsider Strategy (Failing — Locked)" checked={local.strategyFavOutsiderEnabled} onChange={v => update('strategyFavOutsiderEnabled', v)} />
               <ToggleRow label="Steam/Drift Strategy (Needs More Data — Paper Only)" checked={local.strategySteamDriftEnabled || local.strategyCrossMarketEnabled} onChange={v => update('strategySteamDriftEnabled', v)} />
+              <div className="pt-2 border-t border-border">
+                <div className="text-xs font-bold text-primary uppercase tracking-wider mb-2">AI Strategy</div>
+                <ToggleRow label="Featherless AI Value Decision Engine" checked={featherlessSettings?.enabled || false} onChange={v => {
+                  setFeatherlessSettings({ ...featherlessSettings, enabled: v });
+                  addAuditLog('Featherless AI Strategy Toggled', 'strategy', v ? 'info' : 'warning', `Featherless AI ${v ? 'enabled' : 'disabled'}`);
+                }} />
+              </div>
               <div className="pt-4 border-t border-border">
                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Archived Strategies (Disabled)</div>
                 <div className="text-xs text-muted-foreground space-y-1">
@@ -375,6 +384,16 @@ export default function Settings() {
               </div>
             </div>
           </Panel>
+        </TabsContent>
+
+        <TabsContent value="ai">
+          <FeatherlessSettings
+            settings={featherlessSettings}
+            onSave={(newSettings) => {
+              setFeatherlessSettings(newSettings);
+              addAuditLog('Featherless AI Settings Updated', 'settings', 'info', `Featherless AI ${newSettings.enabled ? 'enabled' : 'disabled'}, model: ${newSettings.modelName}`);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="bot">

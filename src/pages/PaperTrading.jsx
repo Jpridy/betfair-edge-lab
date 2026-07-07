@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Plus, XCircle, RefreshCw, Download, ArrowRight, AlertTriangle } from 'lucide-react';
 import PaperProgress from '@/components/paper/PaperProgress';
+import FeatherlessAIDecisionPanel from '@/components/featherless/FeatherlessAIDecisionPanel';
 import { exportToCSV } from '@/lib/csvExport';
 
 const ORDER_STATUSES = ['pending', 'executable', 'execution_complete', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'voided', 'settled', 'rejected'];
@@ -196,6 +197,9 @@ export default function PaperTrading() {
           </Button>
         </Link>
       </div>
+
+      {/* Featherless AI Decision Panel */}
+      <FeatherlessAIDecisionPanel />
 
       {/* Paper Progress Per Strategy */}
       <PaperProgress />

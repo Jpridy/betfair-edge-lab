@@ -9,6 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Upload, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 
+function ToggleRow({ label, checked, onChange }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <Label className="text-sm">{label}</Label>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
+
 export default function StrategyLab() {
   return (
     <Tabs defaultValue="value" className="w-full">
@@ -17,11 +26,13 @@ export default function StrategyLab() {
         <TabsTrigger value="scalping" className="text-xs data-[state=active]:bg-primary/20">Pre-Off Scalping</TabsTrigger>
         <TabsTrigger value="favout" className="text-xs data-[state=active]:bg-primary/20">Fav/Outsider</TabsTrigger>
         <TabsTrigger value="cross" className="text-xs data-[state=active]:bg-primary/20">Cross-Market</TabsTrigger>
+        <TabsTrigger value="featherless" className="text-xs data-[state=active]:bg-primary/20">Featherless AI</TabsTrigger>
       </TabsList>
       <TabsContent value="value"><ValueBetStrategy /></TabsContent>
       <TabsContent value="scalping"><ScalpingStrategy /></TabsContent>
       <TabsContent value="favout"><FavOutsiderStrategy /></TabsContent>
       <TabsContent value="cross"><CrossMarketStrategy /></TabsContent>
+      <TabsContent value="featherless"><FeatherlessStrategy /></TabsContent>
     </Tabs>
   );
 }
@@ -273,6 +284,133 @@ function FavOutsiderStrategy() {
           </div>
           <div className="pt-2 border-t border-border text-xs text-muted-foreground">
             Markets targeted: exactly 2-runner markets only. Auto-disable triggers at -2% rolling ROI.
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function FeatherlessStrategy() {
+  const { featherlessSettings, setFeatherlessSettings, addAuditLog } = useApp();
+  const [config, setConfig] = useState({
+    minConfidence: featherlessSettings?.minConfidence || 75,
+    minEdge: featherlessSettings?.minEdge || 5,
+    minExpectedROI: featherlessSettings?.minExpectedROI || 3,
+    minOdds: featherlessSettings?.minOdds || 2.0,
+    maxOdds: featherlessSettings?.maxOdds || 12.0,
+    minLiquidity: featherlessSettings?.minLiquidity || 5000,
+    timeWindowStart: featherlessSettings?.timeWindowStart || 300,
+    timeWindowEnd: featherlessSettings?.timeWindowEnd || 30,
+    maxBetsPerRace: 1,
+    maxStakePercent: 1,
+    stakingMode: featherlessSettings?.stakingMode || 'confidence_weighted_fractional_kelly',
+    enableBookmakerConfirmation: false,
+    enableFormConfirmation: true,
+    enableAIOverride: false,
+    paperTradeOnly: featherlessSettings?.paperTradeOnly ?? true,
+  });
+
+  const update = (key, value) => setConfig(prev => ({ ...prev, [key]: value }));
+
+  const handleSave = () => {
+    setFeatherlessSettings({ ...featherlessSettings, ...config });
+    addAuditLog('Featherless AI Strategy Updated', 'strategy', 'info', `Min confidence ${config.minConfidence}%, min edge ${config.minEdge}%, min ROI ${config.minExpectedROI}%`);
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <Panel title="Featherless AI Correlated Value — Strategy Editor">
+        <div className="p-4 space-y-4">
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 text-xs text-muted-foreground">
+            <span className="text-primary font-medium">Featherless AI Value Decision Engine</span> — Uses Betfair historical data, form data and live Betfair market data to estimate true runner probabilities, detect value against the exchange price, and paper trade validated bets.
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Minimum AI Confidence</Label>
+              <Input type="number" value={config.minConfidence} onChange={e => update('minConfidence', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Minimum Edge (%)</Label>
+              <Input type="number" step="0.1" value={config.minEdge} onChange={e => update('minEdge', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Minimum Expected ROI (%)</Label>
+              <Input type="number" step="0.1" value={config.minExpectedROI} onChange={e => update('minExpectedROI', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Minimum Liquidity ($)</Label>
+              <Input type="number" value={config.minLiquidity} onChange={e => update('minLiquidity', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Min Odds</Label>
+              <Input type="number" step="0.1" value={config.minOdds} onChange={e => update('minOdds', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Max Odds</Label>
+              <Input type="number" step="0.1" value={config.maxOdds} onChange={e => update('maxOdds', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Time Window Start (sec)</Label>
+              <Input type="number" value={config.timeWindowStart} onChange={e => update('timeWindowStart', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Time Window End (sec)</Label>
+              <Input type="number" value={config.timeWindowEnd} onChange={e => update('timeWindowEnd', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Max Bets Per Race</Label>
+              <Input type="number" value={config.maxBetsPerRace} onChange={e => update('maxBetsPerRace', +e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Max Stake % Bankroll</Label>
+              <Input type="number" step="0.1" value={config.maxStakePercent} onChange={e => update('maxStakePercent', +e.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <div className="space-y-2 pt-3 border-t border-border">
+            <ToggleRow label="Enable Bookmaker Confirmation" checked={config.enableBookmakerConfirmation} onChange={v => update('enableBookmakerConfirmation', v)} />
+            <ToggleRow label="Enable Form Data Confirmation" checked={config.enableFormConfirmation} onChange={v => update('enableFormConfirmation', v)} />
+            <ToggleRow label="Enable AI Override" checked={config.enableAIOverride} onChange={v => update('enableAIOverride', v)} />
+            <ToggleRow label="Paper Trade Only" checked={config.paperTradeOnly} onChange={v => update('paperTradeOnly', v)} />
+          </div>
+          <Button className="w-full" onClick={handleSave}>Save Strategy Settings</Button>
+        </div>
+      </Panel>
+
+      <Panel title="Staking & Safety Rules">
+        <div className="p-4 space-y-3">
+          <div>
+            <Label className="text-xs">Staking Mode</Label>
+            <select value={config.stakingMode} onChange={e => update('stakingMode', e.target.value)} className="w-full h-9 mt-1 bg-background border border-input rounded-md text-xs px-3">
+              <option value="flat">Flat Stake</option>
+              <option value="percent_bankroll">Percent Bankroll</option>
+              <option value="fractional_kelly">Fractional Kelly (25%)</option>
+              <option value="confidence_weighted_fractional_kelly">Confidence-Weighted 25% Kelly</option>
+            </select>
+          </div>
+          <div className="pt-3 border-t border-border space-y-2">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Kelly Formula</div>
+            <div className="text-xs text-muted-foreground font-mono bg-muted/30 rounded p-2">
+              kelly = ((odds - 1) × prob - (1 - prob)) / (odds - 1)
+            </div>
+            <div className="text-xs text-muted-foreground font-mono bg-muted/30 rounded p-2">
+              stake = bankroll × kelly × 0.25 × (confidence / 100)
+            </div>
+          </div>
+          <div className="pt-3 border-t border-border space-y-1">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Caps</div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div>• Max stake per bet: 1% bankroll</div>
+              <div>• Max exposure per race: 2% bankroll</div>
+              <div>• No stake if Kelly ≤ 0</div>
+              <div>• No stake if expected ROI below threshold</div>
+              <div>• No stake if confidence below threshold</div>
+              <div>• Daily stop loss enforced</div>
+            </div>
+          </div>
+          <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3 mt-3">
+            <div className="text-xs text-chart-5 font-bold">⚠ Live betting is disabled by default</div>
+            <div className="text-xs text-muted-foreground mt-1">Featherless decides only. The app executes only after all validation passes. Enable live handoff in Settings → AI after sufficient paper trading evidence.</div>
           </div>
         </div>
       </Panel>
