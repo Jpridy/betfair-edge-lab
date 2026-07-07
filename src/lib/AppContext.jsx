@@ -490,6 +490,12 @@ export function AppProvider({ children }) {
     addToBotActivity('Paper trading reset', 'All paper trading data cleared and bankroll reset to starting balance');
   };
 
+  // ── Clear All Audit Logs ──
+  const clearLogs = async () => {
+    await base44.entities.AuditLog.deleteMany({}).catch(() => {});
+    setAuditLogs([]);
+  };
+
   // ── Reset Strategy Data Only ──
   const resetStrategyData = async () => {
     await Promise.all([
@@ -1223,7 +1229,7 @@ export function AppProvider({ children }) {
     strategyLibrary,
     // Emergency controls
     cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
-    resetAllPaperTrading, resetStrategyData, strategyDataReset,
+    resetAllPaperTrading, resetStrategyData, strategyDataReset, clearLogs,
     // Featherless AI
     featherlessSettings, setFeatherlessSettings, aiDecisions,
   };

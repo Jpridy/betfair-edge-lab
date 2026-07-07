@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Trash2, XCircle, CheckCircle2 } from 'lucide-react';
 
 const CATEGORY_ICONS = {
   api: '🔌',
@@ -16,9 +18,10 @@ const CATEGORY_ICONS = {
 };
 
 export default function LogsAudit() {
-  const { auditLogs } = useApp();
+  const { auditLogs, clearLogs } = useApp();
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [severityFilter, setSeverityFilter] = useState('all');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const filtered = auditLogs.filter(l => {
     if (categoryFilter !== 'all' && l.category !== categoryFilter) return false;
@@ -52,7 +55,7 @@ export default function LogsAudit() {
       </div>
 
       <Panel title="Filters">
-        <div className="p-4 flex gap-4">
+        <div className="p-4 flex flex-wrap gap-4 items-center">
           <div className="w-48">
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
@@ -80,6 +83,23 @@ export default function LogsAudit() {
                 <SelectItem value="critical">Critical</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="ml-auto">
+            {showClearConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-chart-5 font-medium hidden sm:inline">Clear all logs?</span>
+                <Button variant="destructive" size="sm" onClick={() => { clearLogs(); setShowClearConfirm(false); }}>
+                  <CheckCircle2 className="h-3 w-3" /> Confirm
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setShowClearConfirm(false)}>
+                  <XCircle className="h-3 w-3" /> Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setShowClearConfirm(true)} disabled={auditLogs.length === 0}>
+                <Trash2 className="h-3 w-3" /> Clear Logs
+              </Button>
+            )}
           </div>
         </div>
       </Panel>
