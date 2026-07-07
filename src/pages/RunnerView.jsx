@@ -325,9 +325,13 @@ export default function RunnerView() {
           <div className="text-[10px] text-muted-foreground">Market price</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Model Probability</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Market-Derived Probability</span>
           <div className="text-2xl font-bold font-mono text-chart-2 mt-1">{modelProbability.toFixed(2)}%</div>
-          <div className="text-[10px] text-muted-foreground">Estimated fair odds: {fairOdds.toFixed(2)}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {runner.formDataStatus === 'MARKET_ONLY' || !runner.formDataStatus
+              ? 'Market microstructure only — no horse form data'
+              : `Data: ${runner.formDataStatus} (${runner.formDataCompleteness || 0}%)`}
+          </div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Edge</span>

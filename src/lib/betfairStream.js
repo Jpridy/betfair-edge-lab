@@ -157,8 +157,8 @@ export class BetfairStreamClient {
       id: String(this.messageId++),
       marketFilter: filter,
       marketDataFilter: {
-        ladderLevels: 1,
-        fields: ['EX_BEST_OFFERS', 'EX_TRADED_VOL', 'EX_LTP', 'EX_MARKET_DEF'],
+        ladderLevels: 3,
+        fields: ['EX_BEST_OFFERS', 'EX_ALL_OFFERS', 'EX_TRADED_VOL', 'EX_LTP', 'EX_MARKET_DEF'],
       },
     });
   }
@@ -249,6 +249,29 @@ export class BetfairStreamClient {
                 favouriteRank: 0,
                 isFavourite: false,
                 isOutsider: false,
+                availableToBackLadder: [],
+                availableToLayLadder: [],
+                tradedVolumeByPrice: [],
+                midPrice: 0,
+                weightedMidPrice: 0,
+                microPrice: 0,
+                bookPercentage: 0,
+                liquidityRank: 0,
+                priceMovementShortTerm: 0,
+                priceMovementMediumTerm: 0,
+                tradedVolumeDelta: 0,
+                backPressure: 0,
+                layPressure: 0,
+                orderBookImbalance: 0,
+                bspNearPrice: 0,
+                bspFarPrice: 0,
+                spAvailable: 0,
+                spTraded: 0,
+                formDataStatus: 'MARKET_ONLY',
+                formDataCompleteness: 0,
+                raceFormProfile: null,
+                _priceHistory: [],
+                _lastTradedVolume: 0,
               });
             }
             const runner = market.runners.get(runnerId);
@@ -296,6 +319,29 @@ export class BetfairStreamClient {
               favouriteRank: 0,
               isFavourite: false,
               isOutsider: false,
+              availableToBackLadder: [],
+              availableToLayLadder: [],
+              tradedVolumeByPrice: [],
+              midPrice: 0,
+              weightedMidPrice: 0,
+              microPrice: 0,
+              bookPercentage: 0,
+              liquidityRank: 0,
+              priceMovementShortTerm: 0,
+              priceMovementMediumTerm: 0,
+              tradedVolumeDelta: 0,
+              backPressure: 0,
+              layPressure: 0,
+              orderBookImbalance: 0,
+              bspNearPrice: 0,
+              bspFarPrice: 0,
+              spAvailable: 0,
+              spTraded: 0,
+              formDataStatus: 'MARKET_ONLY',
+              formDataCompleteness: 0,
+              raceFormProfile: null,
+              _priceHistory: [],
+              _lastTradedVolume: 0,
             };
             market.runners.set(runnerId, runner);
           }
@@ -329,6 +375,92 @@ export class BetfairStreamClient {
           if (runner.bestBackPrice > 0) {
             runner.impliedProbability = (1 / runner.bestBackPrice) * 100;
           }
+
+          // Store full ladders from EX_ALL_OFFERS (atb/atl) or EX_BEST_OFFERS (batb/batl)
+          if (rc.atb && rc.atb.length > 0) {
+            runner.availableToBackLadder = rc.atb
+              .filter(([p, s]) => s > 0)
+              .map(([price, size]) => ({ price, size }))
+              .sort((a, b) => b.price - a.price); // descending (best back first)
+          } else if (rc.batb && rc.batb.length > 0) {
+            runner.availableToBackLadder = rc.batb
+              .filter(([lvl, p, s]) => s > 0)
+              .map(([level, price, size]) => ({ price, size }))
+              .sort((a, b) => b.price - a.price);
+          }
+          if (rc.atl && rc.atl.length > 0) {
+            runner.availableToLayLadder = rc.atl
+              .filter(([p, s]) => s > 0)
+              .map(([price, size]) => ({ price, size }))
+              .sort((a, b) => a.price - b.price); // ascending (best lay first)
+          } else if (rc.batl && rc.batl.length > 0) {
+            runner.availableToLayLadder = rc.batl
+              .filter(([lvl, p, s]) => s > 0)
+              .map(([level, price, size]) => ({ price, size }))
+              .sort((a, b) => a.price - b.price);
+          }
+
+          // Traded volume by price
+          if (rc.trd && rc.trd.length > 0) {
+            runner.tradedVolumeByPrice = rc.trd.map(([price, size]) => ({ price, size }));
+          }
+
+          // BSP data (if available on BSP markets)
+          if (rc.spn != null) runner.bspNearPrice = rc.spn;
+          if (rc.spf != null) runner.bspFarPrice = rc.spf;
+          if (rc.spb != null) runner.spAvailable = rc.spb;
+          if (rc.spl != null) runner.spTraded = rc.spl;
+
+          // Calculate market microstructure metrics
+          const bbp = runner.bestBackPrice || 0;
+          const blp = runner.bestLayPrice || 0;
+          const bbs = runner.bestBackSize || 0;
+          const bls = runner.bestLaySize || 0;
+
+          // Mid price = (best back + best lay) / 2
+          if (bbp > 0 && blp > 0) {
+            runner.midPrice = (bbp + blp) / 2;
+          }
+
+          // Weighted mid price = (back * laySize + lay * backSize) / (backSize + laySize)
+          if (bbp > 0 && blp > 0 && (bbs + bls) > 0) {
+            runner.weightedMidPrice = (bbp * bls + blp * bbs) / (bbs + bls);
+            // Micro price (same formula as weighted mid for best prices)
+            runner.microPrice = runner.weightedMidPrice;
+          }
+
+          // Back/lay pressure and order book imbalance
+          const totalBackSize = runner.availableToBackLadder?.reduce((s, l) => s + l.size, 0) || bbs;
+          const totalLaySize = runner.availableToLayLadder?.reduce((s, l) => s + l.size, 0) || bls;
+          runner.backPressure = totalBackSize;
+          runner.layPressure = totalLaySize;
+          if (totalBackSize + totalLaySize > 0) {
+            runner.orderBookImbalance = (totalBackSize - totalLaySize) / (totalBackSize + totalLaySize);
+          }
+
+          // Traded volume delta (change since last update)
+          if (runner._lastTradedVolume > 0) {
+            runner.tradedVolumeDelta = (runner.tradedVolume || 0) - runner._lastTradedVolume;
+          }
+          runner._lastTradedVolume = runner.tradedVolume || 0;
+
+          // Price movement tracking (short term = last tick, medium term = last 30 ticks)
+          if (rc.ltp != null) {
+            if (!runner._priceHistory) runner._priceHistory = [];
+            runner._priceHistory.push(rc.ltp);
+            if (runner._priceHistory.length > 30) runner._priceHistory.shift();
+
+            if (runner._priceHistory.length >= 2) {
+              const hist = runner._priceHistory;
+              const prev = hist[hist.length - 2];
+              runner.priceMovementShortTerm = rc.ltp - prev;
+            }
+            if (runner._priceHistory.length >= 10) {
+              const hist = runner._priceHistory;
+              const earlier = hist[hist.length - 10];
+              runner.priceMovementMediumTerm = ((rc.ltp - earlier) / earlier) * 100;
+            }
+          }
         }
 
         if (marketTotalMatched > 0) {
@@ -355,11 +487,24 @@ export class BetfairStreamClient {
   _updateRanks() {
     for (const market of this.markets.values()) {
       const runners = [...market.runners.values()];
+      // Favourite rank — sorted by best back price (lowest = favourite)
       runners.sort((a, b) => (a.bestBackPrice || 9999) - (b.bestBackPrice || 9999));
       runners.forEach((r, idx) => {
         r.favouriteRank = idx + 1;
         r.isFavourite = idx === 0;
         r.isOutsider = idx === runners.length - 1;
+      });
+      // Liquidity rank — sorted by total traded volume (highest = most liquid)
+      const byLiquidity = [...runners].sort((a, b) => (b.tradedVolume || 0) - (a.tradedVolume || 0));
+      byLiquidity.forEach((r, idx) => {
+        r.liquidityRank = idx + 1;
+      });
+      // Book percentage — sum of implied probabilities across all runners
+      const bookPct = runners.reduce((sum, r) => {
+        return sum + (r.bestBackPrice > 0 ? (1 / r.bestBackPrice) * 100 : 0);
+      }, 0);
+      runners.forEach(r => {
+        r.bookPercentage = bookPct;
       });
     }
   }

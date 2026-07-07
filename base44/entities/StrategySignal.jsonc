@@ -53,6 +53,35 @@
     },
     "reason": {
       "type": "string"
+    },
+    "dataSource": {
+      "type": "string",
+      "enum": [
+        "MARKET_ONLY",
+        "BETFAIR_METADATA_PLUS_MARKET",
+        "EXTERNAL_FORM_PLUS_MARKET"
+      ]
+    },
+    "probabilityLabel": {
+      "type": "string"
+    },
+    "formDataStatus": {
+      "type": "string"
+    },
+    "formDataCompleteness": {
+      "type": "number"
+    },
+    "marketScore": {
+      "type": "number"
+    },
+    "metadataScore": {
+      "type": "number"
+    },
+    "externalFormScore": {
+      "type": "number"
+    },
+    "finalScore": {
+      "type": "number"
     }
   },
   "required": [

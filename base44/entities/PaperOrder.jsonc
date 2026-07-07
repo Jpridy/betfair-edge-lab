@@ -228,6 +228,14 @@
         "Good",
         "High"
       ]
+    },
+    "dataSource": {
+      "type": "string",
+      "enum": [
+        "MARKET_ONLY",
+        "BETFAIR_METADATA_PLUS_MARKET",
+        "EXTERNAL_FORM_PLUS_MARKET"
+      ]
     }
   },
   "required": [

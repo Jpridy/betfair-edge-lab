@@ -2,6 +2,7 @@ import { calculateCommission, createBetfairOrderStructure, generateCustomerRef, 
 import { isValidTickPrice, roundToNearestTick, calculateSpreadTicks, calculateStopLossPrice, calculateScalpTargetPrice, countTicksBetween } from './tickLadder';
 import { runPreOrderChecks } from './orderValidation';
 import { ENRICHED_STRATEGY_LIBRARY } from './strategyLibrary';
+import { classifyFormData, getProbabilityLabel, getNoFormDisclaimer } from './raceFormProfile';
 
 export const BOT_STEPS = [
   'Scan Markets',
@@ -52,10 +53,14 @@ export function calcEdge(modelProb, odds) {
   return ((modelProb - implied) / implied) * 100;
 }
 
-export function createSignal(strategyName, market, runner, settings, formData = null) {
+export function createSignal(strategyName, market, runner, settings, formData = null, raceFormProfile = null) {
   // Look up strategy config for edge threshold and side restriction
   const strategy = ENRICHED_STRATEGY_LIBRARY.find(s => s.name === strategyName);
   const minEdge = strategy?.minEdge || 0;
+
+  // Classify form data source — MARKET_ONLY, BETFAIR_METADATA_PLUS_MARKET, or EXTERNAL_FORM_PLUS_MARKET
+  const formClassification = classifyFormData(raceFormProfile);
+  const dataSource = formData?.data_source || formClassification.dataSource;
 
   // Use best back price for BACK signals, best lay for LAY
   const isBack = strategyName !== 'Fav/Outsider' ? true : runner.isFavourite;
@@ -64,7 +69,7 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     : (runner.bestLayPrice || runner.lastTradedPrice || 3.0);
 
   const baseProb = impliedProb(odds);
-  // Use real form analysis probability if available; otherwise fall back to simulated
+  // Use market microstructure analysis probability if available; otherwise fall back to implied prob adjusted
   const modelProb = formData?.estimated_probability != null
     ? Math.min(0.95, Math.max(0.05, formData.estimated_probability))
     : Math.min(0.95, Math.max(0.05, baseProb * (0.92 + Math.random() * 0.2)));
@@ -124,9 +129,19 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     persistenceType: PERSISTENCE_TYPES.LAPSE,
     clvEstimate,
     spreadTicks,
+    dataSource,
+    probabilityLabel: getProbabilityLabel(dataSource),
+    formDataStatus: formClassification.status,
+    formDataCompleteness: formClassification.completeness,
+    marketScore: formData?.market_score ?? null,
+    metadataScore: formData?.metadata_score ?? null,
+    externalFormScore: formData?.external_form_score ?? null,
+    finalScore: formData?.final_score ?? null,
     reason: formData?.form_assessment
-      ? `${strategyName}: ${formData.form_assessment} (edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)})`
-      : `${strategyName}: edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks`,
+      ? `${strategyName}: ${formData.form_assessment} (edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, data: ${dataSource})`
+      : dataSource === 'MARKET_ONLY'
+        ? `${strategyName}: market-derived edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks (market microstructure only — no horse form data)`
+        : `${strategyName}: edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks (data: ${dataSource})`,
   };
 }
 
@@ -250,6 +265,7 @@ export function createPaperOrder(signal, market, runner, settings) {
     simulatedSlippage: slippage,
     entryReason: signal.reason,
     warningFlags: [],
+    dataSource: signal.dataSource || 'MARKET_ONLY',
     created_date: new Date().toISOString(),
   };
 }

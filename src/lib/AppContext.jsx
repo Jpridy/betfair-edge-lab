@@ -973,6 +973,7 @@ export function AppProvider({ children }) {
                 const resp = await base44.functions.invoke('featherlessAI', {
                   market, runners: aiMarketRunners, settings: s.settings,
                   strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
+                  raceFormProfiles: aiMarketRunners.map(r => r.raceFormProfile).filter(Boolean),
                 });
                 if (resp.data?.error) throw new Error(resp.data.error);
                 const decision = resp.data?.decision;
@@ -1020,25 +1021,27 @@ export function AppProvider({ children }) {
                 errors = 1;
               }
             } else {
-              // Call Featherless API for real form/probability analysis.
-              // All non-AI strategies use the same form analysis — each strategy
-              // then applies its own edge threshold and side logic in createSignal.
+              // Call Market Microstructure Analysis (NOT horse racing form).
+              // This uses Betfair exchange prices, volume, spreads, liquidity,
+              // order book depth, and price movements to estimate market-derived
+              // probability. If Betfair RUNNER_METADATA is available, it is
+              // passed as raceFormProfiles for metadata-adjusted probability.
               //
               // Instead of betting on one random runner and hoping it has edge,
               // evaluate ALL eligible runners and pick the one with the highest
-              // edge that meets the strategy's entry threshold. This is how a
-              // real value betting scanner works — find the best opportunity,
-              // not a random one.
+              // edge that meets the strategy's entry threshold.
               let allFormData = [];
               try {
                 const formRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
-                const formResp = await base44.functions.invoke('featherlessFormAnalysis', {
+                const raceFormProfiles = formRunners.map(r => r.raceFormProfile).filter(Boolean);
+                const formResp = await base44.functions.invoke('marketMicrostructureAnalysis', {
                   market, runners: formRunners, settings: s.settings,
+                  raceFormProfiles: raceFormProfiles.length > 0 ? raceFormProfiles : null,
                 });
                 if (formResp.data?.error) throw new Error(formResp.data.error);
                 allFormData = formResp.data?.runners || [];
               } catch (err) {
-                notes.push(`Form analysis error: ${err.message}`);
+                notes.push(`Market microstructure analysis error: ${err.message}`);
               }
 
               // Build the full list of eligible runners (same filters as above)
@@ -1061,7 +1064,7 @@ export function AppProvider({ children }) {
                   String(fd.selection_id) === String(r.betfairSelectionId) ||
                   fd.runner === r.runnerName
                 );
-                const sig = createSignal(strategyName, market, r, s.settings, fd || null);
+                const sig = createSignal(strategyName, market, r, s.settings, fd || null, r.raceFormProfile || null);
                 if (sig && (!bestSignal || sig.edgePercent > bestSignal.edgePercent)) {
                   bestSignal = sig;
                   bestRunner = r;

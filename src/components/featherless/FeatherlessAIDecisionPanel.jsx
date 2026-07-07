@@ -49,6 +49,7 @@ export default function FeatherlessAIDecisionPanel() {
         settings,
         strategySettings: featherlessSettings,
         bankrollStats,
+        raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
       });
 
       if (resp.data?.error) {
@@ -206,6 +207,7 @@ export default function FeatherlessAIDecisionPanel() {
               <DecisionMetric label="Expected ROI" value={`${latestDecision.expectedROI?.toFixed(2)}%`} positive={latestDecision.expectedROI > 0} />
               <DecisionMetric label="Race Risk" value={latestDecision.raceRiskLevel} />
               <DecisionMetric label="Data Quality" value={`${latestDecision.dataQualityScore}/100`} />
+              <DecisionMetric label="Data Source" value={latestDecision.dataSource?.replace(/_/g, ' ') || 'MARKET ONLY'} />
               <DecisionMetric label="Most Likely Winner" value={latestDecision.mostLikelyWinner || '—'} />
               <DecisionMetric label="Response Time" value={`${latestDecision.responseTimeMs}ms`} />
               <DecisionMetric label="Recommended Stake" value={`$${latestDecision.recommendedStake?.toFixed(2) || '0.00'}`} />

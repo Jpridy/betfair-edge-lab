@@ -402,7 +402,7 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const { market, runners, settings, strategySettings, bankrollStats, action } = body;
+    const { market, runners, settings, strategySettings, bankrollStats, action, raceFormProfiles } = body;
 
     // Connection test and model listing don't need user auth — they only
     // validate the server-side FEATHERLESS_API_KEY.
@@ -490,7 +490,11 @@ Deno.serve(async (req) => {
     const maxTokens = strategySettings?.maxTokens || 2000;
     const timeoutMs = (strategySettings?.timeoutSeconds || 90) * 1000;
 
-    // Build race object
+    // Build race object — pass raceFormProfiles so the AI can use Betfair metadata when available
+    const hasFormProfiles = raceFormProfiles && raceFormProfiles.length > 0;
+    const dataSource = hasFormProfiles
+      ? (raceFormProfiles.some(fp => fp.externalFormData) ? 'EXTERNAL_FORM_PLUS_MARKET' : 'BETFAIR_METADATA_PLUS_MARKET')
+      : 'MARKET_ONLY';
     const raceObject = buildRaceObject(market, runners, settings, strategySettings);
 
     // Build messages
@@ -622,6 +626,7 @@ Deno.serve(async (req) => {
       rawResponse: rawContent.slice(0, 5000),
       raceContextJson: JSON.stringify(raceObject).slice(0, 10000),
       noBetReason: decision.primary_no_bet_reason || (safetyGate.passed ? '' : safetyGate.failures?.[0] || ''),
+      dataSource,
     };
 
     // Save to database

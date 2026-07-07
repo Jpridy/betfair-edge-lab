@@ -139,6 +139,107 @@
     },
     "rejectedSignalReason": {
       "type": "string"
+    },
+    "availableToBackLadder": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "availableToLayLadder": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "tradedVolumeByPrice": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "midPrice": {
+      "type": "number"
+    },
+    "weightedMidPrice": {
+      "type": "number"
+    },
+    "microPrice": {
+      "type": "number"
+    },
+    "bookPercentage": {
+      "type": "number"
+    },
+    "liquidityRank": {
+      "type": "number"
+    },
+    "priceMovementShortTerm": {
+      "type": "number"
+    },
+    "priceMovementMediumTerm": {
+      "type": "number"
+    },
+    "tradedVolumeDelta": {
+      "type": "number"
+    },
+    "backPressure": {
+      "type": "number"
+    },
+    "layPressure": {
+      "type": "number"
+    },
+    "orderBookImbalance": {
+      "type": "number"
+    },
+    "bspNearPrice": {
+      "type": "number"
+    },
+    "bspFarPrice": {
+      "type": "number"
+    },
+    "spAvailable": {
+      "type": "number"
+    },
+    "spTraded": {
+      "type": "number"
+    },
+    "formDataStatus": {
+      "type": "string",
+      "enum": [
+        "MARKET_ONLY",
+        "PARTIAL_BETFAIR_METADATA",
+        "FULL_EXTERNAL_FORM"
+      ]
+    },
+    "formDataCompleteness": {
+      "type": "number"
+    },
+    "raceFormProfile": {
+      "type": "object"
     }
   },
   "required": [

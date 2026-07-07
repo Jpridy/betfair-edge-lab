@@ -4,6 +4,7 @@ import DashboardStatCards from '@/components/dashboard/DashboardStatCards';
 import StrategyStatusSummary from '@/components/dashboard/StrategyStatusSummary';
 import DashboardActivityFeed from '@/components/dashboard/DashboardActivityFeed';
 import BestWorstStrategy from '@/components/dashboard/BestWorstStrategy';
+import FormDataCoverage from '@/components/dashboard/FormDataCoverage';
 import { useApp } from '@/lib/AppContext';
 import { Link } from 'react-router-dom';
 import { Bot, Radar, BarChart3, TrendingUp, ArrowRight, Info, Shield, BookOpen, FlaskConical } from 'lucide-react';
@@ -95,6 +96,9 @@ export default function DashboardHome() {
         <QuickAction to="/performance-analytics" icon={TrendingUp} label="Analytics" sub="Performance" accent="green" />
         <QuickAction to="/risk" icon={Shield} label="Risk Manager" sub="Safety rules" accent="red" />
       </div>
+
+      {/* Form Data Coverage */}
+      <FormDataCoverage />
 
       {/* Best / Worst Strategy */}
       <BestWorstStrategy />

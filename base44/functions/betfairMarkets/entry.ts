@@ -62,10 +62,11 @@ Deno.serve(async (req) => {
       sort: 'FIRST_TO_START',
       marketProjection: [
         'EVENT',
-        'MARKET_DESCRIPTION',
-        'RUNNER_METADATA',
-        'RUNNER_DESCRIPTION',
+        'EVENT_TYPE',
         'MARKET_START_TIME',
+        'MARKET_DESCRIPTION',
+        'RUNNER_DESCRIPTION',
+        'RUNNER_METADATA',
       ],
     };
 
@@ -165,6 +166,51 @@ Deno.serve(async (req) => {
         const bestLayPrice = bestLay?.price || 0;
         const impliedProb = bestBackPrice > 0 ? (1 / bestBackPrice) * 100 : 0;
 
+        // Extract RaceFormProfile from Betfair RUNNER_METADATA (optional — may be null)
+        const metadata = runner.metadata || null;
+        let raceFormProfile = null;
+        let formDataStatus = 'MARKET_ONLY';
+        let formDataCompleteness = 0;
+
+        if (metadata) {
+          raceFormProfile = {
+            runnerName: runner.runnerName || null,
+            selectionId: String(runner.selectionId || ''),
+            clothNumber: metadata.CLOTH_NUMBER ?? metadata.clothNumber ?? null,
+            sortPriority: metadata.CLOTH_NUMBER ?? metadata.sortPriority ?? null,
+            age: metadata.AGE ?? metadata.age ?? null,
+            sex: metadata.SEX_TYPE ?? metadata.sex ?? null,
+            jockeyName: metadata.JOCKEY_NAME ?? metadata.jockeyName ?? null,
+            trainerName: metadata.TRAINER_NAME ?? metadata.trainerName ?? null,
+            stallDraw: metadata.STALL_DRAW ?? metadata.stallDraw ?? null,
+            weightValue: metadata.WEIGHT_VALUE ?? metadata.weightValue ?? null,
+            weightUnits: metadata.WEIGHT_UNITS ?? metadata.weightUnits ?? null,
+            officialRating: metadata.OFFICIAL_RATING ?? metadata.officialRating ?? null,
+            adjustedRating: metadata.ADJUSTED_RATING ?? metadata.adjustedRating ?? null,
+            recentForm: metadata.RECENT_FORM ?? metadata.recentForm ?? null,
+            daysSinceLastRun: metadata.DAYS_SINCE_LAST_RUN ?? metadata.daysSinceLastRun ?? null,
+            wearing: metadata.WEARING ?? metadata.wearing ?? null,
+            ownerName: metadata.OWNER_NAME ?? metadata.ownerName ?? null,
+            sireName: metadata.SIRE_NAME ?? metadata.sireName ?? null,
+            damName: metadata.DAM_NAME ?? metadata.damName ?? null,
+            bredCountry: metadata.BRED_COUNTRY ?? metadata.bredCountry ?? null,
+            colourType: metadata.COLOUR_TYPE ?? metadata.colourType ?? null,
+            jockeyClaim: metadata.JOCKEY_CLAIM ?? metadata.jockeyClaim ?? null,
+            forecastPriceNumerator: metadata.FORECAST_PRICE_NUMERATOR ?? metadata.forecastPriceNumerator ?? null,
+            forecastPriceDenominator: metadata.FORECAST_PRICE_DENOMINATOR ?? metadata.forecastPriceDenominator ?? null,
+            coloursDescription: metadata.COLOURS_DESCRIPTION ?? metadata.coloursDescription ?? null,
+            coloursFilename: metadata.COLOURS_FILENAME ?? metadata.coloursFilename ?? null,
+            externalFormData: null,
+          };
+
+          const usefulFields = ['age','sex','jockeyName','trainerName','stallDraw','weightValue','officialRating','adjustedRating','recentForm','daysSinceLastRun','wearing','sireName','damName','bredCountry','colourType','jockeyClaim','ownerName','clothNumber','sortPriority'];
+          const populatedCount = usefulFields.filter(f => raceFormProfile[f] != null).length;
+          if (populatedCount > 0) {
+            formDataStatus = 'PARTIAL_BETFAIR_METADATA';
+            formDataCompleteness = Math.round((populatedCount / usefulFields.length) * 100);
+          }
+        }
+
         runners.push({
           id: `${cat.marketId}_${runner.selectionId}`,
           marketId: cat.marketId,
@@ -181,6 +227,9 @@ Deno.serve(async (req) => {
           favouriteRank: idx + 1,
           isFavourite: idx === 0,
           isOutsider: idx === sortedRunners.length - 1,
+          formDataStatus,
+          formDataCompleteness,
+          raceFormProfile,
         });
       }
     }
