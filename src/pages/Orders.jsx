@@ -81,7 +81,7 @@ export default function Orders() {
     exportToCSV(`paper-orders-${new Date().toISOString().slice(0, 10)}.csv`, filtered, columns);
   };
 
-  const totalStake = filtered.reduce((sum, o) => sum + (o.matchedStake || 0), 0);
+  const totalStake = filtered.reduce((sum, o) => sum + (o.matchedStake || o.requestedStake || 0), 0);
   const totalPL = filtered.reduce((sum, o) => sum + (o.netProfit || 0), 0);
   const matched = filtered.filter(o => o.status === 'matched').length;
   const pending = filtered.filter(o => o.result === 'pending').length;
@@ -229,9 +229,9 @@ export default function Orders() {
                 </TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.matchedStake || 0}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${o.matchedStake || o.requestedStake || 0}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">
-                  ${o.side === 'LAY' ? ((o.matchedStake || 0) * ((o.matchedOdds || 0) - 1)).toFixed(2) : (o.matchedStake || 0).toFixed(2)}
+                  ${(o.side === 'LAY' ? ((o.matchedStake || o.requestedStake || 0) * ((o.matchedOdds || o.requestedOdds || 0) - 1)) : (o.matchedStake || o.requestedStake || 0)).toFixed(2)}
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={

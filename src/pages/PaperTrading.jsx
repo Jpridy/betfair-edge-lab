@@ -337,7 +337,7 @@ export default function PaperTrading() {
                 <TableCell className="text-xs font-medium">{o.runnerName}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.matchedStake || 0}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${o.matchedStake || o.requestedStake || 0}</TableCell>
                 <TableCell className="text-xs">
                   <StatusBadge status={o.persistenceType === 'PERSIST' ? 'warning' : o.persistenceType === 'MARKET_ON_CLOSE' ? 'info' : 'neutral'}>{o.persistenceType || 'LAPSE'}</StatusBadge>
                 </TableCell>
