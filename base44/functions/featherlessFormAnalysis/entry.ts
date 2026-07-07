@@ -46,7 +46,7 @@ function buildRaceObject(market, runners, settings) {
   const marketRunners = runners.filter(r => r.marketId === market.id || r.marketId === market.betfairMarketId);
   const startTime = market.startTime || market.marketStartTime;
   const timeBeforeJump = startTime ? Math.round((new Date(startTime).getTime() - Date.now()) / 1000) : null;
-  const commissionRate = market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
+  const commissionRate = market.marketBaseRate ?? settings?.defaultCommissionRate ?? 0.05;
 
   const runnerObjects = marketRunners
     .filter(r => r.status === 'ACTIVE')

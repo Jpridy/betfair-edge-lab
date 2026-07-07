@@ -240,6 +240,11 @@ export function AppProvider({ children }) {
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
 
+  // Guard against overlapping bot cycles — the form analysis API call can take
+  // 7-22s, which may exceed the scan interval. Without this guard, setInterval
+  // would fire a new cycle while the previous one is still running.
+  const cycleInProgressRef = useRef(false);
+
   // ── Load all app-generated data from database on mount ──
   useEffect(() => {
     let cancelled = false;
@@ -817,6 +822,9 @@ export function AppProvider({ children }) {
   // ── Bot Cycle Runner ──
   const runBotCycleRef = useRef(() => {});
   runBotCycleRef.current = async () => {
+    if (cycleInProgressRef.current) return;
+    cycleInProgressRef.current = true;
+    try {
     const s = stateRef.current;
     if (s.emergencyStop || (s.mode !== 'demo' && s.mode !== 'live')) return;
 
@@ -1149,6 +1157,9 @@ export function AppProvider({ children }) {
     }
     if (riskBlockedReason) {
       addToBotActivity('Risk blocked', riskBlockedReason);
+    }
+    } finally {
+      cycleInProgressRef.current = false;
     }
   };
 
