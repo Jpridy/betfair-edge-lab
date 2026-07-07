@@ -235,7 +235,7 @@ export function AppProvider({ children }) {
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings };
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
@@ -816,7 +816,7 @@ export function AppProvider({ children }) {
 
   // ── Bot Cycle Runner ──
   const runBotCycleRef = useRef(() => {});
-  runBotCycleRef.current = () => {
+  runBotCycleRef.current = async () => {
     const s = stateRef.current;
     if (s.emergencyStop || (s.mode !== 'demo' && s.mode !== 'live')) return;
 
@@ -884,7 +884,6 @@ export function AppProvider({ children }) {
 
       // Step 4: Check Strategies
       const enabled = getEnabledStrategies(s.settings, s.featherlessSettings?.enabled)
-        .filter(name => name !== 'Featherless AI Value Decision Engine') // AI strategy is driven by the manual AI panel, not createSignal
         .filter(name => {
           const strat = s.strategyLibrary?.find(sl => sl.name === name);
           return strat && strat.status !== 'archived';
@@ -947,72 +946,139 @@ export function AppProvider({ children }) {
             steps[4].reason = 'No runners with prices on both sides — waiting for stream data.';
             notes.push('No runners with prices on both sides');
           } else {
-          const signal = createSignal(strategyName, market, runner, s.settings);
-          signalCreated = signal;
-          signalsCreated = 1;
-          steps[4].status = 'passed';
-
-          setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-          base44.entities.StrategySignal.create(signal).catch(() => {});
-
-          // Step 6: Run Pre-Order Validation
-          const connectionState = {
-            apiConnected: s.apiConnected,
-            betfairSessionToken: s.betfairSessionToken,
-            dataFresh: s.betfairConnection?.dataFresh ?? true,
-          };
-
-          const preCheck = runPreOrderChecks(
-            { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType },
-            market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
-          );
-
-          if (!preCheck.passed) {
-            steps[5].status = 'blocked';
-            steps[5].reason = preCheck.failures[0].reason;
-            ordersBlocked = 1;
-            riskBlockedReason = preCheck.failures[0].reason;
-            rejectedOrder = preCheck.rejectedOrder;
-            notes.push(`Pre-order validation failed: ${preCheck.failures[0].reason}`);
-            addAuditLog('Order Rejected', 'order', 'warning', `${strategyName} on ${runner.runnerName}: ${preCheck.failures[0].reason}`, { objectName: runner.runnerName, reason: preCheck.failures[0].reason });
-            if (rejectedOrder) {
-              setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100));
-              setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: preCheck.failures[0].reason }));
-            }
-          } else {
-            steps[5].status = 'passed';
-
-            // Step 7: Run Risk Manager
-            const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
-            if (!risk.passed) {
-              steps[6].status = 'blocked';
-              steps[6].reason = risk.reasons[0];
-              ordersBlocked = 1;
-              riskBlockedReason = risk.reasons[0];
-              notes.push(`Risk blocked: ${risk.reasons[0]}`);
-              addAuditLog('Risk Blocked', 'risk', 'warning', `${strategyName} on ${runner.runnerName}: ${risk.reasons[0]}`);
+            // AI strategy calls the backend function; others use local createSignal.
+            // Both paths produce a signal that goes through the same validation,
+            // risk, and paper order pipeline — AI is treated identically to other strategies.
+            let signal = null;
+            if (strategyName === 'Featherless AI Value Decision Engine') {
+              try {
+                const aiMarketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
+                const resp = await base44.functions.invoke('featherlessAI', {
+                  market, runners: aiMarketRunners, settings: s.settings,
+                  strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
+                });
+                if (resp.data?.error) throw new Error(resp.data.error);
+                const decision = resp.data?.decision;
+                if (!decision || decision.decision !== 'BET' || !decision.safetyGatePassed) {
+                  steps[4].status = 'blocked';
+                  steps[4].reason = decision?.noBetReason || decision?.mainReason || 'AI decided no bet';
+                  notes.push(`AI: ${steps[4].reason}`);
+                } else {
+                  const aiRunner = aiMarketRunners.find(r =>
+                    r.runnerName === decision.selectedRunner ||
+                    String(r.betfairSelectionId) === String(decision.selectionId)
+                  );
+                  if (!aiRunner) {
+                    steps[4].status = 'blocked';
+                    steps[4].reason = `AI selected ${decision.selectedRunner} but runner not found in market data`;
+                    notes.push(steps[4].reason);
+                  } else {
+                    runner = aiRunner;
+                    signal = {
+                      strategyName: 'Featherless AI Value Decision Engine',
+                      marketId: market.id,
+                      betfairMarketId: market.betfairMarketId || market.id,
+                      selectionId: String(decision.selectionId || aiRunner.betfairSelectionId),
+                      runnerId: aiRunner.id,
+                      side: 'BACK',
+                      odds: decision.betfairOdds || aiRunner.bestBackPrice,
+                      stakeSuggestion: decision.recommendedStake || s.settings.baseStake || 100,
+                      modelProbability: decision.estimatedProbability,
+                      impliedProbability: 1 / (decision.betfairOdds || aiRunner.bestBackPrice),
+                      fairOdds: decision.fairOdds,
+                      edgePercent: decision.valueEdge,
+                      expectedValue: (decision.expectedROI / 100) * (decision.recommendedStake || s.settings.baseStake || 100),
+                      confidence: decision.confidence,
+                      signalStatus: 'active',
+                      persistenceType: 'LAPSE',
+                      spreadTicks: countTicksBetween(aiRunner.bestBackPrice || 0, aiRunner.bestLayPrice || 0),
+                      reason: `Featherless AI: ${decision.mainReason}`,
+                    };
+                  }
+                }
+              } catch (err) {
+                steps[4].status = 'blocked';
+                steps[4].reason = `AI error: ${err.message}`;
+                notes.push(steps[4].reason);
+                errors = 1;
+              }
             } else {
-              steps[6].status = 'passed';
+              signal = createSignal(strategyName, market, runner, s.settings);
+            }
 
-              // Step 8-9: Submit Paper Order + Track
-              if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
-                const order = createPaperOrder(signal, market, runner, s.settings);
-                orderCreated = order;
-                ordersCreated = 1;
-                steps[7].status = 'passed';
-                steps[8].status = 'passed';
+            if (!signal) {
+              if (steps[4].status !== 'blocked') {
+                steps[4].status = 'blocked';
+                steps[4].reason = `${strategyName}: entry rules not met`;
+                notes.push(steps[4].reason);
+              }
+            } else {
+              signalCreated = signal;
+              signalsCreated = 1;
+              steps[4].status = 'passed';
 
-                setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
-                base44.entities.PaperOrder.create(order).catch(() => {});
-                setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
+              setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+              base44.entities.StrategySignal.create(signal).catch(() => {});
+
+              // Step 6: Run Pre-Order Validation
+              const connectionState = {
+                apiConnected: s.apiConnected,
+                betfairSessionToken: s.betfairSessionToken,
+                dataFresh: s.betfairConnection?.dataFresh ?? true,
+              };
+
+              const preCheck = runPreOrderChecks(
+                { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType },
+                market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
+              );
+
+              if (!preCheck.passed) {
+                steps[5].status = 'blocked';
+                steps[5].reason = preCheck.failures[0].reason;
+                ordersBlocked = 1;
+                riskBlockedReason = preCheck.failures[0].reason;
+                rejectedOrder = preCheck.rejectedOrder;
+                notes.push(`Pre-order validation failed: ${preCheck.failures[0].reason}`);
+                addAuditLog('Order Rejected', 'order', 'warning', `${strategyName} on ${runner.runnerName}: ${preCheck.failures[0].reason}`, { objectName: runner.runnerName, reason: preCheck.failures[0].reason });
+                if (rejectedOrder) {
+                  setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100));
+                  setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: preCheck.failures[0].reason }));
+                }
               } else {
-                steps[7].status = 'blocked';
-                steps[7].reason = 'Bot is paused or auto paper trading is disabled.';
-                steps[8].status = 'waiting';
-                notes.push('Bot paused or auto trading disabled');
+                steps[5].status = 'passed';
+
+                // Step 7: Run Risk Manager
+                const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
+                if (!risk.passed) {
+                  steps[6].status = 'blocked';
+                  steps[6].reason = risk.reasons[0];
+                  ordersBlocked = 1;
+                  riskBlockedReason = risk.reasons[0];
+                  notes.push(`Risk blocked: ${risk.reasons[0]}`);
+                  addAuditLog('Risk Blocked', 'risk', 'warning', `${strategyName} on ${runner.runnerName}: ${risk.reasons[0]}`);
+                } else {
+                  steps[6].status = 'passed';
+
+                  // Step 8-9: Submit Paper Order + Track
+                  if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
+                    const order = createPaperOrder(signal, market, runner, s.settings);
+                    orderCreated = order;
+                    ordersCreated = 1;
+                    steps[7].status = 'passed';
+                    steps[8].status = 'passed';
+
+                    setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
+                    base44.entities.PaperOrder.create(order).catch(() => {});
+                    setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
+                  } else {
+                    steps[7].status = 'blocked';
+                    steps[7].reason = 'Bot is paused or auto paper trading is disabled.';
+                    steps[8].status = 'waiting';
+                    notes.push('Bot paused or auto trading disabled');
+                  }
+                }
               }
             }
-          }
           }
 
       }
