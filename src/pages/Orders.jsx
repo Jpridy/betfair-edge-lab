@@ -25,10 +25,7 @@ export default function Orders() {
   );
 
   const venues = useMemo(
-    () => [...new Set(paperOrders.map(o => {
-      const parts = o.marketName?.split(' ');
-      return parts?.[0] || 'Unknown';
-    }).filter(Boolean))].sort(),
+    () => [...new Set(paperOrders.map(o => o.venue).filter(Boolean))].sort(),
     [paperOrders]
   );
 
@@ -42,7 +39,7 @@ export default function Orders() {
     if (sideFilter !== 'all' && o.side !== sideFilter) return false;
     if (strategyFilter !== 'all' && o.strategyName !== strategyFilter) return false;
     if (resultFilter !== 'all' && o.result !== resultFilter) return false;
-    if (venueFilter !== 'all' && !o.marketName?.startsWith(venueFilter)) return false;
+    if (venueFilter !== 'all' && o.venue !== venueFilter) return false;
     if (warningOnly && !hasWarning(o)) return false;
     if (modeFilter === 'paper' && !o.paper_mode) return false;
     if (modeFilter === 'live' && !o.liveMode) return false;
@@ -217,7 +214,10 @@ export default function Orders() {
               <TableRow key={o.id} className="border-border">
                 <TableCell className="text-xs text-muted-foreground">{new Date(o.created_date).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</TableCell>
                 <TableCell className="text-xs">{o.strategyName}</TableCell>
-                <TableCell className="text-xs">{o.marketName}</TableCell>
+                <TableCell className="text-xs">
+                  <div className="font-medium">{o.venue || '—'}</div>
+                  <div className="text-muted-foreground">{o.raceNumber ? `R${o.raceNumber} · ` : ''}{o.marketName || '—'}</div>
+                </TableCell>
                 <TableCell className="text-xs">{o.runnerName}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{o.marketStartTime ? new Date(o.marketStartTime).toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
