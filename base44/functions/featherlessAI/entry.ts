@@ -48,98 +48,38 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
 
 Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.`;
 
-const USER_PROMPT = `Analyse this Betfair Edge Lab race object. Use the Betfair historical summary, racing form data, optional bookmaker odds and live Betfair prices to make one final decision for the Paper Trading system.
+const USER_PROMPT = `Analyse this race object and make one paper-trading decision.
 
-For each runner:
-- Estimate true win probability (as a decimal 0-1, e.g. 0.285 for 28.5%)
-- Estimate fair odds (decimal, e.g. 3.5)
-- Compare fair odds against Betfair odds after commission
-- Assess form strength
-- Assess historical support
-- Assess live market strength
-- Assess liquidity
-- Assess price movement risk
-- Rate runner as STRONG_VALUE, SMALL_VALUE, FAIR_PRICE, UNDERPRICED or AVOID
+Race object:
+<RACE_DATA>
+__RACE_JSON__
+</RACE_DATA>
 
-Then make one race decision:
-BET, NO_BET or WATCH.
-
-Only recommend BET if there is a clear positive edge after commission and enough evidence to support it.
-
-You MUST return valid JSON only using EXACTLY this structure (no markdown, no code fences, no commentary):
-
+Return ONLY this JSON (no markdown, no commentary):
 {
   "race_decision": {
     "decision": "BET" | "NO_BET" | "WATCH",
-    "overall_confidence": <number 0-100>,
+    "overall_confidence": <0-100>,
     "race_risk_level": "LOW" | "MEDIUM" | "HIGH",
-    "summary": "<brief race summary>",
-    "primary_no_bet_reason": "<reason if NO_BET, else empty string>",
-    "data_quality_score": <number 0-100>
+    "summary": "<max 20 words>",
+    "primary_no_bet_reason": "<reason if NO_BET, else empty>",
+    "data_quality_score": <0-100>
   },
   "selected_bet": {
-    "runner": "<runner name from the race data>",
-    "selection_id": "<selection_id from the race data>",
-    "estimated_probability": <decimal 0-1>,
+    "runner": "<runner name from race data>",
+    "selection_id": "<selection_id from race data>",
+    "estimated_probability": <0-1>,
     "fair_odds": <decimal >1>,
-    "betfair_odds": <decimal, the back price>,
-    "break_even_probability": <decimal 0-1>,
-    "value_edge": <decimal percentage, e.g. 5.0 for 5%>,
-    "expected_roi": <decimal, e.g. 0.03 for 3%>,
-    "confidence": <number 0-100>,
+    "betfair_odds": <the back price>,
+    "value_edge": <percentage, e.g. 5.0>,
+    "expected_roi": <decimal, e.g. 0.03>,
     "minimum_acceptable_odds": <decimal >1>,
-    "stake_multiplier": <decimal 0-1>,
-    "reason": "<why this runner was selected>",
-    "risks": ["<risk 1>", "<risk 2>"]
-  },
-  "most_likely_winner": {
-    "runner": "<runner name>",
-    "selection_id": "<selection_id>",
-    "estimated_probability": <decimal 0-1>,
-    "fair_odds": <decimal >1>,
-    "confidence": <number 0-100>,
-    "reason": "<why this runner is most likely to win>"
-  },
-  "runner_assessments": [
-    {
-      "runner": "<runner name>",
-      "selection_id": "<selection_id>",
-      "estimated_probability": <decimal 0-1>,
-      "fair_odds": <decimal >1>,
-      "betfair_odds": <decimal>,
-      "value_edge": <decimal percentage>,
-      "expected_roi": <decimal>,
-      "confidence": <number 0-100>,
-      "rating": "STRONG_VALUE" | "SMALL_VALUE" | "FAIR_PRICE" | "UNDERPRICED" | "AVOID",
-      "form_view": "<assessment>",
-      "historical_view": "<assessment>",
-      "market_view": "<assessment>",
-      "liquidity_view": "<assessment>",
-      "reason": "<brief reason>",
-      "risks": ["<risk>"]
-    }
-  ],
-  "decision_checks": {
-    "form_supports_selection": <boolean>,
-    "historical_data_supports_selection": <boolean>,
-    "live_market_supports_selection": <boolean>,
-    "bookmaker_odds_support_selection": <boolean>,
-    "betfair_price_is_value": <boolean>,
-    "expected_roi_positive": <boolean>,
-    "liquidity_acceptable": <boolean>,
-    "price_movement_acceptable": <boolean>,
-    "data_quality_acceptable": <boolean>
-  },
-  "recommended_app_action": {
-    "place_bet": <boolean>,
-    "paper_trade": <boolean>,
-    "recheck_before_bet": <boolean>,
-    "reason": "<brief reason>"
-  },
-  "warnings": ["<warning 1>", "<warning 2>"]
+    "reason": "<max 20 words>",
+    "risks": ["<risk>"]
+  }
 }
 
-If the decision is NO_BET or WATCH, set selected_bet to an object with empty strings and zero values, but still include all the keys. The sum of all runner estimated_probability values should be approximately 1.0.`;
+If NO_BET or WATCH, set selected_bet fields to empty strings and zeros. Probabilities across all runners should sum to ~1.0.`;
 
 const RESPONSE_SCHEMA = {
   type: 'object',
@@ -244,72 +184,26 @@ function buildRaceObject(market, runners, settings, strategySettings) {
 
   const runnerObjects = marketRunners
     .filter(r => r.status === 'ACTIVE')
-    .map((r, idx) => {
-      const betfairProb = r.bestBackPrice > 0 ? (1 / r.bestBackPrice) * 100 : 0;
-      const spreadTicks = r.spreadTicks || 0;
-      const appModelProb = r.modelProbability || (r.impliedProbability ? r.impliedProbability * (1 + (Math.random() - 0.5) * 0.08) : 0);
-      const appFairOdds = appModelProb > 0 ? 100 / appModelProb : 0;
-      const appEdge = appFairOdds > 0 && r.bestBackPrice > 0 ? ((r.bestBackPrice - appFairOdds) / appFairOdds) * 100 : 0;
-      const appExpectedROI = r.bestBackPrice > 0 ? (appModelProb / 100) * (r.bestBackPrice - 1) * (1 - commissionRate) - (1 - appModelProb / 100) : 0;
-
-      return {
-        runner_name: r.runnerName,
-        selection_id: String(r.betfairSelectionId || r.selectionId || ''),
-        status: r.status || 'ACTIVE',
-        barrier: idx + 1,
-        weight: 0,
-        jockey: '',
-        trainer: '',
-        days_since_last_run: 0,
-        recent_form: '',
-        last_10_starts: [],
-        speed_map_position: '',
-        run_style: '',
-        sectional_rating: null,
-        form_fair_price: null,
-        form_rank: null,
-        form_score: null,
-        bookmaker_consensus_fair_price: null,
-        bookmaker_no_vig_probability: null,
-        betfair_back_price: r.bestBackPrice || 0,
-        betfair_lay_price: r.bestLayPrice || 0,
-        betfair_back_size: r.bestBackSize || 0,
-        betfair_lay_size: r.bestLaySize || 0,
-        betfair_traded_volume: r.tradedVolume || r.totalMatched || 0,
-        back_lay_spread: spreadTicks,
-        price_movement_5m: 'stable',
-        price_movement_2m: 'stable',
-        price_movement_60s: 'stable',
-        market_rank: r.favouriteRank || idx + 1,
-        betfair_probability: betfairProb,
-        break_even_probability: betfairProb,
-        app_model_probability: appModelProb,
-        app_model_fair_odds: appFairOdds,
-        app_expected_roi: appExpectedROI,
-        app_value_edge: appEdge,
-        historical_runner_summary: {
-          similar_runner_sample_size: 0,
-          similar_runner_win_rate: 0,
-          similar_runner_roi_after_commission: 0,
-          similar_runner_clv: 0,
-          similar_runner_notes: 'No historical data available for this runner profile.'
-        },
-        runner_match_confidence: 1.0
-      };
-    });
+    .map((r, idx) => ({
+      runner_name: r.runnerName,
+      selection_id: String(r.betfairSelectionId || r.selectionId || ''),
+      status: r.status || 'ACTIVE',
+      betfair_back_price: r.bestBackPrice || 0,
+      betfair_lay_price: r.bestLayPrice || 0,
+      betfair_back_size: r.bestBackSize || 0,
+      betfair_lay_size: r.bestLaySize || 0,
+      betfair_traded_volume: r.tradedVolumeAmount || r.tradedVolume || r.totalMatched || 0,
+      back_lay_spread: r.spreadTicks || 0,
+      market_rank: r.favouriteRank || idx + 1,
+      betfair_probability: r.bestBackPrice > 0 ? (1 / r.bestBackPrice) * 100 : 0,
+      runner_match_confidence: 1.0
+    }));
 
   return {
     race_context: {
-      app: 'Betfair Edge Lab',
-      mode: 'paper_trading',
       track: market.venue || '',
-      meeting_date: (startTime || '').slice(0, 10),
       race_number: market.raceNumber || 0,
       race_name: market.marketName || '',
-      distance: 0,
-      race_class: '',
-      track_condition: '',
-      weather: '',
       start_time: startTime || '',
       time_before_jump_seconds: timeBeforeJump === null ? -1 : timeBeforeJump,
       commission_rate: commissionRate,
@@ -319,27 +213,14 @@ function buildRaceObject(market, runners, settings, strategySettings) {
       active_runner_count: runnerObjects.length
     },
     strategy_settings: {
-      minimum_ai_confidence: strategySettings.minConfidence || 75,
-      minimum_edge: (strategySettings.minEdge || 5) / 100,
-      minimum_expected_roi: (strategySettings.minExpectedROI || 3) / 100,
-      minimum_liquidity: strategySettings.minLiquidity || settings.minimumLiquidity || 5000,
-      min_odds: strategySettings.minOdds || 2.0,
-      max_odds: strategySettings.maxOdds || 12.0,
-      max_bets_per_race: 1,
-      staking_mode: strategySettings.stakingMode || 'confidence_weighted_fractional_kelly',
+      minimum_ai_confidence: strategySettings?.minConfidence || 75,
+      minimum_edge: (strategySettings?.minEdge || 5) / 100,
+      minimum_expected_roi: (strategySettings?.minExpectedROI || 3) / 100,
+      minimum_liquidity: strategySettings?.minLiquidity || settings?.minimumLiquidity || 5000,
+      min_odds: strategySettings?.minOdds || 2.0,
+      max_odds: strategySettings?.maxOdds || 12.0,
       kelly_fraction: 0.25,
       max_stake_percent_bankroll: 0.01
-    },
-    historical_summary: {
-      similar_setup_sample_size: 0,
-      similar_setup_win_rate: 0,
-      similar_setup_roi_after_commission: 0,
-      similar_setup_average_odds: 0,
-      similar_setup_average_bsp: 0,
-      similar_setup_clv: 0,
-      similar_setup_max_drawdown: 0,
-      similar_setup_longest_losing_streak: 0,
-      notes: 'No historical pattern data available yet.'
     },
     runners: runnerObjects
   };
@@ -391,14 +272,6 @@ function validateDecision(parsed, raceObject) {
     }
   }
 
-  // Check for impossible probabilities (sum > 1.5 is suspicious)
-  if (parsed.runner_assessments && Array.isArray(parsed.runner_assessments)) {
-    const probSum = parsed.runner_assessments.reduce((s, r) => s + (r.estimated_probability || 0), 0);
-    if (probSum > 1.5) {
-      errors.push(`Impossible probabilities: sum = ${probSum.toFixed(2)} (exceeds 1.5)`);
-    }
-  }
-
   return { valid: errors.length === 0, errors };
 }
 
@@ -415,12 +288,7 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
     return { passed: false, failures };
   }
 
-  // 2. recommended_app_action.paper_trade is true
-  if (parsed.recommended_app_action && parsed.recommended_app_action.paper_trade === false) {
-    failures.push('AI recommended_app_action.paper_trade is false');
-  }
-
-  // 3. AI confidence >= minimum
+  // 2. AI confidence >= minimum
   if (raceDecision.overall_confidence < (strategySettings.minConfidence || 75)) {
     failures.push(`AI confidence ${raceDecision.overall_confidence} below minimum ${strategySettings.minConfidence || 75}`);
   }
@@ -626,10 +494,10 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('FEATHERLESS_API_KEY');
     if (!apiKey) return Response.json({ error: 'FEATHERLESS_API_KEY not set' }, { status: 500 });
 
-    const modelName = strategySettings?.modelName || 'deepseek-ai/DeepSeek-V4-Pro';
+    const modelName = strategySettings?.modelName || 'deepseek-ai/DeepSeek-V4-Flash';
     const temperature = strategySettings?.temperature ?? 0.1;
-    const maxTokens = strategySettings?.maxTokens || 4000;
-    const timeoutMs = (strategySettings?.timeoutSeconds || 10) * 1000;
+    const maxTokens = strategySettings?.maxTokens || 2000;
+    const timeoutMs = (strategySettings?.timeoutSeconds || 90) * 1000;
 
     // Build race object
     const raceObject = buildRaceObject(market, runners, settings, strategySettings);
@@ -637,7 +505,7 @@ Deno.serve(async (req) => {
     // Build messages
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: USER_PROMPT + '\n\nRace object:\n' + JSON.stringify(raceObject, null, 2) }
+      { role: 'user', content: USER_PROMPT.replace('__RACE_JSON__', JSON.stringify(raceObject)) }
     ];
 
     const requestStart = Date.now();
@@ -654,7 +522,6 @@ Deno.serve(async (req) => {
         messages,
         temperature,
         max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -674,19 +541,46 @@ Deno.serve(async (req) => {
     }
 
     const apiData = await apiResp.json();
-    const rawContent = apiData.choices?.[0]?.message?.content || '';
+    let rawContent = apiData.choices?.[0]?.message?.content || '';
+
+    // Strip DeepSeek-V4 reasoning blocks
+    rawContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+    // Normalize: if content starts with a quoted key, prepend opening brace
+    if (rawContent.startsWith('"')) {
+      rawContent = '{' + rawContent;
+    }
 
     // Parse JSON response
     let parsed;
     try {
       parsed = JSON.parse(rawContent);
-    } catch (err) {
-      return Response.json({
-        error: 'AI returned invalid JSON',
-        rawResponse: rawContent.slice(0, 2000),
-        raceObject,
-        responseTimeMs,
-      }, { status: 422 });
+    } catch (_) {
+      // Try to recover: close unmatched brackets
+      try {
+        let fixed = rawContent.replace(/,\s*$/, '');
+        let braces = 0, brackets = 0, inStr = false, esc = false;
+        for (const ch of fixed) {
+          if (esc) { esc = false; continue; }
+          if (ch === '\\') { esc = true; continue; }
+          if (ch === '"') { inStr = !inStr; continue; }
+          if (inStr) continue;
+          if (ch === '{') braces++;
+          else if (ch === '}') braces--;
+          else if (ch === '[') brackets++;
+          else if (ch === ']') brackets--;
+        }
+        for (let i = 0; i < brackets; i++) fixed += ']';
+        for (let i = 0; i < braces; i++) fixed += '}';
+        parsed = JSON.parse(fixed);
+      } catch (_) {
+        return Response.json({
+          error: 'AI returned invalid JSON',
+          rawResponse: rawContent.slice(0, 2000),
+          raceObject,
+          responseTimeMs,
+        }, { status: 422 });
+      }
     }
 
     // Validate decision
@@ -701,7 +595,6 @@ Deno.serve(async (req) => {
     // Build decision record
     const decision = parsed.race_decision || {};
     const bet = parsed.selected_bet || {};
-    const winner = parsed.most_likely_winner || {};
 
     const decisionRecord = {
       strategyName: 'Featherless AI Value Decision Engine',
@@ -721,12 +614,12 @@ Deno.serve(async (req) => {
       confidence: decision.overall_confidence || 0,
       raceRiskLevel: decision.race_risk_level || 'MEDIUM',
       dataQualityScore: decision.data_quality_score || 0,
-      mostLikelyWinner: winner.runner || '',
+      mostLikelyWinner: bet.runner || '',
       mainReason: bet.reason || decision.summary || decision.primary_no_bet_reason || '',
       risks: bet.risks || [],
-      warnings: parsed.warnings || [],
-      runnerAssessments: parsed.runner_assessments || [],
-      decisionChecks: parsed.decision_checks || {},
+      warnings: [],
+      runnerAssessments: [],
+      decisionChecks: {},
       validationStatus: validation.valid ? 'valid' : 'invalid',
       validationErrors: validation.errors,
       safetyGatePassed: safetyGate.passed,
