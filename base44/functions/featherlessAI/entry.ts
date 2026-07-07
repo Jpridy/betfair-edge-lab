@@ -14,8 +14,8 @@ Return valid JSON only. Do not include markdown. Do not include code fences. Do 
 const USER_PROMPT = `Analyse this Betfair Edge Lab race object. Use the Betfair historical summary, racing form data, optional bookmaker odds and live Betfair prices to make one final decision for the Paper Trading system.
 
 For each runner:
-- Estimate true win probability
-- Estimate fair odds
+- Estimate true win probability (as a decimal 0-1, e.g. 0.285 for 28.5%)
+- Estimate fair odds (decimal, e.g. 3.5)
 - Compare fair odds against Betfair odds after commission
 - Assess form strength
 - Assess historical support
@@ -29,7 +29,80 @@ BET, NO_BET or WATCH.
 
 Only recommend BET if there is a clear positive edge after commission and enough evidence to support it.
 
-Return valid JSON only using the required schema.`;
+You MUST return valid JSON only using EXACTLY this structure (no markdown, no code fences, no commentary):
+
+{
+  "race_decision": {
+    "decision": "BET" | "NO_BET" | "WATCH",
+    "overall_confidence": <number 0-100>,
+    "race_risk_level": "LOW" | "MEDIUM" | "HIGH",
+    "summary": "<brief race summary>",
+    "primary_no_bet_reason": "<reason if NO_BET, else empty string>",
+    "data_quality_score": <number 0-100>
+  },
+  "selected_bet": {
+    "runner": "<runner name from the race data>",
+    "selection_id": "<selection_id from the race data>",
+    "estimated_probability": <decimal 0-1>,
+    "fair_odds": <decimal >1>,
+    "betfair_odds": <decimal, the back price>,
+    "break_even_probability": <decimal 0-1>,
+    "value_edge": <decimal percentage, e.g. 5.0 for 5%>,
+    "expected_roi": <decimal, e.g. 0.03 for 3%>,
+    "confidence": <number 0-100>,
+    "minimum_acceptable_odds": <decimal >1>,
+    "stake_multiplier": <decimal 0-1>,
+    "reason": "<why this runner was selected>",
+    "risks": ["<risk 1>", "<risk 2>"]
+  },
+  "most_likely_winner": {
+    "runner": "<runner name>",
+    "selection_id": "<selection_id>",
+    "estimated_probability": <decimal 0-1>,
+    "fair_odds": <decimal >1>,
+    "confidence": <number 0-100>,
+    "reason": "<why this runner is most likely to win>"
+  },
+  "runner_assessments": [
+    {
+      "runner": "<runner name>",
+      "selection_id": "<selection_id>",
+      "estimated_probability": <decimal 0-1>,
+      "fair_odds": <decimal >1>,
+      "betfair_odds": <decimal>,
+      "value_edge": <decimal percentage>,
+      "expected_roi": <decimal>,
+      "confidence": <number 0-100>,
+      "rating": "STRONG_VALUE" | "SMALL_VALUE" | "FAIR_PRICE" | "UNDERPRICED" | "AVOID",
+      "form_view": "<assessment>",
+      "historical_view": "<assessment>",
+      "market_view": "<assessment>",
+      "liquidity_view": "<assessment>",
+      "reason": "<brief reason>",
+      "risks": ["<risk>"]
+    }
+  ],
+  "decision_checks": {
+    "form_supports_selection": <boolean>,
+    "historical_data_supports_selection": <boolean>,
+    "live_market_supports_selection": <boolean>,
+    "bookmaker_odds_support_selection": <boolean>,
+    "betfair_price_is_value": <boolean>,
+    "expected_roi_positive": <boolean>,
+    "liquidity_acceptable": <boolean>,
+    "price_movement_acceptable": <boolean>,
+    "data_quality_acceptable": <boolean>
+  },
+  "recommended_app_action": {
+    "place_bet": <boolean>,
+    "paper_trade": <boolean>,
+    "recheck_before_bet": <boolean>,
+    "reason": "<brief reason>"
+  },
+  "warnings": ["<warning 1>", "<warning 2>"]
+}
+
+If the decision is NO_BET or WATCH, set selected_bet to an object with empty strings and zero values, but still include all the keys. The sum of all runner estimated_probability values should be approximately 1.0.`;
 
 const RESPONSE_SCHEMA = {
   type: 'object',
