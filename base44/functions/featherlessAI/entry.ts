@@ -19,9 +19,10 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
 
 2. VALUE IDENTIFICATION
    - Value edge = (betfair_odds / fair_odds - 1) × 100
-   - After commission (typically 5%), you need an edge of at LEAST 5% to break even. A genuine betting opportunity requires edge ≥ 8% after commission.
+   - After commission (typically 5%), you need a small edge to break even. A genuine betting opportunity requires edge ≥ 5% (the minimum_edge from strategy_settings).
    - Expected ROI = (estimated_probability × (betfair_odds - 1) × (1 - commission)) - (1 - estimated_probability)
-   - Only recommend BET if expected_roi is clearly positive (> 3%).
+   - Expected ROI already accounts for commission. Only recommend BET if expected_roi is clearly positive (> 3%).
+   - The minimum_edge and minimum_expected_roi from strategy_settings are your thresholds — do NOT require more than those.
 
 3. RISK ASSESSMENT
    - LIQUIDITY RISK: Markets with < $5K traded are dangerous — your bet may not get matched, or may move the price against you.
@@ -35,7 +36,7 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
    - Do NOT bet just because a runner is the favourite — favourites are often over-bet.
    - Do NOT bet just because odds are high — longshots are often under-bet but still lose most of the time.
    - Do NOT chase market drifters (runners whose price is shortening) unless the new price still offers value after the move.
-   - If you cannot identify a runner with edge > 8% after commission, return NO_BET.
+   - If you cannot identify a runner with edge ≥ 5% and positive expected_roi after commission, return NO_BET.
    - WATCH means the race is interesting but the data doesn't support a bet yet (monitor for price movement).
    - Confidence reflects the strength of your evidence, NOT your enthusiasm for the bet. A well-supported bet in a liquid market = 80-90 confidence. A marginal bet in a thin market = 50-60 confidence.
 
@@ -404,11 +405,11 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
     failures.push(`Back price ${selectedRunner.betfair_back_price} below minimum acceptable ${bet.minimum_acceptable_odds}`);
   }
 
-  // 12. Back price above fair odds by minimum edge (after commission)
-  const commRate = ctx.commission_rate || 0.05;
-  const minEdge = (strategySettings.minEdge || 5) / 100 + commRate;
+  // 12. Back price above fair odds by minimum edge
+  // (expected_roi already accounts for commission — checked separately in step 13)
+  const minEdge = (strategySettings.minEdge || 5) / 100;
   if (bet.fair_odds && selectedRunner.betfair_back_price < bet.fair_odds * (1 + minEdge)) {
-    failures.push(`Back price ${selectedRunner.betfair_back_price} not above fair odds ${bet.fair_odds} by ${(minEdge * 100).toFixed(1)}% edge (incl. ${(commRate * 100).toFixed(1)}% commission)`);
+    failures.push(`Back price ${selectedRunner.betfair_back_price} not above fair odds ${bet.fair_odds} by ${minEdge * 100}% edge`);
   }
 
   // 13. Expected ROI positive after commission
