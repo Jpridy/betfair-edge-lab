@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download, ChevronRight, Copy, XCircle } from 'lucide-react';
+import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download, ChevronRight, Copy, XCircle, RotateCcw } from 'lucide-react';
 import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 import { getAuditData } from '@/lib/strategyAuditData';
 import { computeTrafficLight, computeDataQuality, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
@@ -32,10 +32,16 @@ const TABS = [
 
 export default function StrategyLibrary() {
   const navigate = useNavigate();
-  const { settings, addAuditLog } = useApp();
+  const { settings, addAuditLog, resetStrategyData } = useApp();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('all');
   const [view, setView] = useState('grid');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const handleResetStrategyData = async () => {
+    await resetStrategyData();
+    setShowResetConfirm(false);
+  };
 
   const strategiesWithStatus = useMemo(() => {
     return DEMO_STRATEGY_LIBRARY.map(s => {
@@ -131,6 +137,22 @@ export default function StrategyLibrary() {
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Download Document</span>
           </Button>
+          {showResetConfirm ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-chart-5 font-medium hidden sm:inline">Reset all strategy stats, signals & AI decisions?</span>
+              <Button variant="destructive" size="sm" onClick={handleResetStrategyData}>
+                <CheckCircle2 className="h-3 w-3" /> Confirm
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowResetConfirm(false)}>
+                <XCircle className="h-3 w-3" /> Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={() => setShowResetConfirm(true)}>
+              <RotateCcw className="h-4 w-4" />
+              <span className="hidden sm:inline">Reset Strategy Data</span>
+            </Button>
+          )}
           <div className="flex gap-1">
             <Button variant={view === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setView('grid')}>
               <BookOpen className="h-4 w-4" />

@@ -435,12 +435,16 @@ export function AppProvider({ children }) {
       base44.entities.PaperOrder.deleteMany({}).catch(() => {}),
       base44.entities.StrategySignal.deleteMany({}).catch(() => {}),
       base44.entities.BotCycle.deleteMany({}).catch(() => {}),
+      base44.entities.StrategyStats.deleteMany({}).catch(() => {}),
+      base44.entities.FeatherlessAIDecision.deleteMany({}).catch(() => {}),
     ]);
     // Clear local state
     setPaperOrders([]);
     setRejectedOrders([]);
     setStrategySignals([]);
     setBotCycles([]);
+    setStrategyStats([]);
+    setAiDecisions([]);
     setBotActivity([]);
     const startingBankroll = settings.paperBankroll || settings.bankroll;
     setBankrollStats(prev => ({
@@ -475,8 +479,22 @@ export function AppProvider({ children }) {
       ordersRejectedToday: 0,
       lastRejectedReason: null,
     }));
-    addAuditLog('Paper Trading Reset', 'system', 'critical', 'All paper orders, signals, bot cycles, bankroll P/L, strategy stats, and daily counters reset to zero.');
+    addAuditLog('Paper Trading Reset', 'system', 'critical', 'All paper orders, signals, bot cycles, strategy stats, AI decisions, bankroll P/L, and daily counters reset to zero.');
     addToBotActivity('Paper trading reset', 'All paper trading data cleared and bankroll reset to starting balance');
+  };
+
+  // ── Reset Strategy Data Only ──
+  const resetStrategyData = async () => {
+    await Promise.all([
+      base44.entities.StrategyStats.deleteMany({}).catch(() => {}),
+      base44.entities.StrategySignal.deleteMany({}).catch(() => {}),
+      base44.entities.FeatherlessAIDecision.deleteMany({}).catch(() => {}),
+    ]);
+    setStrategyStats([]);
+    setStrategySignals([]);
+    setAiDecisions([]);
+    addAuditLog('Strategy Data Reset', 'strategy', 'critical', 'All strategy stats, signals, and AI decisions cleared to zero.');
+    addToBotActivity('Strategy data reset', 'All strategy stats, signals, and AI decisions cleared');
   };
 
   // ── Mode Management ──
@@ -1197,7 +1215,7 @@ export function AppProvider({ children }) {
     strategyLibrary,
     // Emergency controls
     cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
-    resetAllPaperTrading,
+    resetAllPaperTrading, resetStrategyData,
     // Featherless AI
     featherlessSettings, setFeatherlessSettings, aiDecisions,
   };
