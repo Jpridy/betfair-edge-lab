@@ -199,6 +199,7 @@ export function createPaperOrder(signal, market, runner, settings) {
     strategyName: signal.strategyName,
     runnerId: runner.id,
     runnerName: runner?.runnerName || 'Unknown Runner',
+    horseNumber: runner?.horseNumber || runner?.sortPriority || 0,
     marketName: market?.venue ? `${market.venue} - ${market.marketName || 'Win'}` : (market?.marketName || 'Unknown Market'),
     venue: market?.venue || '',
     raceNumber: market?.raceNumber || 0,

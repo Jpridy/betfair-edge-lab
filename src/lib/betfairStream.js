@@ -179,6 +179,8 @@ export class BetfairStreamClient {
           marketName: '',
           marketType: 'WIN',
           startTime: null,
+          marketStartTime: null,
+          raceNumber: 0,
           status: 'OPEN',
           inPlay: false,
           totalMatched: 0,
@@ -201,7 +203,7 @@ export class BetfairStreamClient {
         if (marketDef.marketType) market.marketType = marketDef.marketType;
         if (marketDef.status) market.status = marketDef.status;
         if (marketDef.inPlay != null) market.inPlay = marketDef.inPlay;
-        if (marketDef.marketTime) market.startTime = marketDef.marketTime;
+        if (marketDef.marketTime) { market.startTime = marketDef.marketTime; market.marketStartTime = marketDef.marketTime; }
         if (marketDef.betDelay != null) market.betDelay = marketDef.betDelay;
         if (marketDef.numberOfActiveRunners != null) market.numberOfActiveRunners = marketDef.numberOfActiveRunners;
         if (marketDef.numberOfWinners != null) market.numberOfWinners = marketDef.numberOfWinners;
@@ -209,6 +211,10 @@ export class BetfairStreamClient {
         if (marketDef.baseRate != null) market.marketBaseRate = marketDef.baseRate;
         if (marketDef.eventName) market.eventName = marketDef.eventName;
         if (marketDef.countryCode) market.country = marketDef.countryCode;
+
+        // Parse race number from market name (e.g. "R1 1200m") or event name
+        const rn = this._parseRaceNumber(market.marketName, market.eventName);
+        if (rn) market.raceNumber = rn;
 
         // Construct event name if not provided
         if (!market.eventName && market.venue) {
@@ -226,6 +232,7 @@ export class BetfairStreamClient {
                 marketId: marketId,
                 betfairSelectionId: runnerId,
                 runnerName: runnerDef.name || `Selection ${runnerId}`,
+                horseNumber: runnerDef.sortPriority || 0,
                 status: runnerDef.status || 'ACTIVE',
                 bestBackPrice: 0,
                 bestBackSize: 0,
@@ -241,6 +248,7 @@ export class BetfairStreamClient {
             }
             const runner = market.runners.get(runnerId);
             if (runnerDef.name) runner.runnerName = runnerDef.name;
+            if (runnerDef.sortPriority != null) runner.horseNumber = runnerDef.sortPriority;
             if (runnerDef.status) runner.status = runnerDef.status;
             if (runnerDef.adjustmentFactor != null) runner.adjustmentFactor = runnerDef.adjustmentFactor;
           }
@@ -271,6 +279,7 @@ export class BetfairStreamClient {
               marketId: marketId,
               betfairSelectionId: runnerId,
               runnerName: `Selection ${runnerId}`,
+              horseNumber: 0,
               status: 'ACTIVE',
               bestBackPrice: 0,
               bestBackSize: 0,
@@ -332,6 +341,12 @@ export class BetfairStreamClient {
     }
   }
 
+  _parseRaceNumber(marketName, eventName) {
+    const text = `${marketName || ''} ${eventName || ''}`;
+    const match = text.match(/\bR(\d+)\b/i);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
   _updateRanks() {
     for (const market of this.markets.values()) {
       const runners = [...market.runners.values()];
@@ -383,6 +398,8 @@ export class BetfairStreamClient {
         marketName: m.marketName,
         marketType: m.marketType,
         startTime: m.startTime,
+        marketStartTime: m.marketStartTime || m.startTime,
+        raceNumber: m.raceNumber || 0,
         status: m.status,
         inPlay: m.inPlay,
         totalMatched: m.totalMatched,

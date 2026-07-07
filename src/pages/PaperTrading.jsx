@@ -63,6 +63,7 @@ export default function PaperTrading() {
       selectionId: runner?.betfairSelectionId || runner?.selectionId,
       runnerId: form.runnerId,
       runnerName: runner?.runnerName || 'Unknown Runner',
+      horseNumber: runner?.horseNumber || runner?.sortPriority || 0,
       marketName: market?.venue ? `${market.venue} - ${market.marketName || 'Win'}` : (market?.marketName || 'Unknown Market'),
       venue: market?.venue || '',
       raceNumber: market?.raceNumber || 0,
@@ -332,9 +333,10 @@ export default function PaperTrading() {
                 <TableCell className="text-xs">{o.strategyName}</TableCell>
                 <TableCell className="text-xs">
                   <div className="font-medium">{o.venue || '—'}</div>
-                  <div className="text-muted-foreground">{o.marketName}</div>
+                  <div className="text-muted-foreground">R{o.raceNumber || '?'} · {o.marketName}</div>
+                  {o.marketStartTime && <div className="text-muted-foreground">{new Date(o.marketStartTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</div>}
                 </TableCell>
-                <TableCell className="text-xs font-medium">{o.runnerName}</TableCell>
+                <TableCell className="text-xs font-medium">#{o.horseNumber || '?'} {o.runnerName}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${o.matchedStake || o.requestedStake || 0}</TableCell>

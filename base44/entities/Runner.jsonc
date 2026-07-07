@@ -14,6 +14,9 @@
     "runnerName": {
       "type": "string"
     },
+    "horseNumber": {
+      "type": "number"
+    },
     "handicap": {
       "type": "number"
     },

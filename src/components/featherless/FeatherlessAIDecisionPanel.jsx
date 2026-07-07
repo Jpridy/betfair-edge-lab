@@ -65,6 +65,7 @@ export default function FeatherlessAIDecisionPanel() {
               selectionId: runner.betfairSelectionId || runner.selectionId,
               runnerId: runner.id,
               runnerName: runner.runnerName || 'Unknown Runner',
+              horseNumber: runner.horseNumber || runner.sortPriority || 0,
               marketName: selectedMarket.venue ? `${selectedMarket.venue} - ${selectedMarket.marketName || 'Win'}` : (selectedMarket.marketName || 'Unknown Market'),
               venue: selectedMarket.venue || '',
               raceNumber: selectedMarket.raceNumber || 0,

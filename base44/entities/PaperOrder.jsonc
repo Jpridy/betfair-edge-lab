@@ -17,6 +17,9 @@
     "runnerName": {
       "type": "string"
     },
+    "horseNumber": {
+      "type": "number"
+    },
     "marketName": {
       "type": "string"
     },

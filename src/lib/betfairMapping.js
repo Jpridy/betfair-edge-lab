@@ -8,6 +8,12 @@
 
 import { roundToNearestTick, isValidTickPrice } from './tickLadder';
 
+function parseRaceNumberFromName(marketName, eventName) {
+  const text = `${marketName || ''} ${eventName || ''}`;
+  const match = text.match(/\bR(\d+)\b/i);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
 // ─── Betfair Order Structure ───────────────────────────────────────────────
 // This is the canonical Betfair Exchange order structure. Both paper and
 // live orders must use these fields. Paper orders add paper_mode = true
@@ -202,6 +208,7 @@ export function mapBetfairMarket(catalogue, book) {
     marketId: catalogue.marketId,  // Keep betfairMarketId as the app's marketId too
     marketName: catalogue.marketName || event.name || catalogue.marketId,
     venue: event.venue || '',
+    raceNumber: parseRaceNumberFromName(catalogue.marketName, event.name),
     country: event.countryCode || 'AU',
     timezone: event.timezone || 'Australia/Sydney',
     marketStartTime: catalogue.marketStartTime || description.marketTime || null,
@@ -247,6 +254,7 @@ export function mapBetfairRunner(runnerMeta, runnerBook) {
     betfairSelectionId: String(runnerMeta.selectionId),
     selectionId: String(runnerMeta.selectionId),
     runnerName: runnerMeta.runnerName || `Selection ${runnerMeta.selectionId}`,
+    horseNumber: runnerMeta.sortPriority || 0,
     handicap: runnerMeta.handicap || 0,
     status: runnerBook?.status || runnerMeta.status || 'ACTIVE',
     adjustmentFactor: runnerMeta.adjustmentFactor || null,

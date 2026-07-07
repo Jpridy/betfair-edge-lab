@@ -106,6 +106,12 @@ export async function createBetfairStream(sessionToken, callbacks) {
   return { client, config };
 }
 
+function parseRaceNumber(marketName, eventName) {
+  const text = `${marketName || ''} ${eventName || ''}`;
+  const match = text.match(/\bR(\d+)\b/i);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
 /** Build a proxied URL for browser-to-Betfair calls */
 function proxied(targetUrl, config) {
   if (config.proxyUrl) {
@@ -216,6 +222,8 @@ export async function fetchBetfairMarkets(ssoid) {
       marketName,
       marketType: cat.description?.marketType || 'WIN',
       startTime: cat.marketStartTime || cat.description?.marketTime || null,
+      marketStartTime: cat.marketStartTime || cat.description?.marketTime || null,
+      raceNumber: parseRaceNumber(marketName, eventName),
       status: book.status || 'OPEN',
       inPlay: book.inplay || false,
       totalMatched: book.totalMatched || 0,
@@ -247,6 +255,7 @@ export async function fetchBetfairMarkets(ssoid) {
         marketId: cat.marketId,
         betfairSelectionId: String(runner.selectionId),
         runnerName: runner.runnerName || `Selection ${runner.selectionId}`,
+        horseNumber: runner.sortPriority || 0,
         status: runnerBook?.status || runner.status || 'ACTIVE',
         bestBackPrice,
         bestBackSize: bestBack?.size || 0,
