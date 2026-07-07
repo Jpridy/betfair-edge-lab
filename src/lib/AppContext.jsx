@@ -214,9 +214,9 @@ export function AppProvider({ children }) {
   // ── Featherless AI ──
   const [featherlessSettings, setFeatherlessSettings] = useState({
     enabled: false,
-    modelName: 'meta-llama/Llama-3.3-70B-Instruct',
+    modelName: 'deepseek-ai/DeepSeek-V3.2',
     temperature: 0.1,
-    maxTokens: 2000,
+    maxTokens: 4000,
     timeoutSeconds: 60,
     minConfidence: 75,
     minEdge: 5,

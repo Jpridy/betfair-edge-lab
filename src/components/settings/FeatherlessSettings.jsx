@@ -10,9 +10,9 @@ import { base44 } from '@/api/base44Client';
 
 const DEFAULT_FEATHERLESS = {
   enabled: false,
-  modelName: 'meta-llama/Llama-3.3-70B-Instruct',
+  modelName: 'deepseek-ai/DeepSeek-V3.2',
   temperature: 0.1,
-  maxTokens: 2000,
+  maxTokens: 4000,
   timeoutSeconds: 60,
   minConfidence: 75,
   minEdge: 5,
@@ -94,7 +94,7 @@ export default function FeatherlessSettings({ settings, onSave }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border">
           <div>
             <Label className="text-xs">Featherless Model Name</Label>
-            <Input value={local.modelName} onChange={e => update('modelName', e.target.value)} className="mt-1" placeholder="meta-llama/Llama-3.3-70B-Instruct" />
+            <Input value={local.modelName} onChange={e => update('modelName', e.target.value)} className="mt-1" placeholder="deepseek-ai/DeepSeek-V3.2" />
             <div className="text-[10px] text-muted-foreground mt-1">Any model available on featherless.ai</div>
           </div>
           <div>

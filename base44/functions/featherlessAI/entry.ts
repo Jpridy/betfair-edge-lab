@@ -522,6 +522,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (action === 'models') {
+      const apiKey = Deno.env.get('FEATHERLESS_API_KEY');
+      if (!apiKey) return Response.json({ error: 'FEATHERLESS_API_KEY not set' }, { status: 500 });
+      try {
+        const resp = await fetch(`${FEATHERLESS_BASE_URL}/models`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await resp.json();
+        const all = (data.data || data || []).map((m: any) => m.id || m).sort();
+        const flagships = all.filter((id: string) =>
+          /^deepseek-ai\//i.test(id) ||
+          /^moonshotai\//i.test(id) ||
+          /^thudm\//i.test(id) ||
+          /^zai-org\//i.test(id)
+        ).sort();
+        return Response.json({ connected: resp.ok, total: all.length, flagships });
+      } catch (err) {
+        return Response.json({ connected: false, error: err.message }, { status: 500 });
+      }
+    }
+
     if (!market) return Response.json({ error: 'market is required' }, { status: 400 });
 
     // ── Hard pre-check: don't call the AI if the race is outside the trading window ──
@@ -567,9 +589,9 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('FEATHERLESS_API_KEY');
     if (!apiKey) return Response.json({ error: 'FEATHERLESS_API_KEY not set' }, { status: 500 });
 
-    const modelName = strategySettings?.modelName || 'Qwen/Qwen2.5-7B-Instruct';
+    const modelName = strategySettings?.modelName || 'deepseek-ai/DeepSeek-V3.2';
     const temperature = strategySettings?.temperature ?? 0.1;
-    const maxTokens = strategySettings?.maxTokens || 2000;
+    const maxTokens = strategySettings?.maxTokens || 4000;
     const timeoutMs = (strategySettings?.timeoutSeconds || 10) * 1000;
 
     // Build race object
