@@ -26,6 +26,9 @@
     "raceNumber": {
       "type": "number"
     },
+    "marketStartTime": {
+      "type": "string"
+    },
     "side": {
       "type": "string",
       "enum": [

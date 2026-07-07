@@ -56,6 +56,7 @@ export default function Orders() {
       { key: 'strategyName', label: 'Strategy' },
       { key: 'marketName', label: 'Market' },
       { key: 'runnerName', label: 'Runner' },
+      { key: 'marketStartTime', label: 'Race Start' },
       { key: 'selectionId', label: 'Selection ID' },
       { key: 'side', label: 'Side' },
       { key: 'persistenceType', label: 'Persistence' },
@@ -194,7 +195,7 @@ export default function Orders() {
               <TableHead className="text-xs">Strategy</TableHead>
               <TableHead className="text-xs">Market</TableHead>
               <TableHead className="text-xs">Runner</TableHead>
-              <TableHead className="text-xs">Sel. ID</TableHead>
+              <TableHead className="text-xs">Race Start</TableHead>
               <TableHead className="text-xs">Side</TableHead>
               <TableHead className="text-xs">Persist</TableHead>
               <TableHead className="text-xs">Mode</TableHead>
@@ -218,7 +219,7 @@ export default function Orders() {
                 <TableCell className="text-xs">{o.strategyName}</TableCell>
                 <TableCell className="text-xs">{o.marketName}</TableCell>
                 <TableCell className="text-xs">{o.runnerName}</TableCell>
-                <TableCell className="text-xs font-mono text-muted-foreground">{o.selectionId || '—'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{o.marketStartTime ? new Date(o.marketStartTime).toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</TableCell>
                 <TableCell><SideBadge side={o.side} /></TableCell>
                 <TableCell className="text-xs">
                   <StatusBadge status={o.persistenceType === 'PERSIST' ? 'warning' : o.persistenceType === 'MARKET_ON_CLOSE' ? 'info' : 'neutral'}>{o.persistenceType || 'LAPSE'}</StatusBadge>

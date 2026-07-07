@@ -198,10 +198,11 @@ export function createPaperOrder(signal, market, runner, settings) {
     // App-specific fields (for backward compatibility with UI)
     strategyName: signal.strategyName,
     runnerId: runner.id,
-    runnerName: runner?.runnerName || signal.runnerId,
-    marketName: market?.marketName || signal.marketId,
+    runnerName: runner?.runnerName || 'Unknown Runner',
+    marketName: market?.venue ? `${market.venue} - ${market.marketName || 'Win'}` : (market?.marketName || 'Unknown Market'),
     venue: market?.venue || '',
     raceNumber: market?.raceNumber || 0,
+    marketStartTime: market?.startTime || null,
     requestedOdds: signal.odds,
     matchedOdds: matched ? matchedPrice : null,
     requestedStake: signal.stakeSuggestion,
