@@ -1,5 +1,5 @@
 import { calculateCommission, createBetfairOrderStructure, generateCustomerRef, PERSISTENCE_TYPES } from './betfairMapping';
-import { isValidTickPrice, roundToNearestTick, calculateSpreadTicks, calculateStopLossPrice, calculateScalpTargetPrice } from './tickLadder';
+import { isValidTickPrice, roundToNearestTick, calculateSpreadTicks, calculateStopLossPrice, calculateScalpTargetPrice, countTicksBetween } from './tickLadder';
 import { runPreOrderChecks } from './orderValidation';
 
 export const BOT_STEPS = [
