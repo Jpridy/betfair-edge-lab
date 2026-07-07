@@ -85,7 +85,7 @@ export function buildWinLossDistribution(settledOrders) {
  */
 export function buildDrawdownCurve(plData) {
   if (!plData || plData.length === 0) return [];
-  let peak = plData[0].bankroll;
+  let peak = plData[0].bankroll - (plData[0].pl || 0);
   return plData.map(p => {
     if (p.bankroll > peak) peak = p.bankroll;
     const dd = p.bankroll - peak;

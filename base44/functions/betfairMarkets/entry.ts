@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
         const aBook = book.runners?.find(r => r.selectionId === a.selectionId);
         const bBook = book.runners?.find(r => r.selectionId === b.selectionId);
         const aPrice = aBook?.ex?.availableToBack?.[0]?.price || 9999;
-        const bPrice = bBook?.ex?.availableToLay?.[0]?.price || 9999;
+        const bPrice = bBook?.ex?.availableToBack?.[0]?.price || 9999;
         return aPrice - bPrice;
       });
 
@@ -177,7 +177,7 @@ Deno.serve(async (req) => {
             runnerName: runner.runnerName || null,
             selectionId: String(runner.selectionId || ''),
             clothNumber: metadata.CLOTH_NUMBER ?? metadata.clothNumber ?? null,
-            sortPriority: metadata.CLOTH_NUMBER ?? metadata.sortPriority ?? null,
+            sortPriority: metadata.SORT_PRIORITY ?? metadata.sortPriority ?? null,
             age: metadata.AGE ?? metadata.age ?? null,
             sex: metadata.SEX_TYPE ?? metadata.sex ?? null,
             jockeyName: metadata.JOCKEY_NAME ?? metadata.jockeyName ?? null,

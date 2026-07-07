@@ -53,6 +53,17 @@ export function calcEdge(modelProb, odds) {
   return ((modelProb - implied) / implied) * 100;
 }
 
+// Edge for LAY bets: positive when model thinks horse is LESS likely to win than market implies
+export function calcEdgeLay(modelProb, odds) {
+  const implied = impliedProb(odds);
+  return ((implied - modelProb) / implied) * 100;
+}
+
+// EV for LAY bets: (1 - modelProb) * (1 - comm) - modelProb * (odds - 1)
+export function calcEVLay(modelProb, odds, commissionRate) {
+  return (1 - modelProb) * (1 - commissionRate) - modelProb * (odds - 1);
+}
+
 export function createSignal(strategyName, market, runner, settings, formData = null, raceFormProfile = null) {
   // Look up strategy config for edge threshold and side restriction
   const strategy = ENRICHED_STRATEGY_LIBRARY.find(s => s.name === strategyName);
@@ -87,8 +98,8 @@ export function createSignal(strategyName, market, runner, settings, formData = 
   
   // Use market base rate or default commission for EV calculation
   const commRate = market?.marketBaseRate || settings.defaultCommissionRate || settings.commissionRate || 0.05;
-  const ev = calcEVBack(modelProb, odds, commRate);
-  const edge = calcEdge(modelProb, odds);
+  const ev = side === 'BACK' ? calcEVBack(modelProb, odds, commRate) : calcEVLay(modelProb, odds, commRate);
+  const edge = side === 'BACK' ? calcEdge(modelProb, odds) : calcEdgeLay(modelProb, odds);
 
   // Enforce strategy's minimum edge threshold — if the computed edge doesn't
   // meet the strategy's entry criteria, no signal is created.

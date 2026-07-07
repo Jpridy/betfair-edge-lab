@@ -334,7 +334,7 @@ export function runPreOrderSafetyChecks(order, market, runner, strategy, setting
     o.marketId === order.marketId &&
     o.runnerId === order.runnerId &&
     o.strategyName === order.strategyName &&
-    ['matched', 'submitted', 'partially_matched'].includes(o.status)
+    ['matched', 'pending', 'partially_matched', 'executable', 'unmatched'].includes(o.status)
   );
   if (dup) {
     failures.push('Duplicate order already exists for this runner/strategy');

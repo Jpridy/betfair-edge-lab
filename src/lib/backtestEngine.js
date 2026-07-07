@@ -1,4 +1,4 @@
-import { calcEdge, calcEVBack, impliedProb } from './botEngine';
+import { calcEdge, calcEdgeLay, calcEVBack, calcEVLay, impliedProb } from './botEngine';
 
 // ─── Historical data generation ───────────────────────────────────
 // Generates realistic historical horse racing markets with runners,
@@ -189,8 +189,10 @@ function simulateFavOutsiderSignal(market, runner, settings) {
   const modelProb = isFav
     ? Math.min(0.95, baseProb * randFloat(1.02, 1.15))
     : Math.min(0.95, baseProb * randFloat(0.88, 0.98));
-  const edge = calcEdge(modelProb, odds);
-  const ev = calcEVBack(modelProb, odds, settings.commissionRate || 0.05);
+  const edge = isFav ? calcEdge(modelProb, odds) : calcEdgeLay(modelProb, odds);
+  const ev = isFav
+    ? calcEVBack(modelProb, odds, settings.commissionRate || 0.05)
+    : calcEVLay(modelProb, odds, settings.commissionRate || 0.05);
 
   if (edge < 2.0) return null;
 
@@ -227,8 +229,10 @@ function simulateSteamDriftSignal(market, runner, settings) {
   const modelProb = isSteam
     ? Math.min(0.95, baseProb * randFloat(1.03, 1.12))
     : Math.min(0.95, baseProb * randFloat(0.88, 0.97));
-  const edge = calcEdge(modelProb, odds);
-  const ev = calcEVBack(modelProb, odds, settings.commissionRate || 0.05);
+  const edge = isSteam ? calcEdge(modelProb, odds) : calcEdgeLay(modelProb, odds);
+  const ev = isSteam
+    ? calcEVBack(modelProb, odds, settings.commissionRate || 0.05)
+    : calcEVLay(modelProb, odds, settings.commissionRate || 0.05);
 
   if (edge < 3.0) return null;
 
