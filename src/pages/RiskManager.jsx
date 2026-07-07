@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
@@ -8,6 +8,7 @@ import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, ArrowRight,
 import GlobalStopRules from '@/components/risk/GlobalStopRules';
 import RiskOverview from '@/components/risk/RiskOverview';
 import { Switch } from '@/components/ui/switch';
+import { calculateRiskMetrics } from '@/lib/riskCalculations';
 
 const RISK_RULES = [
   { key: 'maxStake', label: 'Maximum Stake Per Bet', getValue: (s) => `$${s.maxStake}`, check: true },
@@ -32,9 +33,10 @@ export default function RiskManager() {
   const [confirmText, setConfirmText] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const paperExposure = paperOrders.filter(o => o.result === 'pending' && o.paper_mode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
-  const liveExposure = paperOrders.filter(o => o.result === 'pending' && o.liveMode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
-  const unmatchedPaper = paperOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched').length;
+  const riskMetrics = useMemo(() => calculateRiskMetrics(paperOrders, settings), [paperOrders, settings]);
+  const paperExposure = riskMetrics.paperExposure;
+  const liveExposure = riskMetrics.liveExposure;
+  const unmatchedPaper = riskMetrics.unmatchedOrderCount;
 
   const handleCancelUnmatched = () => {
     cancelUnmatchedOrders();

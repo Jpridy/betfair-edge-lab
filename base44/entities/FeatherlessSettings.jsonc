@@ -1,0 +1,81 @@
+{
+  "name": "FeatherlessSettings",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "modelName": {
+      "type": "string",
+      "default": "deepseek-ai/DeepSeek-V4-Flash"
+    },
+    "temperature": {
+      "type": "number",
+      "default": 0.1
+    },
+    "maxTokens": {
+      "type": "number",
+      "default": 4000
+    },
+    "timeoutSeconds": {
+      "type": "number",
+      "default": 60
+    },
+    "minConfidence": {
+      "type": "number",
+      "default": 75
+    },
+    "minEdge": {
+      "type": "number",
+      "default": 5
+    },
+    "minExpectedROI": {
+      "type": "number",
+      "default": 3
+    },
+    "paperTradeOnly": {
+      "type": "boolean",
+      "default": true
+    },
+    "allowLiveHandoff": {
+      "type": "boolean",
+      "default": false
+    },
+    "storeLogs": {
+      "type": "boolean",
+      "default": true
+    },
+    "minOdds": {
+      "type": "number",
+      "default": 2.0
+    },
+    "maxOdds": {
+      "type": "number",
+      "default": 12.0
+    },
+    "minLiquidity": {
+      "type": "number",
+      "default": 500
+    },
+    "timeWindowStart": {
+      "type": "number",
+      "default": 500
+    },
+    "timeWindowEnd": {
+      "type": "number",
+      "default": 30
+    },
+    "stakingMode": {
+      "type": "string",
+      "default": "confidence_weighted_fractional_kelly"
+    },
+    "webResearchEnabled": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "modelName"
+  ]
+}

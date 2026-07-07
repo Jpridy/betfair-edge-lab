@@ -6,6 +6,39 @@ import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapp
 import { runPreOrderChecks } from '@/lib/orderValidation';
 import { countTicksBetween } from '@/lib/tickLadder';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
+import { calculateRiskMetrics } from '@/lib/riskCalculations';
+
+// ── Metadata fields to strip when loading settings from DB ──
+const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
+
+function stripDbMeta(rec) {
+  if (!rec || typeof rec !== 'object') return {};
+  const clean = { ...rec };
+  for (const f of DB_META_FIELDS) delete clean[f];
+  return clean;
+}
+
+// ── Safe defaults for Featherless AI — never allow live handoff by default ──
+const DEFAULT_FEATHERLESS_SETTINGS = {
+  enabled: false,
+  modelName: 'deepseek-ai/DeepSeek-V4-Flash',
+  temperature: 0.1,
+  maxTokens: 4000,
+  timeoutSeconds: 60,
+  minConfidence: 75,
+  minEdge: 5,
+  minExpectedROI: 3,
+  paperTradeOnly: true,
+  allowLiveHandoff: false,
+  storeLogs: true,
+  minOdds: 2.0,
+  maxOdds: 12.0,
+  minLiquidity: 500,
+  timeWindowStart: 500,
+  timeWindowEnd: 30,
+  stakingMode: 'confidence_weighted_fractional_kelly',
+  webResearchEnabled: false,
+};
 
 const AppContext = createContext(null);
 
@@ -143,11 +176,9 @@ export function AppProvider({ children }) {
     strikeRate: 0,
   });
   const riskStatus = useMemo(() => {
-    const dailyLossUsed = Math.max(0, -(bankrollStats.todayPL || 0));
-    const weeklyLossUsed = Math.max(0, -(bankrollStats.weeklyPL || 0));
-    const openOrders = paperOrders.filter(o => ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'].includes(o.status)).length;
-    const unmatchedOrders = paperOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched').length;
-    const exposure = (bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0);
+    const rm = calculateRiskMetrics(paperOrders, settings);
+    const dailyLossUsed = Math.max(0, -(rm.dailyPL || 0));
+    const weeklyLossUsed = Math.max(0, -(rm.weeklyPL || 0));
     const dailyLossLimit = settings.dailyLossLimit || 500;
     const weeklyLossLimit = settings.weeklyLossLimit || 2500;
     const maxMarketExposure = settings.maxMarketExposure || 1000;
@@ -156,12 +187,12 @@ export function AppProvider({ children }) {
     return {
       dailyLossLimit: { status: dailyLossUsed >= dailyLossLimit ? 'danger' : 'ok', value: dailyLossLimit > 0 ? (dailyLossUsed / dailyLossLimit) * 100 : 0, label: 'Daily Loss Used', max: dailyLossLimit },
       weeklyLossLimit: { status: weeklyLossUsed >= weeklyLossLimit ? 'danger' : 'ok', value: weeklyLossLimit > 0 ? (weeklyLossUsed / weeklyLossLimit) * 100 : 0, label: 'Weekly Loss Used', max: weeklyLossLimit },
-      maxMarketExposure: { status: exposure >= maxMarketExposure ? 'danger' : 'ok', value: maxMarketExposure > 0 ? (exposure / maxMarketExposure) * 100 : 0, label: 'Market Exposure', max: maxMarketExposure },
-      maxOpenOrders: { status: openOrders >= maxOpenOrders ? 'danger' : 'ok', value: maxOpenOrders > 0 ? (openOrders / maxOpenOrders) * 100 : 0, label: 'Open Orders', max: maxOpenOrders },
-      maxUnmatchedOrders: { status: unmatchedOrders >= maxUnmatched ? 'warning' : 'ok', value: maxUnmatched > 0 ? (unmatchedOrders / maxUnmatched) * 100 : 0, label: 'Unmatched Orders', max: maxUnmatched },
+      maxMarketExposure: { status: rm.openExposure >= maxMarketExposure ? 'danger' : 'ok', value: maxMarketExposure > 0 ? (rm.openExposure / maxMarketExposure) * 100 : 0, label: 'Market Exposure', max: maxMarketExposure },
+      maxOpenOrders: { status: rm.activeOrderCount >= maxOpenOrders ? 'danger' : 'ok', value: maxOpenOrders > 0 ? (rm.activeOrderCount / maxOpenOrders) * 100 : 0, label: 'Open Orders', max: maxOpenOrders },
+      maxUnmatchedOrders: { status: rm.unmatchedOrderCount >= maxUnmatched ? 'warning' : 'ok', value: maxUnmatched > 0 ? (rm.unmatchedOrderCount / maxUnmatched) * 100 : 0, label: 'Unmatched Orders', max: maxUnmatched },
       dataHealth: { status: apiConnected ? 'ok' : 'warning', value: apiConnected ? 100 : 0, label: 'API Health', max: 100 },
     };
-  }, [bankrollStats.todayPL, bankrollStats.weeklyPL, bankrollStats.openPaperExposure, bankrollStats.openLiveExposure, paperOrders, settings.dailyLossLimit, settings.weeklyLossLimit, settings.maxMarketExposure, settings.maxOpenOrders, settings.maxUnmatchedOrders, apiConnected]);
+  }, [paperOrders, settings.dailyLossLimit, settings.weeklyLossLimit, settings.maxMarketExposure, settings.maxOpenOrders, settings.maxUnmatchedOrders, apiConnected]);
   const [heatmap] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [backtestRuns, setBacktestRuns] = useState([]);
@@ -207,35 +238,17 @@ export function AppProvider({ children }) {
   const [rejectedOrders, setRejectedOrders] = useState([]);
 
   // ── Featherless AI ──
-  const [featherlessSettings, setFeatherlessSettings] = useState({
-    enabled: true,
-    modelName: 'deepseek-ai/DeepSeek-V4-Flash',
-    temperature: 0.1,
-    maxTokens: 4000,
-    timeoutSeconds: 90,
-    minConfidence: 75,
-    minEdge: 5,
-    minExpectedROI: 3,
-    paperTradeOnly: true,
-    allowLiveHandoff: false,
-    storeLogs: true,
-    minOdds: 2.0,
-    maxOdds: 12.0,
-    minLiquidity: 5000,
-    timeWindowStart: 500,
-    timeWindowEnd: 30,
-    stakingMode: 'confidence_weighted_fractional_kelly',
-    webResearchEnabled: true,
-  });
+  const [featherlessSettings, setFeatherlessSettings] = useState({ ...DEFAULT_FEATHERLESS_SETTINGS });
   const [aiDecisions, setAiDecisions] = useState([]);
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
   const botSettingsRecordId = useRef(null);
+  const featherlessSettingsRecordId = useRef(null);
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings, featherlessSettingsRecordId };
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
@@ -260,7 +273,7 @@ export function AppProvider({ children }) {
     const loadAll = async () => {
       try {
         setDataLoading(true);
-        const [orders, signals, cycles, logs, runs, stats, aiDecls, appSettingsRecs, botSettingsRecs] = await Promise.all([
+        const [orders, signals, cycles, logs, runs, stats, aiDecls, appSettingsRecs, botSettingsRecs, featherlessRecs] = await Promise.all([
           base44.entities.PaperOrder.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.StrategySignal.filter({}, '-created_date', 200).catch(() => []),
           base44.entities.BotCycle.filter({}, '-created_date', 100).catch(() => []),
@@ -270,6 +283,7 @@ export function AppProvider({ children }) {
           base44.entities.FeatherlessAIDecision.filter({}, '-created_date', 100).catch(() => []),
           base44.entities.AppSettings.list('-created_date', 1).catch(() => []),
           base44.entities.BotSettings.list('-created_date', 1).catch(() => []),
+          base44.entities.FeatherlessSettings.list('-created_date', 1).catch(() => []),
         ]);
         if (cancelled) return;
         setPaperOrders(orders);
@@ -279,16 +293,29 @@ export function AppProvider({ children }) {
         setBacktestRuns(runs);
         setStrategyStats(stats);
         setAiDecisions(aiDecls);
-        // Load persisted settings — merge with defaults so new fields are never lost
+        // Load persisted settings — strip DB metadata, merge with defaults so new fields are never lost
         if (appSettingsRecs && appSettingsRecs.length > 0) {
           const rec = appSettingsRecs[0];
           settingsRecordId.current = rec.id;
-          setSettings(prev => ({ ...prev, ...rec }));
+          const clean = stripDbMeta(rec);
+          // Safety: never allow liveTradingEnabled from DB
+          clean.liveTradingEnabled = false;
+          setSettings(prev => ({ ...prev, ...clean }));
         }
         if (botSettingsRecs && botSettingsRecs.length > 0) {
           const rec = botSettingsRecs[0];
           botSettingsRecordId.current = rec.id;
-          setBotSettings(prev => ({ ...prev, ...rec }));
+          const clean = stripDbMeta(rec);
+          clean.liveTradingEnabled = false;
+          setBotSettings(prev => ({ ...prev, ...clean }));
+        }
+        if (featherlessRecs && featherlessRecs.length > 0) {
+          const rec = featherlessRecs[0];
+          featherlessSettingsRecordId.current = rec.id;
+          const clean = stripDbMeta(rec);
+          // Safety: never allow live handoff from DB
+          clean.allowLiveHandoff = false;
+          setFeatherlessSettings(prev => ({ ...prev, ...clean }));
         }
       } catch (err) {
         // silently fail — app starts empty
@@ -338,71 +365,38 @@ export function AppProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Derive bankroll stats from settled paper orders ──
+  // ── Derive bankroll stats from settled paper orders (unified calculation) ──
   useEffect(() => {
+    const rm = calculateRiskMetrics(paperOrders, settings);
     const settled = paperOrders.filter(o => o.status === 'settled');
     const wins = settled.filter(o => o.result === 'won').length;
     const losses = settled.filter(o => o.result === 'lost').length;
-    const totalPL = settled.reduce((s, o) => s + (o.netProfit || 0), 0);
     const commissionPaid = settled.reduce((s, o) => s + (o.commission || 0), 0);
-    const today = new Date().toISOString().slice(0, 10);
-    const todayPL = settled.filter(o => (o.settled_date || o.created_date || '').slice(0, 10) === today).reduce((s, o) => s + (o.netProfit || 0), 0);
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const weeklyPL = settled.filter(o => (o.settled_date || o.created_date || '') >= weekAgo).reduce((s, o) => s + (o.netProfit || 0), 0);
-
-    const openOrders = paperOrders.filter(o => ['pending', 'matched', 'unmatched', 'partially_matched', 'executable'].includes(o.status));
-    const paperExposure = openOrders.reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
-
     const startingBankroll = settings.paperBankroll || settings.bankroll;
-    const currentBankroll = startingBankroll + totalPL;
-
-    // Max drawdown calc
-    let peak = startingBankroll;
-    let maxDD = 0;
-    let running = startingBankroll;
-    const sorted = [...settled].sort((a, b) => (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || ''));
-    for (const o of sorted) {
-      running += (o.netProfit || 0);
-      if (running > peak) peak = running;
-      const dd = running - peak;
-      if (dd < maxDD) maxDD = dd;
-    }
-
-    // Longest losing streak
-    let longestLosingStreak = 0;
-    let currentStreak = 0;
-    for (const o of sorted) {
-      if (o.result === 'lost') {
-        currentStreak++;
-        if (currentStreak > longestLosingStreak) longestLosingStreak = currentStreak;
-      } else if (o.result === 'won') {
-        currentStreak = 0;
-      }
-    }
-
+    const currentBankroll = startingBankroll + rm.totalPL;
     const totalStake = settled.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
-    const roi = totalStake > 0 ? (totalPL / totalStake) * 100 : 0;
+    const roi = totalStake > 0 ? (rm.totalPL / totalStake) * 100 : 0;
     const strikeRate = settled.length > 0 ? (wins / settled.length) * 100 : 0;
 
     setBankrollStats(prev => ({
       ...prev,
       bankroll: currentBankroll,
       paperBankroll: currentBankroll,
-      available: currentBankroll - paperExposure,
-      todayPL,
-      weeklyPL,
-      totalPL,
+      available: currentBankroll - rm.openExposure,
+      todayPL: rm.dailyPL,
+      weeklyPL: rm.weeklyPL,
+      totalPL: rm.totalPL,
       commissionPaid,
-      openPaperExposure: paperExposure,
-      openLiveExposure: 0,
-      maxDrawdown: maxDD,
-      longestLosingStreak,
+      openPaperExposure: rm.paperExposure,
+      openLiveExposure: rm.liveExposure,
+      maxDrawdown: rm.drawdown,
+      longestLosingStreak: rm.longestLosingStreak,
       wins,
       losses,
       roi,
       strikeRate,
     }));
-  }, [paperOrders, settings.paperBankroll, settings.bankroll]);
+  }, [paperOrders, settings.paperBankroll, settings.bankroll, settings.dailyLossLimit, settings.weeklyLossLimit, settings.maxMarketExposure, settings.maxOpenOrders, settings.maxUnmatchedOrders]);
 
   // ── Derive P/L chart data from settled orders ──
   const plData = useMemo(() => {
@@ -553,6 +547,29 @@ export function AppProvider({ children }) {
     addToBotActivity('Paper trading reset', 'All paper trading data cleared and bankroll reset to starting balance');
   };
 
+  // ── Reset Daily Stats (does NOT delete paper orders) ──
+  const resetDailyStats = () => {
+    setBankrollStats(prev => ({ ...prev, todayPL: 0 }));
+    setBotState(prev => ({
+      ...prev,
+      signalsToday: 0,
+      ordersToday: 0,
+      ordersBlockedToday: 0,
+      botPLToday: 0,
+    }));
+    setSyncState(prev => ({
+      ...prev,
+      marketsScannedToday: 0,
+      runnersScannedToday: 0,
+      signalsGeneratedToday: 0,
+      ordersCreatedToday: 0,
+      ordersRejectedToday: 0,
+      lastRejectedReason: null,
+    }));
+    addAuditLog('Daily Stats Reset', 'system', 'warning', 'Daily P/L display, bot daily counters (signals, orders, blocked), and sync daily counters (markets scanned, runners scanned, signals generated, orders created, orders rejected) all reset to zero. Historical paper orders are preserved.');
+    addToBotActivity('Daily stats reset', 'Daily counters reset to zero — historical data preserved');
+  };
+
   // ── Clear All Audit Logs ──
   const clearLogs = async () => {
     await base44.entities.AuditLog.deleteMany({}).catch(() => {});
@@ -573,40 +590,83 @@ export function AppProvider({ children }) {
     addToBotActivity('Strategy data reset', 'All strategy stats, signals, and AI decisions cleared');
   };
 
-  // Partial merge — never replaces the whole settings object. Persists to DB.
+  // Partial merge — uses functional update to avoid stale closures. Persists to DB.
   const updateSettings = (patch) => {
-    const oldSettings = settings;
-    const merged = { ...settings, ...patch };
-    setSettings(merged);
-    addAuditLog('Settings Updated', 'settings', 'info', 'App settings updated', {
-      beforeValue: JSON.stringify({ commissionRate: oldSettings.commissionRate, allowInPlay: oldSettings.allowInPlay }),
-      afterValue: JSON.stringify({ commissionRate: patch.commissionRate ?? oldSettings.commissionRate, allowInPlay: patch.allowInPlay ?? oldSettings.allowInPlay }),
+    setSettings(prev => {
+      const merged = { ...prev, ...patch };
+      addAuditLog('Settings Updated', 'settings', 'info', 'App settings updated', {
+        beforeValue: JSON.stringify({ commissionRate: prev.commissionRate, allowInPlay: prev.allowInPlay }),
+        afterValue: JSON.stringify({ commissionRate: patch.commissionRate ?? prev.commissionRate, allowInPlay: patch.allowInPlay ?? prev.allowInPlay }),
+      });
+      const payload = { ...merged, mode: 'demo' };
+      if (settingsRecordId.current) {
+        base44.entities.AppSettings.update(settingsRecordId.current, payload).catch(() => {});
+      } else {
+        base44.entities.AppSettings.create(payload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+      }
+      return merged;
     });
-    // Persist to AppSettings entity (upsert)
-    const payload = { ...merged, mode: 'demo' };
-    if (settingsRecordId.current) {
-      base44.entities.AppSettings.update(settingsRecordId.current, payload).catch(() => {});
-    } else {
-      base44.entities.AppSettings.create(payload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
-    }
   };
 
-  // Partial merge for bot settings too. Persists to DB.
+  // Partial merge for bot settings — functional update. Persists to DB.
   const updateBotSettings = (patch) => {
-    const merged = { ...botSettings, ...patch };
-    setBotSettings(merged);
-    addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
-    const payload = { ...merged, botMode: 'demo' };
-    if (botSettingsRecordId.current) {
-      base44.entities.BotSettings.update(botSettingsRecordId.current, payload).catch(() => {});
-    } else {
-      base44.entities.BotSettings.create(payload).then(rec => { if (rec) botSettingsRecordId.current = rec.id; }).catch(() => {});
-    }
+    setBotSettings(prev => {
+      const merged = { ...prev, ...patch };
+      addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
+      const payload = { ...merged, botMode: 'demo' };
+      if (botSettingsRecordId.current) {
+        base44.entities.BotSettings.update(botSettingsRecordId.current, payload).catch(() => {});
+      } else {
+        base44.entities.BotSettings.create(payload).then(rec => { if (rec) botSettingsRecordId.current = rec.id; }).catch(() => {});
+      }
+      return merged;
+    });
+  };
+
+  // Persist Featherless AI settings to DB
+  const updateFeatherlessSettings = (patch) => {
+    setFeatherlessSettings(prev => {
+      const merged = { ...prev, ...patch };
+      if (featherlessSettingsRecordId.current) {
+        base44.entities.FeatherlessSettings.update(featherlessSettingsRecordId.current, merged).catch(() => {});
+      } else {
+        base44.entities.FeatherlessSettings.create(merged).then(rec => { if (rec) featherlessSettingsRecordId.current = rec.id; }).catch(() => {});
+      }
+      return merged;
+    });
   };
 
   // ── Betfair Connection ──
   const updateBetfairConnection = (updates) => {
     setBetfairConnection(prev => ({ ...prev, ...updates }));
+  };
+
+  // Full disconnect — clears all connection state so UI never shows connected
+  const disconnectBetfair = () => {
+    setApiConnected(false);
+    setBetfairAccount(null);
+    setBetfairSessionToken(null);
+    setMarkets([]);
+    setRunners([]);
+    setBetfairConnection(prev => ({
+      ...prev,
+      appKey: null,
+      loginStatus: 'disconnected',
+      sessionTokenStatus: 'disconnected',
+      streamConnectionStatus: 'disconnected',
+      dataFresh: false,
+      accountFundsAvailable: false,
+      currentOrdersAvailable: false,
+      streamAvailable: false,
+      lastMarketSyncTime: null,
+      lastOrderSyncTime: null,
+      lastClearedOrderSyncTime: null,
+    }));
+    if (streamClientRef.current) {
+      try { streamClientRef.current.disconnect(); } catch (_) {}
+      streamClientRef.current = null;
+    }
+    addAuditLog('Betfair Disconnected', 'api', 'warning', 'Betfair account disconnected. API, session, stream, markets, and runners all cleared.');
   };
 
   const testBetfairConnection = async () => {
@@ -684,25 +744,26 @@ export function AppProvider({ children }) {
     }
   };
 
-  // ── Sync Functions ──
-  const syncMarkets = () => {
+  // ── Refresh Functions (local recalculation — not Betfair API sync) ──
+  const refreshMarketState = () => {
     const now = new Date().toISOString();
-    setSyncState(prev => ({ ...prev, lastCatalogueSync: now, lastMarketBookSync: now, lastRunnerPriceSync: now, marketsScannedToday: prev.marketsScannedToday + markets.length }));
-    addAuditLog('Market Sync Completed', 'api', 'info', `Synced ${markets.length} markets and ${runners.length} runners`);
+    setSyncState(prev => ({ ...prev, lastCatalogueSync: now, lastMarketBookSync: now, lastRunnerPriceSync: now }));
+    addAuditLog('Market State Refreshed', 'api', 'info', `Refreshed local market state: ${markets.length} markets, ${runners.length} runners in memory`);
     setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: now, dataFresh: true }));
   };
 
-  const syncCurrentOrders = () => {
+  const refreshOrderState = () => {
     const now = new Date().toISOString();
     setSyncState(prev => ({ ...prev, currentOrderSync: now }));
-    addAuditLog('Order Sync Completed', 'api', 'info', `Synced current orders (${paperOrders.filter(o => ['pending', 'matched', 'unmatched', 'partially_matched'].includes(o.status)).length} open)`);
+    const rm = calculateRiskMetrics(paperOrders, settings);
+    addAuditLog('Order State Refreshed', 'api', 'info', `Refreshed order state: ${rm.activeOrderCount} open, ${rm.unmatchedOrderCount} unmatched`);
     setBetfairConnection(prev => ({ ...prev, lastOrderSyncTime: now }));
   };
 
-  const syncClearedOrders = () => {
+  const recalculateSettledStats = () => {
     const now = new Date().toISOString();
-    setSyncState(prev => ({ ...prev, clearedOrderSync: now }));
-    addAuditLog('Cleared Order Sync Completed', 'api', 'info', `Synced cleared/settled orders (${paperOrders.filter(o => o.status === 'settled').length} settled)`);
+    setSyncState(prev => ({ ...prev, clearedOrderSync: now, lastMetricRecalculation: now }));
+    addAuditLog('Settled Stats Recalculated', 'api', 'info', `Recalculated settled stats: ${paperOrders.filter(o => o.status === 'settled').length} settled orders`);
     setBetfairConnection(prev => ({ ...prev, lastClearedOrderSyncTime: now }));
   };
 
@@ -739,18 +800,20 @@ export function AppProvider({ children }) {
     const now = new Date().toISOString();
     setSyncState(prev => ({ ...prev, lastRiskRecalculation: now }));
     
-    const openOrders = paperOrders.filter(o => ['pending', 'matched', 'unmatched', 'partially_matched'].includes(o.status));
-    const paperExposure = openOrders.filter(o => o.paper_mode !== false).reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
-    const liveExposure = openOrders.filter(o => o.liveMode === true).reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
+    const rm = calculateRiskMetrics(paperOrders, settings);
     
     setBankrollStats(prev => ({
       ...prev,
-      openPaperExposure: paperExposure,
-      openLiveExposure: liveExposure,
-      available: prev.bankroll - paperExposure - liveExposure,
+      openPaperExposure: rm.paperExposure,
+      openLiveExposure: rm.liveExposure,
+      todayPL: rm.dailyPL,
+      weeklyPL: rm.weeklyPL,
+      totalPL: rm.totalPL,
+      drawdown: rm.drawdown,
+      available: prev.bankroll - rm.openExposure,
     }));
     
-    addAuditLog('Risk State Recalculated', 'risk', 'info', `Paper exposure: $${paperExposure.toFixed(2)}, Live exposure: $${liveExposure.toFixed(2)}`);
+    addAuditLog('Risk State Recalculated', 'risk', 'info', `Paper exposure: $${rm.paperExposure.toFixed(2)}, Live exposure: $${rm.liveExposure.toFixed(2)}, Daily P/L: $${rm.dailyPL.toFixed(2)}, Drawdown: $${rm.drawdown.toFixed(2)}`);
   };
 
   // ── Bot Controls ──
@@ -1392,15 +1455,15 @@ export function AppProvider({ children }) {
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
-    betfairConnection, updateBetfairConnection, testBetfairConnection,
+    betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair,
     settings, updateSettings, appMode, demoMode,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
     auditLogs, backtestRuns, plData, dataLoading,
     addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,
     toggleWatchMarket, handleRunnerRemoval,
     rejectedOrders,
-    // Sync
-    syncState, syncMarkets, syncCurrentOrders, syncClearedOrders, recalculateMetrics, recalculateRiskState,
+    // Refresh (local recalculation — not Betfair API sync)
+    syncState, refreshMarketState, refreshOrderState, recalculateSettledStats, recalculateMetrics, recalculateRiskState,
     // Bot
     botState, botSettings, updateBotSettings, botCycles, strategyStats, botActivity,
     startBot, pauseBot, stopBot, runManualScan, addToBotActivity,
@@ -1408,9 +1471,9 @@ export function AppProvider({ children }) {
     strategyLibrary,
     // Emergency controls
     cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
-    resetAllPaperTrading, resetStrategyData, clearLogs,
+    resetAllPaperTrading, resetStrategyData, resetDailyStats, clearLogs,
     // Featherless AI
-    featherlessSettings, setFeatherlessSettings, aiDecisions,
+    featherlessSettings, setFeatherlessSettings, updateFeatherlessSettings, aiDecisions,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

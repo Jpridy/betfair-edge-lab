@@ -6,8 +6,6 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [
     base44({
-      // Support for legacy code that imports the base44 SDK with @/integrations, @/entities, etc.
-      // can be removed if the code has been updated to use the new SDK imports from @base44/sdk
       legacySDKImports: process.env.BASE44_LEGACY_SDK_IMPORTS === 'true',
       hmrNotifier: true,
       navigationNotifier: true,
@@ -15,5 +13,19 @@ export default defineConfig({
       visualEditAgent: true
     }),
     react(),
-  ]
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts'],
+          'vendor-ui': ['@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-tabs', '@radix-ui/react-switch', '@radix-ui/react-tooltip', '@radix-ui/react-dropdown-menu', '@radix-ui/react-popover', '@radix-ui/react-checkbox', '@radix-ui/react-label', '@radix-ui/react-separator', '@radix-ui/react-scroll-area'],
+          'vendor-utils': ['lodash', 'moment', 'date-fns', 'clsx', 'tailwind-merge'],
+          'vendor-dnd': ['@hello-pangea/dnd'],
+          'vendor-markdown': ['react-markdown'],
+        },
+      },
+    },
+  },
 });
