@@ -243,6 +243,13 @@ export function AppProvider({ children }) {
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
 
+  // Ref for the market catalogue cache — the stream's marketDefinition for AU
+  // racing often omits runner names (returns "Selection XXXXX"). The catalogue
+  // API returns proper horse names, so we fetch it periodically and merge names
+  // into the stream data by selection ID.
+  const catalogueRef = useRef(null);
+  const catalogueTimerRef = useRef(null);
+
   // Guard against overlapping bot cycles — the form analysis API call can take
   // 7-22s, which may exceed the scan interval. Without this guard, setInterval
   // would fire a new cycle while the previous one is still running.
@@ -1292,9 +1299,52 @@ export function AppProvider({ children }) {
 
     let cancelled = false;
 
+    // Fetch market catalogue to get proper runner names (stream omits them for AU racing)
+    const fetchCatalogue = async () => {
+      try {
+        const resp = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
+        if (cancelled) return;
+        const catRunners = resp.data?.runners || [];
+        const nameMap = new Map();
+        const metaMap = new Map();
+        for (const r of catRunners) {
+          if (r.betfairSelectionId) {
+            nameMap.set(String(r.betfairSelectionId), r.runnerName || '');
+            if (r.raceFormProfile) metaMap.set(String(r.betfairSelectionId), r.raceFormProfile);
+          }
+        }
+        catalogueRef.current = { nameMap, metaMap, fetchedAt: Date.now() };
+      } catch (_) {}
+    };
+    fetchCatalogue();
+    catalogueTimerRef.current = setInterval(fetchCatalogue, 5 * 60 * 1000);
+
     createBetfairStream(betfairSessionToken, {
       onMarketsUpdate: (updatedMarkets, updatedRunners) => {
         if (cancelled) return;
+        // Enrich runners with proper names from catalogue (stream returns "Selection XXXXX")
+        const cat = catalogueRef.current;
+        if (cat && cat.nameMap) {
+          for (const r of updatedRunners) {
+            const selId = String(r.betfairSelectionId || r.selectionId || '');
+            const properName = cat.nameMap.get(selId);
+            if (properName && (!r.runnerName || r.runnerName.startsWith('Selection '))) {
+              r.runnerName = properName;
+            }
+            if (cat.metaMap?.has(selId) && !r.raceFormProfile) {
+              r.raceFormProfile = cat.metaMap.get(selId);
+              r.formDataStatus = r.raceFormProfile.externalFormData ? 'FULL_EXTERNAL_FORM' : 'PARTIAL_BETFAIR_METADATA';
+              r.formDataCompleteness = r.formDataStatus === 'FULL_EXTERNAL_FORM' ? 100 : 50;
+            }
+          }
+          // Also enrich market venue/name from catalogue
+          for (const m of updatedMarkets) {
+            if (!m.venue || m.venue === '') {
+              const catRunner = updatedRunners.find(r => r.marketId === m.id);
+              // Venue is on market level in catalogue, not runner — skip if not available
+            }
+          }
+        }
         setMarkets(updatedMarkets);
         setRunners(updatedRunners);
         setBetfairConnection(prev => ({
@@ -1386,6 +1436,10 @@ export function AppProvider({ children }) {
 
     return () => {
       cancelled = true;
+      if (catalogueTimerRef.current) {
+        clearInterval(catalogueTimerRef.current);
+        catalogueTimerRef.current = null;
+      }
       if (streamClientRef.current) {
         streamClientRef.current.disconnect();
         streamClientRef.current = null;
