@@ -1013,22 +1013,55 @@ export function AppProvider({ children }) {
               // Call Featherless API for real form/probability analysis.
               // All non-AI strategies use the same form analysis — each strategy
               // then applies its own edge threshold and side logic in createSignal.
-              let formData = null;
+              //
+              // Instead of betting on one random runner and hoping it has edge,
+              // evaluate ALL eligible runners and pick the one with the highest
+              // edge that meets the strategy's entry threshold. This is how a
+              // real value betting scanner works — find the best opportunity,
+              // not a random one.
+              let allFormData = [];
               try {
                 const formRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
                 const formResp = await base44.functions.invoke('featherlessFormAnalysis', {
                   market, runners: formRunners, settings: s.settings,
                 });
                 if (formResp.data?.error) throw new Error(formResp.data.error);
-                const runnerForm = formResp.data?.runners?.find(r =>
-                  String(r.selection_id) === String(runner.betfairSelectionId) ||
-                  r.runner === runner.runnerName
-                );
-                if (runnerForm) formData = runnerForm;
+                allFormData = formResp.data?.runners || [];
               } catch (err) {
                 notes.push(`Form analysis error: ${err.message}`);
               }
-              signal = createSignal(strategyName, market, runner, s.settings, formData);
+
+              // Build the full list of eligible runners (same filters as above)
+              const eligibleRunners = s.runners
+                .filter(r => r.marketId === market.id && r.status === 'ACTIVE')
+                .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) >= sizeThreshold && (r.bestLaySize || 0) >= sizeThreshold)
+                .filter(r => (r.bestBackPrice >= minOdds && r.bestBackPrice <= maxOdds) || (r.bestLayPrice >= minOdds && r.bestLayPrice <= maxOdds))
+                .filter(r => !s.paperOrders.some(o =>
+                  (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
+                  (o.selectionId === r.betfairSelectionId || o.runnerId === r.id) &&
+                  o.strategyName === strategyName &&
+                  openStatuses.includes(o.status)
+                ));
+
+              // Try each runner — pick the one with the highest edge that passes
+              let bestSignal = null;
+              let bestRunner = null;
+              for (const r of eligibleRunners) {
+                const fd = allFormData.find(fd =>
+                  String(fd.selection_id) === String(r.betfairSelectionId) ||
+                  fd.runner === r.runnerName
+                );
+                const sig = createSignal(strategyName, market, r, s.settings, fd || null);
+                if (sig && (!bestSignal || sig.edgePercent > bestSignal.edgePercent)) {
+                  bestSignal = sig;
+                  bestRunner = r;
+                }
+              }
+
+              if (bestSignal) {
+                runner = bestRunner;
+                signal = bestSignal;
+              }
             }
 
             if (!signal) {
