@@ -38,19 +38,11 @@ export class BetfairStreamClient {
       this._reconnectAttempts = 0;
     }
 
-    // Connect through the Cloudflare Worker WebSocket-to-TCP bridge.
-    let wsUrl;
-    if (this.wsProxyUrl) {
-      // Convert https:// → wss:// (or http:// → ws://)
-      wsUrl = this.wsProxyUrl
-        .replace(/^https:\/\//, 'wss://')
-        .replace(/^http:\/\//, 'ws://');
-    } else {
-      if (this.onError) this.onError('No stream proxy URL configured. Deploy the Cloudflare Worker and set BETFAIR_PROXY_URL.');
-      if (this.onStatusChange) this.onStatusChange('error');
-      return;
-    }
-
+    // Connect directly to Betfair's Stream API via WebSocket.
+    // Betfair's Stream API supports native WebSocket connections alongside
+    // raw TCP. WebSockets bypass CORS, so the browser connects directly —
+    // no Cloudflare Worker bridge needed.
+    const wsUrl = 'wss://stream-api.betfair.com:443';
     this._wsUrl = wsUrl;
 
     try {
@@ -445,7 +437,7 @@ export class BetfairStreamClient {
         if (this.onError) this.onError(`WebSocket closed (code ${event.code}${event.reason ? ': ' + event.reason : ''}). Reconnect attempt ${this._reconnectAttempts}/3...`);
         this.reconnectTimer = setTimeout(() => this.connect(true), 5000);
       } else {
-        if (this.onError) this.onError(`Stream failed after 3 attempts. Last close code: ${event.code}. Worker diagnostic: ${this._lastDiag || 'none'}. Verify the worker is deployed with the latest WebSocket-to-TCP bridge code at ${this._wsUrl}.`);
+        if (this.onError) this.onError(`Stream failed after 3 attempts. Last close code: ${event.code}. Check your Betfair session token and app key are valid.`);
         if (this.onStatusChange) this.onStatusChange('error');
       }
     }
