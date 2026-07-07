@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-
+import { fetchBetfairMarkets } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
@@ -1142,8 +1142,7 @@ export function AppProvider({ children }) {
     const poll = async () => {
       if (cancelled) return;
       try {
-        const res = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
-        const result = res.data;
+        const result = await fetchBetfairMarkets(betfairSessionToken);
         if (cancelled) return;
         if (result.status === 'success') {
           setMarkets(result.markets);
@@ -1211,21 +1210,13 @@ export function AppProvider({ children }) {
           setApiConnected(false);
           setBetfairSessionToken(null);
           addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
+        } else if (result.status === 'error') {
+          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
+          addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${result.error}`);
         }
       } catch (err) {
-        const errData = err.response?.data;
-        if (errData?.sessionExpired) {
-          setApiConnected(false);
-          setBetfairSessionToken(null);
-          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'disconnected' }));
-          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
-        } else if (errData?.error) {
-          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
-          addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${errData.error}`);
-        } else {
-          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
-          addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${err.message || err}`);
-        }
+        setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
+        addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${err.message || err}`);
       }
     };
 
