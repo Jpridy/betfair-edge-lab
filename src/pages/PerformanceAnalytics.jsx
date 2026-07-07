@@ -1,19 +1,24 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Panel, PLValue, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Target, Percent, Activity, BarChart3 } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
-import { DEMO_EQUITY_CURVE, DEMO_MONTHLY_GROWTH, DEMO_WINLOSS_DISTRIBUTION, DEMO_DRAWDOWN_CURVE } from '@/lib/demoData';
-import { getAuditData } from '@/lib/strategyAuditData';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { buildEquityCurve, buildMonthlyGrowth, buildWinLossDistribution, buildDrawdownCurve, buildCLVByStrategy, buildStrikeRateByStrategy, buildProfitByOddsRange, buildProfitByVenue, buildProfitBySide } from '@/lib/performanceData';
 
 const COLORS = ['hsl(142 71% 45%)', 'hsl(0 72% 51%)', 'hsl(263 70% 55%)', 'hsl(199 89% 48%)'];
 
+function EmptyChart({ text }) {
+  return (
+    <div className="h-64 flex items-center justify-center text-xs text-muted-foreground">
+      {text}
+    </div>
+  );
+}
+
 export default function PerformanceAnalytics() {
-  const { bankrollStats, strategyStats, plData, paperOrders } = useApp();
-  const [timeRange, setTimeRange] = useState('12m');
+  const { bankrollStats, strategyStats, plData, paperOrders, settings } = useApp();
 
   const settledOrders = (paperOrders || []).filter(o => o.result === 'won' || o.result === 'lost');
   const settledWins = settledOrders.filter(o => o.result === 'won').length;
@@ -24,17 +29,32 @@ export default function PerformanceAnalytics() {
   const avgCLV = settledOrders.length > 0 ? settledOrders.reduce((sum, o) => sum + (o.clv || 0), 0) / settledOrders.length : 0;
   const avgSlippage = settledOrders.length > 0 ? settledOrders.reduce((sum, o) => sum + (o.slippage || 0), 0) / settledOrders.length : 0;
 
-  const totalWins = strategyStats.reduce((sum, s) => sum + s.wins, 0);
-  const totalLosses = strategyStats.reduce((sum, s) => sum + s.losses, 0);
+  const totalWins = settledWins;
+  const totalLosses = settledLosses;
   const winLossRatio = totalLosses > 0 ? (totalWins / totalLosses).toFixed(2) : '—';
   const totalBets = totalWins + totalLosses;
-  const totalNetPL = strategyStats.reduce((sum, s) => sum + s.netProfit, 0);
-  const avgROI = strategyStats.reduce((sum, s) => sum + s.roi, 0) / strategyStats.length;
-  const bestMonth = DEMO_MONTHLY_GROWTH.reduce((best, m) => m.growth > best.growth ? m : best, DEMO_MONTHLY_GROWTH[0]);
-  const worstMonth = DEMO_MONTHLY_GROWTH.reduce((worst, m) => m.growth < worst.growth ? m : worst, DEMO_MONTHLY_GROWTH[0]);
-  const positiveMonths = DEMO_MONTHLY_GROWTH.filter(m => m.growth > 0).length;
-  const negativeMonths = DEMO_MONTHLY_GROWTH.filter(m => m.growth < 0).length;
-  const sharpeEstimate = (avgROI / (Math.sqrt(DEMO_MONTHLY_GROWTH.reduce((sum, m) => sum + Math.pow(m.growth - avgROI, 2), 0) / DEMO_MONTHLY_GROWTH.length))).toFixed(2);
+  const totalNetPL = settledNetPL;
+  const avgROI = bankrollStats.roi || 0;
+
+  // Live-derived chart data
+  const startingBankroll = settings.paperBankroll || settings.bankroll || 10000;
+  const equityCurve = buildEquityCurve(plData);
+  const monthlyGrowth = buildMonthlyGrowth(settledOrders, startingBankroll);
+  const winLossDist = buildWinLossDistribution(settledOrders);
+  const drawdownCurve = buildDrawdownCurve(plData);
+  const clvByStrategy = buildCLVByStrategy(settledOrders);
+  const strikeRateByStrategy = buildStrikeRateByStrategy(settledOrders);
+  const profitByOdds = buildProfitByOddsRange(settledOrders);
+  const profitByVenue = buildProfitByVenue(settledOrders);
+  const profitBySide = buildProfitBySide(settledOrders);
+
+  const bestMonth = monthlyGrowth.length > 0 ? monthlyGrowth.reduce((best, m) => m.growth > best.growth ? m : best, monthlyGrowth[0]) : null;
+  const worstMonth = monthlyGrowth.length > 0 ? monthlyGrowth.reduce((worst, m) => m.growth < worst.growth ? m : worst, monthlyGrowth[0]) : null;
+  const positiveMonths = monthlyGrowth.filter(m => m.growth > 0).length;
+  const negativeMonths = monthlyGrowth.filter(m => m.growth < 0).length;
+  const sharpeEstimate = monthlyGrowth.length > 1
+    ? (avgROI / (Math.sqrt(monthlyGrowth.reduce((sum, m) => sum + Math.pow(m.growth - avgROI, 2), 0) / monthlyGrowth.length))).toFixed(2)
+    : '—';
 
   const kpiCards = [
     { label: 'Settled Net P/L', value: `${settledNetPL >= 0 ? '+' : ''}$${settledNetPL.toFixed(2)}`, icon: DollarSign, trend: settledNetPL >= 0 ? 'up' : 'down', color: settledNetPL >= 0 ? 'text-chart-1' : 'text-chart-5' },
@@ -53,6 +73,15 @@ export default function PerformanceAnalytics() {
     borderRadius: '8px',
     fontSize: '12px',
   };
+
+  const startingBank = equityCurve.length > 0 ? equityCurve[0].bankroll - (equityCurve[0].pl || 0) : startingBankroll;
+  const currentBank = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].bankroll : startingBankroll;
+  const totalGrowth = currentBank - startingBank;
+  const totalGrowthPct = startingBank > 0 ? (totalGrowth / startingBank) * 100 : 0;
+
+  const maxDrawdownVal = drawdownCurve.length > 0 ? Math.min(...drawdownCurve.map(d => d.drawdown)) : 0;
+  const avgDrawdownVal = drawdownCurve.length > 0 ? drawdownCurve.reduce((s, d) => s + d.drawdown, 0) / drawdownCurve.length : 0;
+  const currentDDPct = bankrollStats.bankroll > 0 ? (bankrollStats.maxDrawdown / bankrollStats.bankroll) * 100 : 0;
 
   return (
     <div className="space-y-5">
@@ -91,42 +120,48 @@ export default function PerformanceAnalytics() {
 
         {/* Equity Curve */}
         <TabsContent value="equity">
-          <Panel title="Equity Curve — Cumulative Bankroll (12 Months)">
+          <Panel title="Equity Curve — Cumulative Bankroll">
             <div className="p-4">
-              <ResponsiveContainer width="100%" height={320}>
-                <AreaChart data={DEMO_EQUITY_CURVE}>
-                  <defs>
-                    <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(263 70% 55%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(263 70% 55%)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                  <XAxis dataKey="month" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
-                  <YAxis stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(1)}k`} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={(v) => [`$${v.toFixed(2)}`, 'Bankroll']} />
-                  <ReferenceLine y={10000} stroke="hsl(215 20% 55%)" strokeDasharray="5 5" label={{ value: 'Starting Bank', fill: 'hsl(215 20% 55%)', fontSize: 10 }} />
-                  <Area type="monotone" dataKey="bankroll" stroke="hsl(263 70% 55%)" strokeWidth={2} fill="url(#equityGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">${DEMO_EQUITY_CURVE[0].bankroll.toLocaleString()}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Starting Bankroll</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-foreground">${DEMO_EQUITY_CURVE[DEMO_EQUITY_CURVE.length - 1].bankroll.toLocaleString()}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Current Bankroll</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">+${(DEMO_EQUITY_CURVE[DEMO_EQUITY_CURVE.length - 1].bankroll - DEMO_EQUITY_CURVE[0].bankroll).toFixed(2)}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Total Growth</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">{(((DEMO_EQUITY_CURVE[DEMO_EQUITY_CURVE.length - 1].bankroll - DEMO_EQUITY_CURVE[0].bankroll) / DEMO_EQUITY_CURVE[0].bankroll) * 100).toFixed(2)}%</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Total ROI</div>
-                </div>
-              </div>
+              {equityCurve.length === 0 ? (
+                <EmptyChart text="No settled orders yet. Start paper trading to build the equity curve." />
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <AreaChart data={equityCurve}>
+                      <defs>
+                        <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(263 70% 55%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(263 70% 55%)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="label" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(1)}k`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={(v) => [`$${v.toFixed(2)}`, 'Bankroll']} />
+                      <ReferenceLine y={startingBank} stroke="hsl(215 20% 55%)" strokeDasharray="5 5" label={{ value: 'Starting Bank', fill: 'hsl(215 20% 55%)', fontSize: 10 }} />
+                      <Area type="monotone" dataKey="bankroll" stroke="hsl(263 70% 55%)" strokeWidth={2} fill="url(#equityGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-muted-foreground">${startingBank.toLocaleString()}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Starting Bankroll</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-foreground">${currentBank.toLocaleString()}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Current Bankroll</div>
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-lg font-bold font-mono ${totalGrowth >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{totalGrowth >= 0 ? '+' : ''}${totalGrowth.toFixed(2)}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Total Growth</div>
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-lg font-bold font-mono ${totalGrowthPct >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{totalGrowthPct >= 0 ? '+' : ''}{totalGrowthPct.toFixed(2)}%</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Total ROI</div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </Panel>
         </TabsContent>
@@ -135,38 +170,44 @@ export default function PerformanceAnalytics() {
         <TabsContent value="growth">
           <Panel title="Monthly Growth Chart — Net P/L by Month">
             <div className="p-4">
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={DEMO_MONTHLY_GROWTH}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                  <XAxis dataKey="month" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
-                  <YAxis stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} tickFormatter={v => `$${v}`} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={(v, name) => name === 'growth' ? [`${v}%`, 'Growth'] : [`$${v}`, 'Net P/L']} />
-                  <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
-                  <Bar dataKey="netPL" name="netPL" radius={[4, 4, 0, 0]}>
-                    {DEMO_MONTHLY_GROWTH.map((entry, i) => (
-                      <Cell key={i} fill={entry.netPL >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">{positiveMonths}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Profitable Months</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-5">{negativeMonths}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Losing Months</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">{((positiveMonths / DEMO_MONTHLY_GROWTH.length) * 100).toFixed(0)}%</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Consistency Rate</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">+{bestMonth.growth}%</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Best Month ({bestMonth.month})</div>
-                </div>
-              </div>
+              {monthlyGrowth.length === 0 ? (
+                <EmptyChart text="No settled orders yet. Monthly growth will appear once orders are settled." />
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={monthlyGrowth}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="month" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={(v, name) => name === 'growth' ? [`${v}%`, 'Growth'] : [`$${v}`, 'Net P/L']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                      <Bar dataKey="netPL" name="netPL" radius={[4, 4, 0, 0]}>
+                        {monthlyGrowth.map((entry, i) => (
+                          <Cell key={i} fill={entry.netPL >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-1">{positiveMonths}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Profitable Months</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-5">{negativeMonths}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Losing Months</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-1">{monthlyGrowth.length > 0 ? ((positiveMonths / monthlyGrowth.length) * 100).toFixed(0) : 0}%</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Consistency Rate</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-1">{bestMonth ? `+${bestMonth.growth}%` : '—'}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">{bestMonth ? `Best Month (${bestMonth.month})` : 'Best Month'}</div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </Panel>
         </TabsContent>
@@ -176,31 +217,39 @@ export default function PerformanceAnalytics() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Panel title="Win/Loss Ratio Distribution by Strategy">
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie data={DEMO_WINLOSS_DISTRIBUTION} dataKey="wins" nameKey="strategy" cx="50%" cy="50%" outerRadius={100} innerRadius={50} label={({ strategy, wins }) => `${strategy}: ${wins}W`}>
-                      {DEMO_WINLOSS_DISTRIBUTION.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${v} wins`, name]} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                {winLossDist.length === 0 ? (
+                  <EmptyChart text="No settled orders yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie data={winLossDist} dataKey="wins" nameKey="strategy" cx="50%" cy="50%" outerRadius={100} innerRadius={50} label={({ strategy, wins }) => `${strategy}: ${wins}W`}>
+                        {winLossDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [`${v} wins`, name]} />
+                      <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Panel>
 
             <Panel title="Wins vs Losses by Strategy">
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={DEMO_WINLOSS_DISTRIBUTION} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" horizontal={false} />
-                    <XAxis type="number" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
-                    <YAxis type="category" dataKey="strategy" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} width={100} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="wins" name="Wins" fill="hsl(142 71% 45%)" radius={[0, 4, 4, 0]} />
-                    <Bar dataKey="losses" name="Losses" fill="hsl(0 72% 51%)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {winLossDist.length === 0 ? (
+                  <EmptyChart text="No settled orders yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={winLossDist} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" horizontal={false} />
+                      <XAxis type="number" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
+                      <YAxis type="category" dataKey="strategy" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} width={100} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} />
+                      <Legend wrapperStyle={{ fontSize: '11px' }} />
+                      <Bar dataKey="wins" name="Wins" fill="hsl(142 71% 45%)" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="losses" name="Losses" fill="hsl(0 72% 51%)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Panel>
           </div>
@@ -220,7 +269,7 @@ export default function PerformanceAnalytics() {
                 <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider">Win/Loss Ratio</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-mono text-foreground">{((totalWins / totalBets) * 100).toFixed(1)}%</div>
+                <div className="text-2xl font-bold font-mono text-foreground">{totalBets > 0 ? ((totalWins / totalBets) * 100).toFixed(1) : 0}%</div>
                 <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider">Overall Strike Rate</div>
               </div>
             </div>
@@ -229,42 +278,48 @@ export default function PerformanceAnalytics() {
 
         {/* Drawdown */}
         <TabsContent value="drawdown">
-          <Panel title="Drawdown Curve — Peak-to-Trough Decline (12 Months)">
+          <Panel title="Drawdown Curve — Peak-to-Trough Decline">
             <div className="p-4">
-              <ResponsiveContainer width="100%" height={320}>
-                <AreaChart data={DEMO_DRAWDOWN_CURVE}>
-                  <defs>
-                    <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(0 72% 51%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(0 72% 51%)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                  <XAxis dataKey="month" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
-                  <YAxis stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} tickFormatter={v => `$${v}`} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={(v) => [`$${v}`, 'Drawdown']} />
-                  <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
-                  <Area type="monotone" dataKey="drawdown" stroke="hsl(0 72% 51%)" strokeWidth={2} fill="url(#ddGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-5">${Math.min(...DEMO_DRAWDOWN_CURVE.map(d => d.drawdown)).toFixed(2)}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Max Drawdown</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-5">{(Math.min(...DEMO_DRAWDOWN_CURVE.map(d => d.drawdown)) / 10000 * 100).toFixed(2)}%</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Max DD %</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-foreground">${(DEMO_DRAWDOWN_CURVE.reduce((sum, d) => sum + d.drawdown, 0) / DEMO_DRAWDOWN_CURVE.length).toFixed(2)}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Avg Drawdown</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold font-mono text-chart-1">{(bankrollStats.maxDrawdown / bankrollStats.bankroll * 100).toFixed(2)}%</div>
-                  <div className="text-[10px] text-muted-foreground mt-1">Current DD %</div>
-                </div>
-              </div>
+              {drawdownCurve.length === 0 ? (
+                <EmptyChart text="No settled orders yet. Drawdown will appear once orders are settled." />
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={320}>
+                    <AreaChart data={drawdownCurve}>
+                      <defs>
+                        <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(0 72% 51%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(0 72% 51%)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="label" stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={11} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={(v) => [`$${v}`, 'Drawdown']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                      <Area type="monotone" dataKey="drawdown" stroke="hsl(0 72% 51%)" strokeWidth={2} fill="url(#ddGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-5">${Math.abs(maxDrawdownVal).toFixed(2)}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Max Drawdown</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-5">{startingBank > 0 ? (Math.abs(maxDrawdownVal) / startingBank * 100).toFixed(2) : 0}%</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Max DD %</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-foreground">${avgDrawdownVal.toFixed(2)}</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Avg Drawdown</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold font-mono text-chart-1">{Math.abs(currentDDPct).toFixed(2)}%</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">Current DD %</div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </Panel>
         </TabsContent>
@@ -272,27 +327,27 @@ export default function PerformanceAnalytics() {
         {/* CLV Over Time */}
         <TabsContent value="clv">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {DEMO_STRATEGY_LIBRARY.filter(s => s.status !== 'archived').map(s => {
-              const audit = getAuditData(s.name);
-              if (!audit?.clvHistory) return null;
-              return (
-                <Panel key={s.id} title={`${s.name} — CLV Over Time`}>
-                  <div className="p-4">
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={audit.clvHistory}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                        <XAxis dataKey="week" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                        <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `${v}%`} />
-                        <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`${v}%`, 'CLV']} />
-                        <ReferenceLine y={0} stroke="hsl(215 20% 55%)" strokeDasharray="3 3" />
-                        <Line type="monotone" dataKey="clv" stroke={audit.closingLineValue >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div className="text-center text-[10px] text-muted-foreground mt-2">Avg CLV: {audit.closingLineValue >= 0 ? '+' : ''}{audit.closingLineValue.toFixed(1)}%</div>
-                  </div>
-                </Panel>
-              );
-            })}
+            {clvByStrategy.length === 0 ? (
+              <Panel title="CLV Over Time" className="lg:col-span-2">
+                <EmptyChart text="No settled orders with CLV data yet." />
+              </Panel>
+            ) : clvByStrategy.map(s => (
+              <Panel key={s.strategyName} title={`${s.strategyName} — CLV Over Time`}>
+                <div className="p-4">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={s.data}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="trade" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `${v}%`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`${v}%`, 'CLV']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" strokeDasharray="3 3" />
+                      <Line type="monotone" dataKey="clv" stroke={s.avgCLV >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div className="text-center text-[10px] text-muted-foreground mt-2">Avg CLV: {s.avgCLV >= 0 ? '+' : ''}{s.avgCLV.toFixed(1)}%</div>
+                </div>
+              </Panel>
+            ))}
           </div>
         </TabsContent>
 
@@ -301,72 +356,85 @@ export default function PerformanceAnalytics() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Panel title="Profit by Strategy">
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={strategyStats.map(s => ({ name: s.strategyName, profit: s.netProfit }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                    <XAxis dataKey="name" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Net P/L']} />
-                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
-                    <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                      {strategyStats.map((s, i) => <Cell key={i} fill={s.netProfit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {strategyStats.length === 0 ? (
+                  <EmptyChart text="No strategy data yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={strategyStats.map(s => ({ name: s.strategyName, profit: s.netProfit }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="name" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Net P/L']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                      <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                        {strategyStats.map((s, i) => <Cell key={i} fill={s.netProfit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Panel>
 
-            <Panel title="Profit by Odds Range (Value Bet)">
+            <Panel title="Profit by Odds Range">
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={getAuditData('Value Bet')?.profitByOddsRange || []}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                    <XAxis dataKey="range" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
-                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
-                    <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                      {(getAuditData('Value Bet')?.profitByOddsRange || []).map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {profitByOdds.length === 0 ? (
+                  <EmptyChart text="No settled orders yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={profitByOdds}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="range" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                      <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                        {profitByOdds.map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Panel>
 
-            <Panel title="Profit by Time Before Start (Value Bet)">
+            <Panel title="Profit by Venue">
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={getAuditData('Value Bet')?.profitByTimeWindow || []}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                    <XAxis dataKey="window" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
-                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
-                    <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
-                      {(getAuditData('Value Bet')?.profitByTimeWindow || []).map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {profitByVenue.length === 0 ? (
+                  <EmptyChart text="No settled orders yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={profitByVenue}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="venue" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                      <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                        {profitByVenue.map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Panel>
 
-            <Panel title="Profit by Venue (Value Bet)">
+            <Panel title="Profit by Side (Back vs Lay)">
               <div className="p-4">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={[
-                    { venue: 'Flemington', profit: 485 },
-                    { venue: 'Hawkesbury', profit: 320 },
-                    { venue: 'Ballarat', profit: 180 },
-                    { venue: 'Other', profit: 260 },
-                  ]}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                    <XAxis dataKey="venue" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                    <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
-                    <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
-                    <Bar dataKey="profit" radius={[4, 4, 0, 0]} fill="hsl(263 70% 55%)" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {profitBySide.length === 0 ? (
+                  <EmptyChart text="No settled orders yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={profitBySide}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="side" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `$${v}`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`$${v}`, 'Profit']} />
+                      <ReferenceLine y={0} stroke="hsl(215 20% 55%)" />
+                      <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                        {profitBySide.map((e, i) => <Cell key={i} fill={e.profit >= 0 ? 'hsl(142 71% 45%)' : 'hsl(0 72% 51%)'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </Panel>
           </div>
@@ -375,27 +443,27 @@ export default function PerformanceAnalytics() {
         {/* Strike Rate Over Time */}
         <TabsContent value="strikerate">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {DEMO_STRATEGY_LIBRARY.filter(s => s.status !== 'archived').map(s => {
-              const audit = getAuditData(s.name);
-              if (!audit?.strikeRateHistory) return null;
-              return (
-                <Panel key={s.id} title={`${s.name} — Strike Rate Over Time`}>
-                  <div className="p-4">
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={audit.strikeRateHistory}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
-                        <XAxis dataKey="week" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
-                        <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `${v}%`} />
-                        <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`${v}%`, 'Strike Rate']} />
-                        <ReferenceLine y={50} stroke="hsl(215 20% 55%)" strokeDasharray="3 3" label={{ value: '50%', fill: 'hsl(215 20% 55%)', fontSize: 10 }} />
-                        <Line type="monotone" dataKey="rate" stroke="hsl(199 89% 48%)" strokeWidth={2} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div className="text-center text-[10px] text-muted-foreground mt-2">Current: {audit.strikeRate.toFixed(1)}%</div>
-                  </div>
-                </Panel>
-              );
-            })}
+            {strikeRateByStrategy.length === 0 ? (
+              <Panel title="Strike Rate Over Time" className="lg:col-span-2">
+                <EmptyChart text="No settled orders yet. Strike rate trends will appear once orders are settled." />
+              </Panel>
+            ) : strikeRateByStrategy.map(s => (
+              <Panel key={s.strategyName} title={`${s.strategyName} — Strike Rate Over Time`}>
+                <div className="p-4">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={s.data}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 17%)" />
+                      <XAxis dataKey="trade" stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} />
+                      <YAxis stroke="hsl(215 20% 55%)" fontSize={10} tickLine={false} tickFormatter={v => `${v}%`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'hsl(215 20% 55%)' }} formatter={v => [`${v}%`, 'Strike Rate']} />
+                      <ReferenceLine y={50} stroke="hsl(215 20% 55%)" strokeDasharray="3 3" label={{ value: '50%', fill: 'hsl(215 20% 55%)', fontSize: 10 }} />
+                      <Line type="monotone" dataKey="rate" stroke="hsl(199 89% 48%)" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div className="text-center text-[10px] text-muted-foreground mt-2">Current: {s.currentRate.toFixed(1)}%</div>
+                </div>
+              </Panel>
+            ))}
           </div>
         </TabsContent>
 
@@ -421,7 +489,9 @@ export default function PerformanceAnalytics() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {strategyStats.map(s => (
+                {strategyStats.length === 0 ? (
+                  <TableRow><TableCell colSpan={13} className="text-center text-xs text-muted-foreground py-8">No strategy stats yet. Start paper trading to build performance data.</TableCell></TableRow>
+                ) : strategyStats.map(s => (
                   <TableRow key={s.id} className="border-border">
                     <TableCell className="text-xs font-semibold">{s.strategyName}</TableCell>
                     <TableCell className="text-xs text-right font-mono">{s.totalSignals}</TableCell>

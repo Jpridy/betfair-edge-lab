@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download, ChevronRight, Copy, XCircle, RotateCcw } from 'lucide-react';
 import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
-import { getAuditData } from '@/lib/strategyAuditData';
+import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, computeDataQuality, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
 import { StrategyStatusBadge, DataQualityBadge, MetricWarningBadge } from '@/components/strategy/StrategyStatusBadge';
 import { generateStrategyDocument } from '@/lib/strategyDocument';
@@ -32,7 +32,7 @@ const TABS = [
 
 export default function StrategyLibrary() {
   const navigate = useNavigate();
-  const { settings, addAuditLog, resetStrategyData, strategyDataReset } = useApp();
+  const { settings, paperOrders, strategyStats, addAuditLog, resetStrategyData } = useApp();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('all');
   const [view, setView] = useState('grid');
@@ -44,29 +44,15 @@ export default function StrategyLibrary() {
   };
 
   const strategiesWithStatus = useMemo(() => {
-    const ZEROED_AUDIT = {
-      totalSignals: 0, totalPaperOrders: 0, matchedOrders: 0, unmatchedOrders: 0,
-      wins: 0, losses: 0, strikeRate: 0,
-      totalStake: 0, totalLiability: 0,
-      grossProfit: 0, commissionPaid: 0, netProfit: 0,
-      grossLoss: 0, roi: 0, liabilityRoi: 0, profitFactor: 0,
-      maxDrawdown: 0, longestLosingStreak: 0,
-      averageOdds: 0, averageStake: 0, averageEdge: 0, averageMatchedPrice: 0,
-      closingPrice: 0, closingLineValue: 0, slippage: 0,
-      equityCurve: [], drawdownCurve: [], clvHistory: [],
-      strikeRateHistory: [], weeklyROI: [],
-      profitByMarketType: [], profitByOddsRange: [], profitByTimeWindow: [],
-    };
     return DEMO_STRATEGY_LIBRARY.map(s => {
-      const rawAudit = getAuditData(s.name);
-      const audit = strategyDataReset ? { ...ZEROED_AUDIT, ...rawAudit && Object.fromEntries(Object.keys(rawAudit).map(k => [k, Array.isArray(rawAudit[k]) ? [] : 0])) } : rawAudit;
+      const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
       const status = computeTrafficLight(s, audit, settings);
       const dq = computeDataQuality(s, audit);
       const progress = getPaperProgress(audit);
       const recon = reconcileMetrics(audit);
       return { ...s, audit, status, dataQuality: dq, progress, reconValid: recon.valid };
     });
-  }, [settings, strategyDataReset]);
+  }, [settings, paperOrders, strategyStats]);
 
   const filtered = useMemo(() => {
     return strategiesWithStatus.filter(s => {
@@ -147,7 +133,7 @@ export default function StrategyLibrary() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search strategies..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
           </div>
-          <Button variant="outline" onClick={generateStrategyDocument}>
+          <Button variant="outline" onClick={() => generateStrategyDocument(paperOrders, strategyStats)}>
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Download Document</span>
           </Button>

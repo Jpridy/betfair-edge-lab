@@ -196,9 +196,6 @@ export function AppProvider({ children }) {
   // ── Rejected Orders ──
   const [rejectedOrders, setRejectedOrders] = useState([]);
 
-  // ── Strategy Data Reset Flag ──
-  const [strategyDataReset, setStrategyDataReset] = useState(false);
-
   // ── Featherless AI ──
   const [featherlessSettings, setFeatherlessSettings] = useState({
     enabled: false,
@@ -452,7 +449,6 @@ export function AppProvider({ children }) {
     setStrategyStats([]);
     setAiDecisions([]);
     setBotActivity([]);
-    setStrategyDataReset(true);
     const startingBankroll = settings.paperBankroll || settings.bankroll;
     setBankrollStats(prev => ({
       ...prev,
@@ -506,7 +502,6 @@ export function AppProvider({ children }) {
     setStrategyStats([]);
     setStrategySignals([]);
     setAiDecisions([]);
-    setStrategyDataReset(true);
     addAuditLog('Strategy Data Reset', 'strategy', 'critical', 'All strategy stats, signals, and AI decisions cleared to zero.');
     addToBotActivity('Strategy data reset', 'All strategy stats, signals, and AI decisions cleared');
   };
@@ -1229,7 +1224,7 @@ export function AppProvider({ children }) {
     strategyLibrary,
     // Emergency controls
     cancelUnmatchedOrders, disableLiveTrading, disableStrategy, forcePaperOnly,
-    resetAllPaperTrading, resetStrategyData, strategyDataReset, clearLogs,
+    resetAllPaperTrading, resetStrategyData, clearLogs,
     // Featherless AI
     featherlessSettings, setFeatherlessSettings, aiDecisions,
   };

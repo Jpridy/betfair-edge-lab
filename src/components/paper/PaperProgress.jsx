@@ -1,19 +1,19 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
-import { getAuditData } from '@/lib/strategyAuditData';
+import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, getPaperProgress } from '@/lib/strategyValidation';
 import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
 import { StrategyStatusBadge } from '@/components/strategy/StrategyStatusBadge';
 import { ArrowRight } from 'lucide-react';
 
 export default function PaperProgress() {
-  const { settings } = useApp();
+  const { settings, paperOrders, strategyStats } = useApp();
 
   const strategies = DEMO_STRATEGY_LIBRARY
     .filter(s => s.status !== 'archived')
     .map(s => {
-      const audit = getAuditData(s.name);
+      const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
       const status = computeTrafficLight(s, audit, settings);
       const progress = getPaperProgress(audit);
       return { ...s, audit, status, progress };

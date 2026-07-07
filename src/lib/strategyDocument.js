@@ -1,9 +1,9 @@
 import { jsPDF } from 'jspdf';
-import { DEMO_STRATEGY_LIBRARY, DEMO_STRATEGY_STATS } from '@/lib/demoData';
-import { getAuditData } from '@/lib/strategyAuditData';
+import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, computeDataQuality, checkLiveLockout, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
 
-export function generateStrategyDocument() {
+export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -93,8 +93,7 @@ export function generateStrategyDocument() {
       y = margin;
     }
 
-    const stats = DEMO_STRATEGY_STATS.find((st) => st.strategyName === s.name);
-    const audit = getAuditData(s.name);
+    const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
     const trafficLight = computeTrafficLight(s, audit, { bankroll: 10000 });
     const dq = computeDataQuality(s, audit);
     const progress = getPaperProgress(audit);
