@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { createBetfairStream } from '@/lib/betfairApi';
+import { createBetfairStream, fetchBetfairMarkets } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
@@ -1249,6 +1249,55 @@ export function AppProvider({ children }) {
       }
     };
   }, [apiConnected, betfairSessionToken]);
+
+  // ── REST API Polling Fallback ──
+  // If the WebSocket stream fails or stays disconnected, poll Betfair's REST
+  // API every 5 seconds to keep market data flowing.
+  useEffect(() => {
+    if (!apiConnected || !betfairSessionToken) return;
+    // Only poll when the stream is in an error/disconnected state
+    const streamDown = ['error', 'disconnected'].includes(betfairConnection.streamConnectionStatus);
+    if (!streamDown) return;
+
+    let cancelled = false;
+    let timer = null;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const result = await fetchBetfairMarkets(betfairSessionToken);
+        if (cancelled) return;
+        if (result.status === 'success') {
+          setMarkets(result.markets);
+          setRunners(result.runners);
+          setBetfairConnection(prev => ({
+            ...prev,
+            lastMarketSyncTime: new Date().toISOString(),
+            dataFresh: true,
+            streamConnectionStatus: 'polling',
+            loginStatus: 'connected',
+            sessionTokenStatus: 'connected',
+          }));
+        } else if (result.sessionExpired) {
+          setApiConnected(false);
+          setBetfairSessionToken(null);
+          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired during REST polling. Please reconnect.');
+        }
+      } catch (err) {
+        // silently retry on next interval
+      }
+    };
+
+    poll();
+    timer = setInterval(poll, 5000);
+
+    addAuditLog('REST Polling Fallback Active', 'api', 'info', 'WebSocket stream unavailable — polling Betfair REST API every 5 seconds for market data');
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [apiConnected, betfairSessionToken, betfairConnection.streamConnectionStatus]);
 
   const value = {
     mode, changeMode, setMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,

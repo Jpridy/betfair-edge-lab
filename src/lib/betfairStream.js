@@ -38,11 +38,19 @@ export class BetfairStreamClient {
       this._reconnectAttempts = 0;
     }
 
-    // Connect directly to Betfair's Stream API via WebSocket.
-    // Betfair's Stream API supports native WebSocket connections alongside
-    // raw TCP. WebSockets bypass CORS, so the browser connects directly —
-    // no Cloudflare Worker bridge needed.
-    const wsUrl = 'wss://stream-api.betfair.com:443';
+    // Connect through the Cloudflare Worker WebSocket-to-TCP bridge.
+    // Betfair's Stream API is a raw TCP server (not WebSocket), so the browser
+    // cannot connect directly. The worker accepts a WebSocket from the browser
+    // and bridges it to a raw TLS TCP socket to stream-api.betfair.com:443.
+    if (!this.wsProxyUrl) {
+      if (this.onError) this.onError('No proxy URL configured. Set BETFAIR_PROXY_URL to your deployed Cloudflare Worker URL.');
+      if (this.onStatusChange) this.onStatusChange('error');
+      return;
+    }
+
+    const wsUrl = this.wsProxyUrl
+      .replace(/^https:\/\//, 'wss://')
+      .replace(/^http:\/\//, 'ws://');
     this._wsUrl = wsUrl;
 
     try {
