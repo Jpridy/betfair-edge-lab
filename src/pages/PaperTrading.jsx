@@ -51,7 +51,7 @@ export default function PaperTrading() {
     if (form.stake > settings.maxStake) riskChecks.push('Stake exceeds max');
     if ((form.stake / bankrollStats.bankroll) * 100 > settings.maxStakePercent) riskChecks.push('Stake % exceeds limit');
     if (form.odds < settings.minOdds || form.odds > settings.maxOdds) riskChecks.push('Odds outside range');
-    if (bankrollStats.openExposure + form.stake > settings.maxMarketExposure) riskChecks.push('Exposure limit');
+    if ((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0) + form.stake > settings.maxMarketExposure) riskChecks.push('Exposure limit');
 
     const runner = runners.find(r => r.id === form.runnerId);
     const market = markets.find(m => m.id === form.marketId);

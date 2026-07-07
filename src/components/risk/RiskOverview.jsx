@@ -10,7 +10,7 @@ export default function RiskOverview() {
   const weeklyLossLimit = settings.dailyLossLimit * 5;
   const dailyLossUsed = bankrollStats.todayPL < 0 ? Math.abs(bankrollStats.todayPL) : 0;
   const weeklyLossUsed = weeklyPL < 0 ? Math.abs(weeklyPL) : 0;
-  const exposurePercent = (bankrollStats.openExposure / bankrollStats.bankroll) * 100;
+  const exposurePercent = (((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)) / (bankrollStats.bankroll || 1)) * 100;
   const drawdownPercent = Math.abs(bankrollStats.maxDrawdown) / bankrollStats.bankroll * 100;
 
   const globalState = emergencyStop

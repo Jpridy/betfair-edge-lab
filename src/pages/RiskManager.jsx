@@ -216,7 +216,7 @@ export default function RiskManager() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Exposure</span>
-              <span className="font-mono font-bold text-chart-4">${(bankrollStats.openExposure || 0).toFixed(2)}</span>
+              <span className="font-mono font-bold text-chart-4">${((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Available</span>
@@ -224,7 +224,7 @@ export default function RiskManager() {
             </div>
             <div className="flex justify-between pt-2 border-t border-border">
               <span className="text-muted-foreground">Exposure %</span>
-              <span className="font-mono font-bold">{(((bankrollStats.openExposure || 0) / (bankrollStats.bankroll || 1)) * 100).toFixed(1)}%</span>
+              <span className="font-mono font-bold">{((((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)) / (bankrollStats.bankroll || 1)) * 100).toFixed(1)}%</span>
             </div>
             <div className="pt-2 border-t border-border flex justify-between items-center">
               <span className="text-muted-foreground">Max Open Orders</span>

@@ -147,11 +147,26 @@ export function AppProvider({ children }) {
     roi: 0,
     strikeRate: 0,
   });
-  const [riskStatus] = useState({
-    dailyLossLimit: 500, weeklyLossLimit: 2500, maxMarketExposure: 1000,
-    maxOpenOrders: 10, maxUnmatchedOrders: 10, dataHealth: 'unknown',
-    dailyLossUsed: 0, weeklyLossUsed: 0, strategyLimits: [],
-  });
+  const riskStatus = useMemo(() => {
+    const dailyLossUsed = Math.max(0, -(bankrollStats.todayPL || 0));
+    const weeklyLossUsed = Math.max(0, -(bankrollStats.weeklyPL || 0));
+    const openOrders = paperOrders.filter(o => ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'].includes(o.status)).length;
+    const unmatchedOrders = paperOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched').length;
+    const exposure = (bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0);
+    const dailyLossLimit = settings.dailyLossLimit || 500;
+    const weeklyLossLimit = settings.weeklyLossLimit || 2500;
+    const maxMarketExposure = settings.maxMarketExposure || 1000;
+    const maxOpenOrders = settings.maxOpenOrders || 10;
+    const maxUnmatched = settings.maxUnmatchedOrders || settings.maxOpenOrders || 10;
+    return {
+      dailyLossLimit: { status: dailyLossUsed >= dailyLossLimit ? 'danger' : 'ok', value: dailyLossLimit > 0 ? (dailyLossUsed / dailyLossLimit) * 100 : 0, label: 'Daily Loss Used', max: dailyLossLimit },
+      weeklyLossLimit: { status: weeklyLossUsed >= weeklyLossLimit ? 'danger' : 'ok', value: weeklyLossLimit > 0 ? (weeklyLossUsed / weeklyLossLimit) * 100 : 0, label: 'Weekly Loss Used', max: weeklyLossLimit },
+      maxMarketExposure: { status: exposure >= maxMarketExposure ? 'danger' : 'ok', value: maxMarketExposure > 0 ? (exposure / maxMarketExposure) * 100 : 0, label: 'Market Exposure', max: maxMarketExposure },
+      maxOpenOrders: { status: openOrders >= maxOpenOrders ? 'danger' : 'ok', value: maxOpenOrders > 0 ? (openOrders / maxOpenOrders) * 100 : 0, label: 'Open Orders', max: maxOpenOrders },
+      maxUnmatchedOrders: { status: unmatchedOrders >= maxUnmatched ? 'warning' : 'ok', value: maxUnmatched > 0 ? (unmatchedOrders / maxUnmatched) * 100 : 0, label: 'Unmatched Orders', max: maxUnmatched },
+      dataHealth: { status: apiConnected ? 'ok' : 'warning', value: apiConnected ? 100 : 0, label: 'API Health', max: 100 },
+    };
+  }, [bankrollStats.todayPL, bankrollStats.weeklyPL, bankrollStats.openPaperExposure, bankrollStats.openLiveExposure, paperOrders, settings.dailyLossLimit, settings.weeklyLossLimit, settings.maxMarketExposure, settings.maxOpenOrders, settings.maxUnmatchedOrders, apiConnected]);
   const [heatmap] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [backtestRuns, setBacktestRuns] = useState([]);
@@ -328,6 +343,18 @@ export function AppProvider({ children }) {
       if (dd < maxDD) maxDD = dd;
     }
 
+    // Longest losing streak
+    let longestLosingStreak = 0;
+    let currentStreak = 0;
+    for (const o of sorted) {
+      if (o.result === 'lost') {
+        currentStreak++;
+        if (currentStreak > longestLosingStreak) longestLosingStreak = currentStreak;
+      } else if (o.result === 'won') {
+        currentStreak = 0;
+      }
+    }
+
     const totalStake = settled.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
     const roi = totalStake > 0 ? (totalPL / totalStake) * 100 : 0;
     const strikeRate = settled.length > 0 ? (wins / settled.length) * 100 : 0;
@@ -344,6 +371,7 @@ export function AppProvider({ children }) {
       openPaperExposure: paperExposure,
       openLiveExposure: 0,
       maxDrawdown: maxDD,
+      longestLosingStreak,
       wins,
       losses,
       roi,

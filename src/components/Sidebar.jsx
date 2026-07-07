@@ -88,7 +88,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Exposure</span>
-              <span className="font-mono font-semibold text-sidebar-foreground">${(bankrollStats.openExposure || 0).toFixed(2)}</span>
+              <span className="font-mono font-semibold text-sidebar-foreground">${((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)).toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Available</span>
