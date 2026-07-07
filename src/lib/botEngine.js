@@ -1,6 +1,7 @@
 import { calculateCommission, createBetfairOrderStructure, generateCustomerRef, PERSISTENCE_TYPES } from './betfairMapping';
 import { isValidTickPrice, roundToNearestTick, calculateSpreadTicks, calculateStopLossPrice, calculateScalpTargetPrice, countTicksBetween } from './tickLadder';
 import { runPreOrderChecks } from './orderValidation';
+import { ENRICHED_STRATEGY_LIBRARY } from './strategyLibrary';
 
 export const BOT_STEPS = [
   'Scan Markets',
@@ -52,6 +53,10 @@ export function calcEdge(modelProb, odds) {
 }
 
 export function createSignal(strategyName, market, runner, settings) {
+  // Look up strategy config for edge threshold and side restriction
+  const strategy = ENRICHED_STRATEGY_LIBRARY.find(s => s.name === strategyName);
+  const minEdge = strategy?.minEdge || 0;
+
   // Use best back price for BACK signals, best lay for LAY
   const isBack = strategyName !== 'Fav/Outsider' ? true : runner.isFavourite;
   const odds = isBack
@@ -65,6 +70,13 @@ export function createSignal(strategyName, market, runner, settings) {
   const commRate = market?.marketBaseRate || settings.defaultCommissionRate || settings.commissionRate || 0.05;
   const ev = calcEVBack(modelProb, odds, commRate);
   const edge = calcEdge(modelProb, odds);
+
+  // Enforce strategy's minimum edge threshold — if the computed edge doesn't
+  // meet the strategy's entry criteria, no signal is created.
+  if (edge < minEdge) {
+    return null;
+  }
+
   const stake = Math.min(
     Math.round((settings.baseStake || 100) + Math.random() * ((settings.maxStake || 500) - (settings.baseStake || 100))),
     settings.maxStake || 500
