@@ -385,7 +385,7 @@ function applySafetyGate(parsed, raceObject, settings, bankrollStats, strategySe
 
   // 9. Time window
   const timeBeforeJump = ctx.time_before_jump_seconds;
-  const windowStart = strategySettings.timeWindowStart || settings.defaultTimeWindowStartSeconds || 300;
+  const windowStart = strategySettings.timeWindowStart || settings.defaultTimeWindowStartSeconds || 500;
   const windowEnd = strategySettings.timeWindowEnd || settings.defaultTimeWindowEndSeconds || 30;
   if (timeBeforeJump < windowEnd) {
     failures.push(`Race starts in ${timeBeforeJump}s — inside ${windowEnd}s cutoff`);
@@ -509,7 +509,7 @@ Deno.serve(async (req) => {
     // Saves API credits and guarantees the time-window rule is enforced even if the
     // model or safety gate has a bug.
     const _startTime = market.startTime || market.marketStartTime;
-    const _windowStart = strategySettings?.timeWindowStart || settings?.defaultTimeWindowStartSeconds || 300;
+    const _windowStart = strategySettings?.timeWindowStart || settings?.defaultTimeWindowStartSeconds || 500;
     const _windowEnd = strategySettings?.timeWindowEnd || settings?.defaultTimeWindowEndSeconds || 30;
     if (!_startTime) {
       return Response.json({

@@ -141,7 +141,7 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     const now = Date.now();
     const secondsBefore = (start - now) / 1000;
 
-    const windowStart = strategy.timeWindowStart || settings.defaultTimeWindowStartSeconds || 300;
+    const windowStart = strategy.timeWindowStart || settings.defaultTimeWindowStartSeconds || 500;
     const windowEnd = strategy.timeWindowEnd || settings.defaultTimeWindowEndSeconds || 30;
 
     if (secondsBefore > windowStart) {

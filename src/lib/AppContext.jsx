@@ -89,7 +89,7 @@ export function AppProvider({ children }) {
     maxOdds: 20,
 
     // Time Windows
-    defaultTimeWindowStartSeconds: 300,
+    defaultTimeWindowStartSeconds: 500,
     defaultTimeWindowEndSeconds: 30,
 
     // In-Play Safety
@@ -229,7 +229,7 @@ export function AppProvider({ children }) {
     minOdds: 2.0,
     maxOdds: 12.0,
     minLiquidity: 5000,
-    timeWindowStart: 300,
+    timeWindowStart: 500,
     timeWindowEnd: 30,
     stakingMode: 'confidence_weighted_fractional_kelly',
     webResearchEnabled: true,
@@ -873,7 +873,7 @@ export function AppProvider({ children }) {
     // Sort markets by proximity to the pre-off trading window (default 300s–30s before start).
     // The bot prefers markets about to jump — a random pick would almost always be hours
     // away and get rejected at the time-window validation check.
-    const windowStart = s.settings.defaultTimeWindowStartSeconds || 300;
+    const windowStart = s.settings.defaultTimeWindowStartSeconds || 500;
     const windowEnd = s.settings.defaultTimeWindowEndSeconds || 30;
     const nowMs = Date.now();
     const sorted = filtered

@@ -22,7 +22,7 @@ const DEFAULT_FEATHERLESS = {
   minOdds: 2.0,
   maxOdds: 12.0,
   minLiquidity: 5000,
-  timeWindowStart: 300,
+  timeWindowStart: 500,
   timeWindowEnd: 30,
   stakingMode: 'confidence_weighted_fractional_kelly',
   webResearchEnabled: false,
