@@ -52,7 +52,7 @@ export function calcEdge(modelProb, odds) {
   return ((modelProb - implied) / implied) * 100;
 }
 
-export function createSignal(strategyName, market, runner, settings) {
+export function createSignal(strategyName, market, runner, settings, formData = null) {
   // Look up strategy config for edge threshold and side restriction
   const strategy = ENRICHED_STRATEGY_LIBRARY.find(s => s.name === strategyName);
   const minEdge = strategy?.minEdge || 0;
@@ -64,7 +64,10 @@ export function createSignal(strategyName, market, runner, settings) {
     : (runner.bestLayPrice || runner.lastTradedPrice || 3.0);
 
   const baseProb = impliedProb(odds);
-  const modelProb = Math.min(0.95, Math.max(0.05, baseProb * (0.92 + Math.random() * 0.2)));
+  // Use real form analysis probability if available; otherwise fall back to simulated
+  const modelProb = formData?.estimated_probability != null
+    ? Math.min(0.95, Math.max(0.05, formData.estimated_probability))
+    : Math.min(0.95, Math.max(0.05, baseProb * (0.92 + Math.random() * 0.2)));
   
   // Use market base rate or default commission for EV calculation
   const commRate = market?.marketBaseRate || settings.defaultCommissionRate || settings.commissionRate || 0.05;
@@ -116,12 +119,14 @@ export function createSignal(strategyName, market, runner, settings) {
     fairOdds: 1 / modelProb,
     edgePercent: edge,
     expectedValue: ev,
-    confidence: 0.5 + Math.random() * 0.4,
+    confidence: formData?.confidence != null ? formData.confidence / 100 : 0.5 + Math.random() * 0.4,
     signalStatus: 'active',
     persistenceType: PERSISTENCE_TYPES.LAPSE,
     clvEstimate,
     spreadTicks,
-    reason: `${strategyName}: edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks`,
+    reason: formData?.form_assessment
+      ? `${strategyName}: ${formData.form_assessment} (edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)})`
+      : `${strategyName}: edge ${edge.toFixed(2)}%, EV $${ev.toFixed(2)}, spread ${spreadTicks} ticks`,
   };
 }
 

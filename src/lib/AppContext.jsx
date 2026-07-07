@@ -1003,7 +1003,25 @@ export function AppProvider({ children }) {
                 errors = 1;
               }
             } else {
-              signal = createSignal(strategyName, market, runner, s.settings);
+              // Call Featherless API for real form/probability analysis.
+              // All non-AI strategies use the same form analysis — each strategy
+              // then applies its own edge threshold and side logic in createSignal.
+              let formData = null;
+              try {
+                const formRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
+                const formResp = await base44.functions.invoke('featherlessFormAnalysis', {
+                  market, runners: formRunners, settings: s.settings,
+                });
+                if (formResp.data?.error) throw new Error(formResp.data.error);
+                const runnerForm = formResp.data?.runners?.find(r =>
+                  String(r.selection_id) === String(runner.betfairSelectionId) ||
+                  r.runner === runner.runnerName
+                );
+                if (runnerForm) formData = runnerForm;
+              } catch (err) {
+                notes.push(`Form analysis error: ${err.message}`);
+              }
+              signal = createSignal(strategyName, market, runner, s.settings, formData);
             }
 
             if (!signal) {
