@@ -116,6 +116,11 @@ export function createSignal(strategyName, market, runner, settings) {
 export function runRiskCheck(signal, settings, bankrollStats, paperOrders) {
   const reasons = [];
 
+  // Master bypass: all risk limits disabled for testing
+  if (settings?.riskLimitsDisabled === true) {
+    return { passed: true, reasons };
+  }
+
   if (signal.odds < (settings.minOdds || 1.5)) reasons.push(`Odds below minimum (${settings.minOdds})`);
   if (signal.odds > (settings.maxOdds || 20)) reasons.push(`Odds above maximum (${settings.maxOdds})`);
   if (signal.stakeSuggestion > (settings.maxStake || 500)) reasons.push('Stake exceeds max');
@@ -137,8 +142,6 @@ export function runRiskCheck(signal, settings, bankrollStats, paperOrders) {
     catch { return false; }
   });
   if (todayOrders.length >= (settings.maxTradesPerDay || 50)) reasons.push('Max trades per day reached');
-
-  if (Math.random() < 0.08) reasons.push('Strategy guard: CLV below threshold');
 
   return { passed: reasons.length === 0, reasons };
 }

@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
-import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, ArrowRight } from 'lucide-react';
+import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, ArrowRight, FlaskConical } from 'lucide-react';
 import GlobalStopRules from '@/components/risk/GlobalStopRules';
 import RiskOverview from '@/components/risk/RiskOverview';
+import { Switch } from '@/components/ui/switch';
 
 const RISK_RULES = [
   { key: 'maxStake', label: 'Maximum Stake Per Bet', getValue: (s) => `$${s.maxStake}`, check: true },
@@ -44,8 +45,38 @@ export default function RiskManager() {
     addAuditLog('Force Paper-Only Mode', 'emergency', 'critical', 'Risk Manager: forced paper-only mode activated');
   };
 
+  const toggleRiskLimits = (checked) => {
+    updateSettings({ ...settings, riskLimitsDisabled: checked });
+    addAuditLog(
+      checked ? 'Risk Limits Disabled' : 'Risk Limits Enabled',
+      'risk',
+      checked ? 'warning' : 'info',
+      checked ? 'ALL risk limits bypassed for testing — orders will not be blocked by risk checks' : 'Risk limits re-enabled — all checks active'
+    );
+  };
+
   return (
     <div className="space-y-5">
+      {/* Testing Mode — Disable All Risk Limits */}
+      <div className={`rounded-lg border-2 p-5 ${settings.riskLimitsDisabled ? 'bg-chart-4/10 border-chart-4' : 'bg-card border-border'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-full ${settings.riskLimitsDisabled ? 'bg-chart-4/20' : 'bg-muted'}`}>
+              <FlaskConical className={`h-6 w-6 ${settings.riskLimitsDisabled ? 'text-chart-4' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <h2 className="text-base font-bold">Testing Mode — Disable All Risk Limits</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                {settings.riskLimitsDisabled
+                  ? 'ACTIVE — All risk checks bypassed. Orders will not be blocked by stake, odds, loss, exposure, or count limits.'
+                  : 'Bypasses every risk limit (stake, odds, loss, exposure, order counts, drawdown, liquidity, duplicate) for unrestricted testing.'}
+              </p>
+            </div>
+          </div>
+          <Switch checked={settings.riskLimitsDisabled || false} onCheckedChange={toggleRiskLimits} />
+        </div>
+      </div>
+
       {/* Emergency Stop Banner */}
       <div className={`rounded-lg border-2 p-6 ${emergencyStop ? 'bg-chart-5/10 border-chart-5' : 'bg-card border-border'}`}>
         <div className="flex items-center justify-between">
@@ -157,18 +188,21 @@ export default function RiskManager() {
       {/* Risk Rules */}
       <Panel title="Risk Rules — Checked Before Every Order">
         <div className="p-4 space-y-2">
-          {RISK_RULES.map(rule => (
-            <div key={rule.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-              <div className="flex items-center gap-3">
-                {rule.check ? <CheckCircle2 className="h-4 w-4 text-chart-1" /> : <XCircle className="h-4 w-4 text-chart-5" />}
-                <span className="text-sm">{rule.label}</span>
+          {RISK_RULES.map(rule => {
+            const active = rule.check && !settings.riskLimitsDisabled;
+            return (
+              <div key={rule.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                <div className="flex items-center gap-3">
+                  {active ? <CheckCircle2 className="h-4 w-4 text-chart-1" /> : <XCircle className="h-4 w-4 text-muted-foreground" />}
+                  <span className={`text-sm ${settings.riskLimitsDisabled ? 'text-muted-foreground' : ''}`}>{rule.label}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-muted-foreground">{rule.getValue(settings)}</span>
+                  <StatusBadge status={active ? 'ok' : 'neutral'}>{settings.riskLimitsDisabled ? 'BYPASS' : active ? 'OK' : 'FAIL'}</StatusBadge>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-mono text-muted-foreground">{rule.getValue(settings)}</span>
-                <StatusBadge status={rule.check ? 'ok' : 'danger'}>{rule.check ? 'OK' : 'FAIL'}</StatusBadge>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Panel>
 

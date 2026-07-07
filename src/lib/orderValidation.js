@@ -25,6 +25,7 @@ import { isCommissionValidForLive, isInPlayLocked, isOrderOpen } from './betfair
 export function runPreOrderChecks(order, market, runner, strategy, settings, bankrollStats, existingOrders, connectionState) {
   const failures = [];
   const isLiveMode = connectionState?.apiConnected === true;
+  const riskDisabled = settings?.riskLimitsDisabled === true;
 
   // ── Market Checks ──
   if (!market) {
@@ -148,21 +149,17 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Liquidity Check ──
-  // In live mode, freshly opened markets legitimately have totalMatched=0 (no
-  // trades yet). The market filter already accepted this market, and runner
-  // price/size checks below catch truly empty markets — so skip the volume
-  // minimum when connected to the live stream.
   const minLiquidity = strategy?.minLiquidity || settings.minimumLiquidity || 5000;
-  if (!isLiveMode && market.totalMatched < minLiquidity) {
+  if (!riskDisabled && !isLiveMode && market.totalMatched < minLiquidity) {
     failures.push({ field: 'liquidity', reason: `Market liquidity $${market.totalMatched?.toFixed(0)} below minimum $${minLiquidity}` });
   }
 
   // ── Price Validation ──
-  if (!order.price || order.price < (settings.minOdds || 1.5)) {
+  if (!riskDisabled && (!order.price || order.price < (settings.minOdds || 1.5))) {
     failures.push({ field: 'price', reason: `Price ${order.price} below minimum odds ${settings.minOdds || 1.5}` });
   }
 
-  if (order.price > (settings.maxOdds || 20)) {
+  if (!riskDisabled && order.price > (settings.maxOdds || 20)) {
     failures.push({ field: 'price', reason: `Price ${order.price} above maximum odds ${settings.maxOdds || 20}` });
   }
 
@@ -175,16 +172,16 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Stake Checks ──
-  if (!order.size || order.size < (settings.baseStake || 50)) {
+  if (!riskDisabled && (!order.size || order.size < (settings.baseStake || 50))) {
     failures.push({ field: 'size', reason: `Stake $${order.size} below minimum $${settings.baseStake || 50}` });
   }
 
-  if (order.size > (settings.maxStake || 500)) {
+  if (!riskDisabled && order.size > (settings.maxStake || 500)) {
     failures.push({ field: 'size', reason: `Stake $${order.size} exceeds max $${settings.maxStake || 500}` });
   }
 
   // ── Lay Liability Check ──
-  if (order.side === 'LAY') {
+  if (!riskDisabled && order.side === 'LAY') {
     const liability = order.size * (order.price - 1);
     const maxLiability = settings.maxLayLiability || settings.maxStake * 3 || 1500;
     if (liability > maxLiability) {
@@ -193,53 +190,63 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Bankroll Check ──
-  const requiredFunds = order.side === 'BACK' ? order.size : order.size * (order.price - 1);
-  if (bankrollStats && bankrollStats.available < requiredFunds) {
-    failures.push({ field: 'bankroll', reason: `Insufficient bankroll ($${bankrollStats.available?.toFixed(2)} available, $${requiredFunds.toFixed(2)} required)` });
+  if (!riskDisabled) {
+    const requiredFunds = order.side === 'BACK' ? order.size : order.size * (order.price - 1);
+    if (bankrollStats && bankrollStats.available < requiredFunds) {
+      failures.push({ field: 'bankroll', reason: `Insufficient bankroll ($${bankrollStats.available?.toFixed(2)} available, $${requiredFunds.toFixed(2)} required)` });
+    }
   }
 
   // ── Daily Loss Limit ──
-  if (bankrollStats && bankrollStats.todayPL < -(settings.dailyLossLimit || 500)) {
+  if (!riskDisabled && bankrollStats && bankrollStats.todayPL < -(settings.dailyLossLimit || 500)) {
     failures.push({ field: 'dailyLossLimit', reason: `Daily loss limit reached (P/L: $${bankrollStats.todayPL?.toFixed(2)}, limit: -$${settings.dailyLossLimit || 500})` });
   }
 
   // ── Weekly Loss Limit ──
-  if (bankrollStats && bankrollStats.weeklyPL !== undefined && bankrollStats.weeklyPL < -(settings.weeklyLossLimit || settings.dailyLossLimit * 5 || 2500)) {
+  if (!riskDisabled && bankrollStats && bankrollStats.weeklyPL !== undefined && bankrollStats.weeklyPL < -(settings.weeklyLossLimit || settings.dailyLossLimit * 5 || 2500)) {
     failures.push({ field: 'weeklyLossLimit', reason: `Weekly loss limit reached (P/L: $${bankrollStats.weeklyPL?.toFixed(2)})` });
   }
 
   // ── Max Open Orders ──
-  const openOrders = existingOrders.filter(o => isOrderOpen(o.status));
-  if (openOrders.length >= (settings.maxOpenOrders || 10)) {
-    failures.push({ field: 'maxOpenOrders', reason: `Max open orders reached (${openOrders.length}/${settings.maxOpenOrders || 10})` });
+  if (!riskDisabled) {
+    const openOrders = existingOrders.filter(o => isOrderOpen(o.status));
+    if (openOrders.length >= (settings.maxOpenOrders || 10)) {
+      failures.push({ field: 'maxOpenOrders', reason: `Max open orders reached (${openOrders.length}/${settings.maxOpenOrders || 10})` });
+    }
   }
 
   // ── Max Unmatched Orders ──
-  const unmatchedOrders = existingOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched');
-  const maxUnmatched = settings.maxUnmatchedOrders || settings.maxOpenOrders || 10;
-  if (unmatchedOrders.length >= maxUnmatched) {
-    failures.push({ field: 'maxUnmatched', reason: `Max unmatched orders reached (${unmatchedOrders.length}/${maxUnmatched})` });
+  if (!riskDisabled) {
+    const unmatchedOrders = existingOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched');
+    const maxUnmatched = settings.maxUnmatchedOrders || settings.maxOpenOrders || 10;
+    if (unmatchedOrders.length >= maxUnmatched) {
+      failures.push({ field: 'maxUnmatched', reason: `Max unmatched orders reached (${unmatchedOrders.length}/${maxUnmatched})` });
+    }
   }
 
   // ── Max Orders Per Market ──
-  const marketOrders = existingOrders.filter(o => o.marketId === order.marketId && isOrderOpen(o.status));
-  if (marketOrders.length >= (settings.maxTradesPerMarket || 5)) {
-    failures.push({ field: 'maxTradesPerMarket', reason: `Max orders per market reached (${marketOrders.length}/${settings.maxTradesPerMarket || 5})` });
+  if (!riskDisabled) {
+    const marketOrders = existingOrders.filter(o => o.marketId === order.marketId && isOrderOpen(o.status));
+    if (marketOrders.length >= (settings.maxTradesPerMarket || 5)) {
+      failures.push({ field: 'maxTradesPerMarket', reason: `Max orders per market reached (${marketOrders.length}/${settings.maxTradesPerMarket || 5})` });
+    }
   }
 
   // ── Duplicate Order Check ──
-  const dup = existingOrders.some(o =>
-    o.marketId === order.marketId &&
-    (o.selectionId === order.selectionId || o.runnerId === order.runnerId) &&
-    o.strategyName === order.strategyName &&
-    isOrderOpen(o.status)
-  );
-  if (dup) {
-    failures.push({ field: 'duplicate', reason: 'Duplicate order already exists for this strategy/market/runner' });
+  if (!riskDisabled) {
+    const dup = existingOrders.some(o =>
+      o.marketId === order.marketId &&
+      (o.selectionId === order.selectionId || o.runnerId === order.runnerId) &&
+      o.strategyName === order.strategyName &&
+      isOrderOpen(o.status)
+    );
+    if (dup) {
+      failures.push({ field: 'duplicate', reason: 'Duplicate order already exists for this strategy/market/runner' });
+    }
   }
 
   // ── Data Freshness Check (live mode only) ──
-  if (connectionState?.apiConnected && !connectionState.dataFresh) {
+  if (!riskDisabled && connectionState?.apiConnected && !connectionState.dataFresh) {
     failures.push({ field: 'dataFreshness', reason: 'Data feed is stale — refusing to place orders on stale data' });
   }
 
@@ -254,14 +261,11 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   if (!isCommissionValidForLive(market, settings)) {
     if (order.liveMode) {
       failures.push({ field: 'commission', reason: 'Live locked: Market Base Rate missing — commission calculation invalid' });
-    } else {
-      // Paper mode: warn but don't block
-      // We still allow paper orders but log the warning
     }
   }
 
   // ── Drawdown Check ──
-  if (bankrollStats && strategy) {
+  if (!riskDisabled && bankrollStats && strategy) {
     const drawdownLimit = settings.bankroll * 0.10 || 1000;
     if (bankrollStats.maxDrawdown && bankrollStats.maxDrawdown < -drawdownLimit) {
       failures.push({ field: 'drawdown', reason: `Strategy drawdown exceeds limit ($${bankrollStats.maxDrawdown?.toFixed(2)})` });

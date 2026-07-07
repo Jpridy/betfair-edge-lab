@@ -115,6 +115,9 @@ export function AppProvider({ children }) {
     forcedPaperOnlyMode: false,
     dailyDepositReminderEnabled: false,
 
+    // Testing — bypass all risk limits
+    riskLimitsDisabled: false,
+
     // Legacy
     emergencyStopActive: false,
     liveTradingEnabled: false,
