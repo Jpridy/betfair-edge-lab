@@ -78,7 +78,7 @@ export function AppProvider({ children }) {
     maxMarketExposure: 1000,
     maxOpenOrders: 10,
     maxUnmatchedOrders: 10,
-    maxTradesPerMarket: 5,
+    maxTradesPerMarket: 1,
     maxTradesPerRunner: 1,
     maxTradesPerDay: 50,
 
