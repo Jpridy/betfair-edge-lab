@@ -78,7 +78,7 @@ export function AppProvider({ children }) {
     maxMarketExposure: 1000,
     maxOpenOrders: 10,
     maxUnmatchedOrders: 10,
-    maxTradesPerMarket: 1,
+    maxTradesPerMarket: 5,
     maxTradesPerRunner: 1,
     maxTradesPerDay: 50,
 
@@ -924,6 +924,16 @@ export function AppProvider({ children }) {
 
           for (const candidateStrategyName of enabled) {
             const candidateStrategy = s.strategyLibrary?.find(sl => sl.name === candidateStrategyName);
+
+            // 1 trade per strategy per market — skip if this strategy already
+            // has an open order on this market
+            const strategyMarketOpenCount = s.paperOrders.filter(o =>
+              (o.marketId === candidateMarket.id || o.betfairMarketId === candidateMarket.betfairMarketId) &&
+              o.strategyName === candidateStrategyName &&
+              openStatuses.includes(o.status)
+            ).length;
+            if (strategyMarketOpenCount >= 1) continue;
+
             const isScalping = candidateStrategyName === 'Pre-Off Scalping';
             const runnable = marketRunners
               .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) >= sizeThreshold && (r.bestLaySize || 0) >= sizeThreshold)

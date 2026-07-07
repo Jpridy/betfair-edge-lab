@@ -74,7 +74,7 @@
     },
     "maxTradesPerMarket": {
       "type": "number",
-      "default": 1
+      "default": 5
     },
     "maxTradesPerRunner": {
       "type": "number",
