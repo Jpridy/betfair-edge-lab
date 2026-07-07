@@ -57,14 +57,14 @@ export default function DashboardHome() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Welcome banner */}
-      <div className="flex items-start gap-2.5 rounded-xl border border-chart-3/20 bg-chart-3/5 px-4 py-3 hidden">
-          <Info className="h-4 w-4 text-chart-3 shrink-0 mt-0.5" />
-          <div className="text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground">Betfair Edge Lab — Strategy Validation System.</span>{' '}
-            All trades are <span className="text-chart-1 font-medium">simulated paper trades</span>. No strategy goes live until it passes 200+ settled trades, positive CLV, profit factor &gt; 1.20, and admin review.
-            Start at <Link to="/scanner" className="text-chart-3 hover:underline">Markets</Link>, then flow through <Link to="/bot-control" className="text-chart-3 hover:underline">Bot</Link> → <Link to="/paper-trading" className="text-chart-3 hover:underline">Paper Orders</Link> → <Link to="/performance-analytics" className="text-chart-3 hover:underline">Analytics</Link>.
-          </div>
-      </div>
+      
+
+
+
+
+
+
+      
 
       {/* Hero */}
       <DashboardHero />
