@@ -11,7 +11,7 @@ const AppContext = createContext(null);
 
 const DEFAULT_BOT_SETTINGS = {
   scanIntervalSeconds: 30,
-  selectedStrategies: ['Value Bet', 'Pre-Off Scalping', 'Steam/Drift'],
+  selectedStrategies: ['Featherless AI Value Decision Engine'],
   autoPaperTradingEnabled: true,
   liveTradingLocked: true,
   liveTradingEnabled: false,
