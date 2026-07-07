@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,7 +8,7 @@ import { base44 } from '@/api/base44Client';
 
 export default function FeatherlessAIDecisionPanel() {
   const { markets, runners, settings, bankrollStats, featherlessSettings, addPaperOrder, addAuditLog, aiDecisions } = useApp();
-  const [selectedMarketId, setSelectedMarketId] = useState(markets[0]?.id || '');
+  const [selectedMarketId, setSelectedMarketId] = useState('');
   const [analysing, setAnalysing] = useState(false);
   const [error, setError] = useState(null);
   const [latestDecision, setLatestDecision] = useState(null);
@@ -17,6 +17,16 @@ export default function FeatherlessAIDecisionPanel() {
     m.status === 'OPEN' && !m.inPlay &&
     runners.some(r => (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE' && r.bestBackPrice > 0)
   );
+
+  // Auto-select the first eligible market when markets load or when the
+  // currently selected market is no longer in the eligible list.
+  useEffect(() => {
+    if (eligibleMarkets.length === 0) return;
+    const stillEligible = eligibleMarkets.some(m => m.id === selectedMarketId);
+    if (!stillEligible) {
+      setSelectedMarketId(eligibleMarkets[0].id);
+    }
+  }, [eligibleMarkets, selectedMarketId]);
 
   const selectedMarket = markets.find(m => m.id === selectedMarketId) || eligibleMarkets[0];
   const marketRunners = runners.filter(r => (r.marketId === selectedMarket?.id || r.marketId === selectedMarket?.betfairMarketId) && r.status === 'ACTIVE');

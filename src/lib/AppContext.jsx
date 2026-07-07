@@ -214,7 +214,7 @@ export function AppProvider({ children }) {
   // ── Featherless AI ──
   const [featherlessSettings, setFeatherlessSettings] = useState({
     enabled: false,
-    modelName: 'Qwen/Qwen2.5-7B-Instruct',
+    modelName: 'meta-llama/Llama-3.3-70B-Instruct',
     temperature: 0.1,
     maxTokens: 2000,
     timeoutSeconds: 60,
