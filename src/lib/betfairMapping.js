@@ -264,7 +264,7 @@ export function mapBetfairRunner(runnerMeta, runnerBook) {
     totalMatched: runnerBook?.totalMatched || 0,
     availableToBack: runnerBook?.ex?.availableToBack || [],
     availableToLay: runnerBook?.ex?.availableToLay || [],
-    tradedVolume: runnerBook?.tradedVolume || [],
+    tradedVolumeByPrice: runnerBook?.tradedVolume || [],
 
     // ── Derived Fields ──
     bestBackPrice,
@@ -273,6 +273,7 @@ export function mapBetfairRunner(runnerMeta, runnerBook) {
     bestLaySize: bestLay?.size || 0,
     lastTradedPrice: runnerBook?.lastPriceTraded || 0,
     tradedVolume: runnerBook?.totalMatched || 0,
+    tradedVolumeAmount: runnerBook?.totalMatched || 0,
     impliedProbability: bestBackPrice > 0 ? (1 / bestBackPrice) * 100 : 0,
     favouriteRank: 0,
     isFavourite: false,

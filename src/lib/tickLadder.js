@@ -187,14 +187,18 @@ export function calculateScalpTargetPrice(entryPrice, ticks, side) {
  */
 export function calculateScalpProfit(entryPrice, exitPrice, stake, side) {
   if (side === 'BACK') {
-    // Back at entryPrice, lay at exitPrice (lower)
+    // Back at entryPrice, lay at exitPrice (lower) to close.
+    // Equalizing stake: layStake = stake * entryPrice / exitPrice
+    // Profit (either outcome) = layStake - stake = stake * (entryPrice - exitPrice) / exitPrice
     const layStake = (stake * entryPrice) / exitPrice;
-    const profit = stake * entryPrice - layStake * exitPrice;
+    const profit = layStake - stake;
     return Math.round(profit * 100) / 100;
   } else {
-    // Lay at entryPrice, back at exitPrice (higher)
+    // Lay at entryPrice, back at exitPrice (higher) to close.
+    // Equalizing stake: backStake = stake * entryPrice / exitPrice
+    // Profit (either outcome) = stake - backStake = stake * (exitPrice - entryPrice) / exitPrice
     const backStake = (stake * entryPrice) / exitPrice;
-    const profit = backStake * exitPrice - stake * entryPrice;
+    const profit = stake - backStake;
     return Math.round(profit * 100) / 100;
   }
 }

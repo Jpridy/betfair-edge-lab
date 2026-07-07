@@ -62,9 +62,20 @@ export function createSignal(strategyName, market, runner, settings, formData = 
   const formClassification = classifyFormData(raceFormProfile);
   const dataSource = formData?.data_source || formClassification.dataSource;
 
+  // Determine side first so odds match the side
+  let side;
+  if (strategyName === 'Fav/Outsider') {
+    side = runner.isFavourite ? 'BACK' : 'LAY';
+  } else if (strategyName === 'Pre-Off Scalping') {
+    side = 'BACK';
+  } else if (strategyName === 'Steam/Drift') {
+    side = Math.random() > 0.5 ? 'BACK' : 'LAY';
+  } else {
+    side = 'BACK';
+  }
+
   // Use best back price for BACK signals, best lay for LAY
-  const isBack = strategyName !== 'Fav/Outsider' ? true : runner.isFavourite;
-  const odds = isBack
+  const odds = side === 'BACK'
     ? (runner.bestBackPrice || runner.lastTradedPrice || 3.0)
     : (runner.bestLayPrice || runner.lastTradedPrice || 3.0);
 
@@ -90,20 +101,6 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     settings.maxStake || 500
   );
   
-  // Side logic per strategy
-  let side;
-  if (strategyName === 'Fav/Outsider') {
-    side = runner.isFavourite ? 'BACK' : 'LAY';
-  } else if (strategyName === 'Pre-Off Scalping') {
-    side = 'BACK'; // Scalping enters with BACK, exits with LAY
-  } else if (strategyName === 'Steam/Drift') {
-    // Steam = BACK (odds shortening), Drift = LAY (odds lengthening)
-    side = Math.random() > 0.5 ? 'BACK' : 'LAY';
-  } else {
-    // Value Bet: BACK only unless manually expanded
-    side = 'BACK';
-  }
-
   // Calculate CLV estimate
   const clvEstimate = (Math.random() - 0.3) * 4; // -1.2% to +2.8%
 
@@ -299,9 +296,11 @@ export function settleOrder(order, market, settings, outcome = null) {
       net = gross - commission;
     }
     
-    // Calculate CLV
+    // Calculate CLV — for BACK, positive CLV means odds shortened (good).
+    // For LAY, positive CLV means odds drifted (good), so invert the sign.
     const closingOdds = order.matchedOdds * (0.95 + Math.random() * 0.1);
-    const clv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
+    const rawClv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
+    const clv = order.side === 'LAY' ? -rawClv : rawClv;
     
     return {
       ...order,
@@ -333,7 +332,8 @@ export function settleOrder(order, market, settings, outcome = null) {
     }
     
     const closingOdds = order.matchedOdds * (0.95 + Math.random() * 0.1);
-    const clv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
+    const rawClv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
+    const clv = order.side === 'LAY' ? -rawClv : rawClv;
     
     return {
       ...order,

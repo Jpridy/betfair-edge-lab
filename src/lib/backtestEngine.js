@@ -183,7 +183,7 @@ function simulateFavOutsiderSignal(market, runner, settings) {
   if (market.numberOfRunners > 5 && !runner.isFavourite && !runner.isOutsider) return null;
 
   const isFav = runner.isFavourite;
-  const odds = isFav ? runner.bestLayPrice : runner.bestBackPrice;
+  const odds = isFav ? runner.bestBackPrice : runner.bestLayPrice;
   const baseProb = impliedProb(odds);
   // Fav/Outsider: model favours backing favourites or laying outsiders
   const modelProb = isFav
