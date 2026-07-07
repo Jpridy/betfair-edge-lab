@@ -158,7 +158,7 @@ export class BetfairStreamClient {
       marketFilter: filter,
       marketDataFilter: {
         ladderLevels: 1,
-        fields: ['EX_BEST_OFFERS', 'EX_TRADED_VOL', 'EX_LTP'],
+        fields: ['EX_BEST_OFFERS', 'EX_TRADED_VOL', 'EX_LTP', 'EX_MARKET_DEF'],
       },
     });
   }

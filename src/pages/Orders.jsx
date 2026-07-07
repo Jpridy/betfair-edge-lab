@@ -229,7 +229,7 @@ export default function Orders() {
                 </TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.matchedStake || o.requestedStake || 0}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${(o.matchedStake || o.requestedStake || 0).toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">
                   ${(o.side === 'LAY' ? ((o.matchedStake || o.requestedStake || 0) * ((o.matchedOdds || o.requestedOdds || 0) - 1)) : (o.matchedStake || o.requestedStake || 0)).toFixed(2)}
                 </TableCell>
