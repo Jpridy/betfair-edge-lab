@@ -1038,11 +1038,13 @@ export function AppProvider({ children }) {
                 steps[4].reason = `AI error: ${err.message}`;
                 notes.push(steps[4].reason);
                 errors = 1;
-                // 401 = user session expired — stop the bot so it doesn't
-                // keep failing every cycle. User needs to re-login.
+                // 401 = user session token expired. The SDK captures the token
+                // at page load and can't refresh it — a hard redirect to login
+                // is the only way to get a fresh token.
                 if (err.message?.includes('401')) {
                   stopBot();
-                  addAuditLog('Bot Stopped — Session Expired', 'system', 'critical', 'User session token expired. Bot stopped to prevent repeated 401 errors. Please re-login.');
+                  addAuditLog('Bot Stopped — Session Expired', 'system', 'critical', 'User session token expired. Redirecting to login for a fresh token.');
+                  setTimeout(() => { window.location.href = '/login'; }, 1500);
                 }
               }
             } else {
