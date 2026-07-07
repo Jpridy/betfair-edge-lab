@@ -987,7 +987,8 @@ export function AppProvider({ children }) {
                 const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
                 if (!s.apiConnected && pending.length > 0 && Math.random() > 0.5) {
                   const toSettle = pending[0];
-                  const settled = settleOrder(toSettle, market, s.settings);
+                  const orderMarket = s.markets.find(m => m.id === toSettle.marketId || m.betfairMarketId === toSettle.betfairMarketId) || market;
+                  const settled = settleOrder(toSettle, orderMarket, s.settings);
                   setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
                   base44.entities.PaperOrder.update(toSettle.id, settled).catch(() => {});
                   setBankrollStats(prev => ({
@@ -1001,6 +1002,24 @@ export function AppProvider({ children }) {
                     losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
                   }));
                   setBotState(prev => ({ ...prev, botPLToday: prev.botPLToday + settled.netProfit }));
+                  // Auto-update strategy stats after settlement
+                  setStrategyStats(prevStats => prevStats.map(stat => {
+                    if (stat.strategyName !== settled.strategyName) return stat;
+                    const allSettled = s.paperOrders.filter(o => o.status === 'settled' && o.strategyName === stat.strategyName);
+                    const wins = allSettled.filter(o => o.result === 'won').length;
+                    const losses = allSettled.filter(o => o.result === 'lost').length;
+                    const totalStake = allSettled.reduce((sum, o) => sum + (o.matchedStake || o.matched_size || 0), 0);
+                    const netProfit = allSettled.reduce((sum, o) => sum + (o.netProfit || 0), 0);
+                    return {
+                      ...stat,
+                      totalPaperOrders: allSettled.length,
+                      wins, losses,
+                      strikeRate: allSettled.length > 0 ? (wins / allSettled.length) * 100 : 0,
+                      totalStake, netProfit,
+                      roi: totalStake > 0 ? (netProfit / totalStake) * 100 : 0,
+                      updatedAt: new Date().toISOString(),
+                    };
+                  }));
                   addToBotActivity('Paper order settled', `${settled.strategyName} on ${settled.runnerName} — ${settled.result.toUpperCase()} ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)}`);
                   addAuditLog('Paper Order Settled', 'order', 'info', `${settled.runnerName} ${settled.result.toUpperCase()} — Net $${settled.netProfit.toFixed(2)} (commission $${settled.commission?.toFixed(2)} at ${(settled.commissionRateUsed * 100).toFixed(1)}%)`);
                 }
@@ -1188,6 +1207,24 @@ export function AppProvider({ children }) {
           }));
           addAuditLog('Paper Order Settled (Live Result)', 'order', 'info',
             `${settled.runnerName} ${settled.result.toUpperCase()} — Net ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)} (${venue || ''} ${marketName || ''})`);
+          // Auto-update strategy stats after live settlement
+          setStrategyStats(prevStats => prevStats.map(stat => {
+            if (stat.strategyName !== settled.strategyName) return stat;
+            const allSettled = s.paperOrders.filter(o => o.status === 'settled' && o.strategyName === stat.strategyName);
+            const wins = allSettled.filter(o => o.result === 'won').length;
+            const losses = allSettled.filter(o => o.result === 'lost').length;
+            const totalStake = allSettled.reduce((sum, o) => sum + (o.matchedStake || o.matched_size || 0), 0);
+            const netProfit = allSettled.reduce((sum, o) => sum + (o.netProfit || 0), 0);
+            return {
+              ...stat,
+              totalPaperOrders: allSettled.length,
+              wins, losses,
+              strikeRate: allSettled.length > 0 ? (wins / allSettled.length) * 100 : 0,
+              totalStake, netProfit,
+              roi: totalStake > 0 ? (netProfit / totalStake) * 100 : 0,
+              updatedAt: new Date().toISOString(),
+            };
+          }));
           addToBotActivity('Paper order settled (live)', `${settled.runnerName} ${settled.result.toUpperCase()} — ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)}`);
         }
       },

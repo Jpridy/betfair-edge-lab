@@ -19,7 +19,7 @@ export default function FeatherlessAIDecisionPanel() {
   );
 
   const selectedMarket = markets.find(m => m.id === selectedMarketId) || eligibleMarkets[0];
-  const marketRunners = runners.filter(r => r.marketId === selectedMarketId && r.status === 'ACTIVE');
+  const marketRunners = runners.filter(r => (r.marketId === selectedMarket?.id || r.marketId === selectedMarket?.betfairMarketId) && r.status === 'ACTIVE');
 
   const handleAnalyse = async () => {
     if (!selectedMarket) return;

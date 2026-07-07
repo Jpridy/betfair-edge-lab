@@ -44,7 +44,7 @@ export default function PaperTrading() {
 
   const handleSubmit = () => {
     if (!form.runnerId || !selectedRunner) return;
-    if (emergencyStop || mode === 'live') return;
+    if (emergencyStop || mode === 'live_locked') return;
 
     // Risk checks
     const riskChecks = [];
@@ -120,7 +120,7 @@ export default function PaperTrading() {
     equity: startingBankroll + paperOrders.slice(0, i + 1).reduce((sum, p) => sum + (p.netProfit || 0), 0),
   }));
 
-  const openOrders = paperOrders.filter(o => o.result === 'pending');
+  const openOrders = paperOrders.filter(o => ['pending', 'executable', 'unmatched', 'partially_matched'].includes(o.status));
   const settledOrders = paperOrders.filter(o => o.result === 'won' || o.result === 'lost');
 
   const handleCancelUnmatched = () => {
