@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { fetchBetfairMarkets } from '@/lib/betfairApi';
+import { createBetfairStream } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
@@ -1107,9 +1107,11 @@ export function AppProvider({ children }) {
     return () => clearInterval(timer);
   }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
 
-  // ── Betfair Stream API — real-time market data when connected ──
-  // In live mode, ONLY API data is used for all numbers.
-  // Uses WebSocket (bypasses CORS + WAF) to stream live market/runner data.
+  // ── Betfair Stream API — real-time market data via WebSocket ──
+  // Connects through the Cloudflare Worker's TCP bridge to
+  // stream-api.betfair.com:443 (raw TCP, bypasses Betfair's HTTP WAF
+  // which 403-blocks all server-side/edge HTTP requests).
+  // In live mode, ONLY stream data is used for all numbers.
   // Demo data is cleared immediately on connect; stream populates with real data.
   useEffect(() => {
     // Disconnect existing stream
@@ -1125,108 +1127,120 @@ export function AppProvider({ children }) {
       return;
     }
 
-    // Connected — clear demo data immediately so live mode shows ONLY API data
+    // Connected — clear demo data immediately so live mode shows ONLY stream data
     setMarkets([]);
     setRunners([]);
-    setBetfairConnection(prev => ({ ...prev, dataFresh: true, loginStatus: 'connected', sessionTokenStatus: 'connected', streamApiEnabled: false, streamConnectionStatus: 'connecting' }));
+    setBetfairConnection(prev => ({
+      ...prev,
+      dataFresh: true,
+      loginStatus: 'connected',
+      sessionTokenStatus: 'connected',
+      streamApiEnabled: true,
+      streamConnectionStatus: 'connecting',
+    }));
 
     if (!betfairSessionToken) return;
 
     let cancelled = false;
-    let pollTimer = null;
 
-    // Use REST API polling as the primary data source.
-    // The WebSocket stream bridge through the Cloudflare Worker is unreliable
-    // (TCP socket to Betfair drops after connecting). REST polling every 5s
-    // gives fresh enough data for a bot that scans every 10s.
-    const poll = async () => {
-      if (cancelled) return;
-      try {
-        const result = await fetchBetfairMarkets(betfairSessionToken);
+    createBetfairStream(betfairSessionToken, {
+      onMarketsUpdate: (updatedMarkets, updatedRunners) => {
         if (cancelled) return;
-        if (result.status === 'success') {
-          setMarkets(result.markets);
-          setRunners(result.runners);
-          setBetfairConnection(prev => ({
-            ...prev,
-            lastMarketSyncTime: new Date().toISOString(),
-            dataFresh: true,
-            streamConnectionStatus: 'polling',
-            loginStatus: 'connected',
-            sessionTokenStatus: 'connected',
-          }));
-
-          // Check for settled markets
-          const s = stateRef.current;
-          const settledMarketIds = new Set();
-          const currentMarketIds = new Set(result.markets.map(m => m.betfairMarketId));
-          for (const order of s.paperOrders) {
-            if (order.result === 'pending' && !currentMarketIds.has(order.betfairMarketId || order.marketId)) {
-              settledMarketIds.add(order.betfairMarketId || order.marketId);
-            }
-          }
-          // Settle orders whose markets have disappeared (closed/settled)
-          for (const order of s.paperOrders) {
-            if (order.result !== 'pending') continue;
-            const orderMarketId = order.betfairMarketId || order.marketId;
-            if (!currentMarketIds.has(orderMarketId)) {
-              const market = result.markets.find(m => m.betfairMarketId === orderMarketId) || { venue: order.venue, marketName: order.marketName };
-              if (order.status !== 'matched' && order.status !== 'partially_matched') {
-                const lapsed = {
-                  ...order,
-                  status: 'lapsed',
-                  result: 'void',
-                  lapse_reason: 'Market closed — order was not matched',
-                  settled_date: new Date().toISOString(),
-                  remaining_size: 0,
-                  netProfit: 0,
-                  grossProfit: 0,
-                  commission: 0,
-                };
-                setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
-                base44.entities.PaperOrder.update(order.id, lapsed).catch(() => {});
-                addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — unmatched at market close (${order.venue || ''} ${order.marketName || ''})`);
-              } else {
-                // Can't determine winner from REST polling — settle as void for unmatched
-                // (Live settlement requires the stream's winner data)
-                const lapsed = {
-                  ...order,
-                  status: 'lapsed',
-                  result: 'void',
-                  lapse_reason: 'Market closed during REST polling — winner unknown',
-                  settled_date: new Date().toISOString(),
-                  remaining_size: 0,
-                  netProfit: 0,
-                  grossProfit: 0,
-                  commission: 0,
-                };
-                setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
-                base44.entities.PaperOrder.update(order.id, lapsed).catch(() => {});
-                addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — market closed (winner unknown via REST) (${order.venue || ''} ${order.marketName || ''})`);
-              }
-            }
-          }
-        } else if (result.sessionExpired) {
+        setMarkets(updatedMarkets);
+        setRunners(updatedRunners);
+        setBetfairConnection(prev => ({
+          ...prev,
+          lastMarketSyncTime: new Date().toISOString(),
+          dataFresh: true,
+          streamConnectionStatus: 'connected',
+          loginStatus: 'connected',
+          sessionTokenStatus: 'connected',
+        }));
+      },
+      onStatusChange: (status) => {
+        if (cancelled) return;
+        if (status === 'session_expired') {
           setApiConnected(false);
           setBetfairSessionToken(null);
-          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Session token expired. Please reconnect your Betfair account.');
-        } else if (result.status === 'error') {
-          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
-          addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${result.error}`);
+          addAuditLog('Betfair Session Expired', 'api', 'warning', 'Stream session expired. Please reconnect your Betfair account.');
+        } else {
+          setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: status }));
         }
-      } catch (err) {
-        setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
-        addAuditLog('Market Poll Failed', 'api', 'error', `REST poll error: ${err.message || err}`);
-      }
-    };
+      },
+      onError: (message) => {
+        if (cancelled) return;
+        // Worker diagnostics start with [worker] — log as info, not warning
+        if (message.startsWith('[worker]')) {
+          addAuditLog('Stream Diagnostics', 'api', 'info', message);
+        } else {
+          addAuditLog('Stream Error', 'api', 'warning', message);
+        }
+      },
+      onMarketSettled: ({ marketId, winners, venue, marketName }) => {
+        if (cancelled) return;
+        const s = stateRef.current;
+        for (const order of s.paperOrders) {
+          if (order.result !== 'pending') continue;
+          const orderMarketId = order.betfairMarketId || order.marketId;
+          if (orderMarketId !== marketId) continue;
 
-    poll();
-    pollTimer = setInterval(poll, 5000);
-    addAuditLog('Betfair REST Polling Started', 'api', 'info', 'Polling Betfair REST API (server-side) every 5 seconds for live market data');
+          // Unmatched orders lapse at market close
+          if (order.status !== 'matched' && order.status !== 'partially_matched') {
+            const lapsed = {
+              ...order,
+              status: 'lapsed',
+              result: 'void',
+              lapse_reason: 'Market closed — order was not matched',
+              settled_date: new Date().toISOString(),
+              remaining_size: 0,
+              netProfit: 0,
+              grossProfit: 0,
+              commission: 0,
+            };
+            setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
+            base44.entities.PaperOrder.update(order.id, lapsed).catch(() => {});
+            addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — unmatched at market close (${venue || ''} ${marketName || ''})`);
+            continue;
+          }
+
+          // Matched orders settle as won/lost based on stream winner data
+          const orderSelectionId = String(order.selectionId || order.betfairSelectionId);
+          const isWinner = winners.includes(orderSelectionId);
+          const settled = settleOrder(order, { venue, marketName }, s.settings, isWinner ? 'won' : 'lost');
+          setPaperOrders(prev => prev.map(o => o.id === order.id ? settled : o));
+          base44.entities.PaperOrder.update(order.id, settled).catch(() => {});
+          setBankrollStats(prev => ({
+            ...prev,
+            bankroll: prev.bankroll + settled.netProfit,
+            todayPL: prev.todayPL + settled.netProfit,
+            totalPL: prev.totalPL + settled.netProfit,
+            available: prev.available + settled.netProfit,
+            commissionPaid: prev.commissionPaid + (settled.commission || 0),
+            wins: settled.result === 'won' ? prev.wins + 1 : prev.wins,
+            losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
+          }));
+          addAuditLog('Paper Order Settled', 'order', 'info', `${order.runnerName} ${settled.result.toUpperCase()} — Net $${settled.netProfit.toFixed(2)} (${venue || ''} ${marketName || ''})`);
+        }
+      },
+    }).then(({ client }) => {
+      if (cancelled) {
+        client.disconnect();
+        return;
+      }
+      streamClientRef.current = client;
+      addAuditLog('Betfair Stream Connecting', 'api', 'info', 'WebSocket stream connecting to Betfair Stream API via TCP bridge');
+    }).catch((err) => {
+      if (cancelled) return;
+      addAuditLog('Stream Connection Failed', 'api', 'error', `Failed to establish stream: ${err.message}`);
+      setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
+    });
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearInterval(pollTimer);
+      if (streamClientRef.current) {
+        streamClientRef.current.disconnect();
+        streamClientRef.current = null;
+      }
     };
   }, [apiConnected, betfairSessionToken]);
 
