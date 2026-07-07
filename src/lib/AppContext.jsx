@@ -214,7 +214,7 @@ export function AppProvider({ children }) {
   // ── Featherless AI ──
   const [featherlessSettings, setFeatherlessSettings] = useState({
     enabled: false,
-    modelName: 'deepseek-ai/DeepSeek-V3.2',
+    modelName: 'deepseek-ai/DeepSeek-V4-Pro',
     temperature: 0.1,
     maxTokens: 4000,
     timeoutSeconds: 60,
