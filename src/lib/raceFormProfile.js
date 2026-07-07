@@ -48,7 +48,7 @@ export function extractRaceFormProfile(runnerMetadata, runnerName, selectionId) 
     selectionId: String(selectionId || ''),
     // Betfair RUNNER_METADATA fields (all optional)
     clothNumber: runnerMetadata.CLOTH_NUMBER ?? runnerMetadata.clothNumber ?? null,
-    sortPriority: runnerMetadata.CLOTH_NUMBER ?? runnerMetadata.sortPriority ?? null,
+    sortPriority: runnerMetadata.SORT_PRIORITY ?? runnerMetadata.sortPriority ?? null,
     age: runnerMetadata.AGE ?? runnerMetadata.age ?? null,
     sex: runnerMetadata.SEX_TYPE ?? runnerMetadata.sex ?? null,
     jockeyName: runnerMetadata.JOCKEY_NAME ?? runnerMetadata.jockeyName ?? null,

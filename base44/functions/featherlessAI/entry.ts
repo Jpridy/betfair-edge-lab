@@ -176,7 +176,7 @@ const RESPONSE_SCHEMA = {
   required: ['race_decision', 'selected_bet', 'most_likely_winner', 'runner_assessments', 'decision_checks', 'recommended_app_action']
 };
 
-function buildRaceObject(market, runners, settings, strategySettings) {
+function buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles) {
   const marketRunners = runners.filter(r => r.marketId === market.id || r.marketId === market.betfairMarketId);
   const startTime = market.startTime || market.marketStartTime;
   const timeBeforeJump = startTime ? Math.round((new Date(startTime).getTime() - Date.now()) / 1000) : null;
@@ -184,20 +184,50 @@ function buildRaceObject(market, runners, settings, strategySettings) {
 
   const runnerObjects = marketRunners
     .filter(r => r.status === 'ACTIVE')
-    .map((r, idx) => ({
-      runner_name: r.runnerName,
-      selection_id: String(r.betfairSelectionId || r.selectionId || ''),
-      status: r.status || 'ACTIVE',
-      betfair_back_price: r.bestBackPrice || 0,
-      betfair_lay_price: r.bestLayPrice || 0,
-      betfair_back_size: r.bestBackSize || 0,
-      betfair_lay_size: r.bestLaySize || 0,
-      betfair_traded_volume: r.tradedVolumeAmount || r.tradedVolume || r.totalMatched || 0,
-      back_lay_spread: r.spreadTicks || 0,
-      market_rank: r.favouriteRank || idx + 1,
-      betfair_probability: r.bestBackPrice > 0 ? (1 / r.bestBackPrice) * 100 : 0,
-      runner_match_confidence: 1.0
-    }));
+    .map((r, idx) => {
+      const formProfile = raceFormProfiles?.find(fp =>
+        String(fp.selectionId) === String(r.betfairSelectionId || r.selectionId) ||
+        fp.runnerName === r.runnerName
+      );
+
+      return {
+        runner_name: r.runnerName,
+        selection_id: String(r.betfairSelectionId || r.selectionId || ''),
+        status: r.status || 'ACTIVE',
+        betfair_back_price: r.bestBackPrice || 0,
+        betfair_lay_price: r.bestLayPrice || 0,
+        betfair_back_size: r.bestBackSize || 0,
+        betfair_lay_size: r.bestLaySize || 0,
+        betfair_traded_volume: r.tradedVolumeAmount || r.tradedVolume || r.totalMatched || 0,
+        back_lay_spread: r.spreadTicks || 0,
+        market_rank: r.favouriteRank || idx + 1,
+        betfair_probability: r.bestBackPrice > 0 ? (1 / r.bestBackPrice) * 100 : 0,
+        runner_match_confidence: 1.0,
+        betfair_metadata: formProfile ? {
+          age: formProfile.age ?? null,
+          sex: formProfile.sex ?? null,
+          jockey_name: formProfile.jockeyName ?? null,
+          trainer_name: formProfile.trainerName ?? null,
+          stall_draw: formProfile.stallDraw ?? null,
+          weight_value: formProfile.weightValue ?? null,
+          official_rating: formProfile.officialRating ?? null,
+          adjusted_rating: formProfile.adjustedRating ?? null,
+          recent_form: formProfile.recentForm ?? null,
+          days_since_last_run: formProfile.daysSinceLastRun ?? null,
+        } : null,
+        external_form: formProfile?.externalFormData ? {
+          race_distance: formProfile.externalFormData.raceDistance ?? null,
+          race_class: formProfile.externalFormData.raceClass ?? null,
+          track_condition: formProfile.externalFormData.trackCondition ?? null,
+          barrier: formProfile.externalFormData.barrier ?? null,
+          previous_starts: formProfile.externalFormData.previousStarts ?? null,
+          jockey_strike_rate: formProfile.externalFormData.jockeyStrikeRate ?? null,
+          trainer_strike_rate: formProfile.externalFormData.trainerStrikeRate ?? null,
+          speed_rating: formProfile.externalFormData.speedRating ?? null,
+          form_rating: formProfile.externalFormData.formRating ?? null,
+        } : null,
+      };
+    });
 
   return {
     race_context: {
@@ -495,7 +525,7 @@ Deno.serve(async (req) => {
     const dataSource = hasFormProfiles
       ? (raceFormProfiles.some(fp => fp.externalFormData) ? 'EXTERNAL_FORM_PLUS_MARKET' : 'BETFAIR_METADATA_PLUS_MARKET')
       : 'MARKET_ONLY';
-    const raceObject = buildRaceObject(market, runners, settings, strategySettings);
+    const raceObject = buildRaceObject(market, runners, settings, strategySettings, raceFormProfiles);
 
     // Build messages
     const messages = [
@@ -609,12 +639,12 @@ Deno.serve(async (req) => {
       confidence: decision.overall_confidence || 0,
       raceRiskLevel: decision.race_risk_level || 'MEDIUM',
       dataQualityScore: decision.data_quality_score || 0,
-      mostLikelyWinner: bet.runner || '',
+      mostLikelyWinner: parsed.most_likely_winner?.runner || bet.runner || '',
       mainReason: bet.reason || decision.summary || decision.primary_no_bet_reason || '',
       risks: bet.risks || [],
-      warnings: [],
-      runnerAssessments: [],
-      decisionChecks: {},
+      warnings: parsed.warnings || [],
+      runnerAssessments: parsed.runner_assessments || [],
+      decisionChecks: parsed.decision_checks || {},
       validationStatus: validation.valid ? 'valid' : 'invalid',
       validationErrors: validation.errors,
       safetyGatePassed: safetyGate.passed,

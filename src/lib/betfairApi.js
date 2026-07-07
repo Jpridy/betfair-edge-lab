@@ -235,7 +235,7 @@ export async function fetchBetfairMarkets(ssoid) {
       const aBook = book.runners?.find(r => r.selectionId === a.selectionId);
       const bBook = book.runners?.find(r => r.selectionId === b.selectionId);
       const aPrice = aBook?.ex?.availableToBack?.[0]?.price || 9999;
-      const bPrice = bBook?.ex?.availableToLay?.[0]?.price || 9999;
+      const bPrice = bBook?.ex?.availableToBack?.[0]?.price || 9999;
       return aPrice - bPrice;
     });
 
