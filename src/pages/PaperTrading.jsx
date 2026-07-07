@@ -16,7 +16,7 @@ import { exportToCSV } from '@/lib/csvExport';
 const ORDER_STATUSES = ['pending', 'executable', 'execution_complete', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'voided', 'settled', 'rejected'];
 
 export default function PaperTrading() {
-  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, mode, emergencyStop, addAuditLog } = useApp();
+  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, mode, emergencyStop, addAuditLog, cancelUnmatchedOrders } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     marketId: markets[0]?.id || '',
@@ -124,7 +124,7 @@ export default function PaperTrading() {
   const settledOrders = paperOrders.filter(o => o.result === 'won' || o.result === 'lost');
 
   const handleCancelUnmatched = () => {
-    addAuditLog('Cancel Unmatched Orders', 'order', 'warning', `Cancelled ${openOrders.length} unmatched/pending paper orders`);
+    cancelUnmatchedOrders();
   };
 
   const handleRecalculate = () => {
