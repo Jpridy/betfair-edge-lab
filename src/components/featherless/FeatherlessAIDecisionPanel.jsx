@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
+import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Brain, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock, Target, Zap, Globe } from 'lucide-react';
+import { Brain, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Globe } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { base44 } from '@/api/base44Client';
 import WebResearchPanel from './WebResearchPanel';
@@ -92,6 +92,11 @@ export default function FeatherlessAIDecisionPanel() {
           );
           if (runner) {
             const stake = decision.recommendedStake || settings.baseStake || 100;
+            // Available size check — use bestBackSize for BACK, bestLaySize for LAY
+            const availableSize = runner.bestBackSize || 0;
+            const matchedStake = Math.min(stake, availableSize);
+            const unmatchedStake = stake - matchedStake;
+            const orderStatus = matchedStake === 0 ? 'unmatched' : unmatchedStake > 0 ? 'partially_matched' : 'matched';
             const order = {
               strategyName: 'Featherless AI Value Decision Engine',
               marketId: selectedMarket.id,
@@ -115,18 +120,18 @@ export default function FeatherlessAIDecisionPanel() {
               paper_mode: true,
               liveMode: false,
               requested_size: stake,
-              matched_size: stake,
-              remaining_size: 0,
-              average_price_matched: runner.bestBackPrice,
+              matched_size: matchedStake,
+              remaining_size: unmatchedStake,
+              average_price_matched: matchedStake > 0 ? runner.bestBackPrice : null,
               requested_price: runner.bestBackPrice,
-              matched_price: runner.bestBackPrice,
+              matched_price: matchedStake > 0 ? runner.bestBackPrice : null,
               placed_date: new Date().toISOString(),
-              matched_date: new Date().toISOString(),
+              matched_date: matchedStake > 0 ? new Date().toISOString() : null,
               requestedOdds: runner.bestBackPrice,
-              matchedOdds: runner.bestBackPrice,
+              matchedOdds: matchedStake > 0 ? runner.bestBackPrice : null,
               requestedStake: stake,
-              matchedStake: stake,
-              status: 'matched',
+              matchedStake: matchedStake,
+              status: orderStatus,
               expectedValue: decision.expectedROI * stake / 100,
               result: 'pending',
               grossProfit: 0,

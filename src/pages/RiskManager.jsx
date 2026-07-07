@@ -74,7 +74,9 @@ export default function RiskManager() {
 
   return (
     <div className="space-y-5">
-      {/* Testing Mode — Disable All Risk Limits */}
+      {/* Admin/Advanced — Disable All Risk Limits (hidden from normal workflow) */}
+      <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3 mb-2">
+        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Admin / Advanced Tools</div>
       <div className={`rounded-lg border-2 p-5 ${settings.riskLimitsDisabled ? 'bg-chart-4/10 border-chart-4' : 'bg-card border-border'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -123,6 +125,7 @@ export default function RiskManager() {
           </div>
         )}
       </div>
+      </div>
 
       {/* Emergency Stop Banner */}
       <div className={`rounded-lg border-2 p-6 ${emergencyStop ? 'bg-chart-5/10 border-chart-5' : 'bg-card border-border'}`}>
@@ -167,7 +170,7 @@ export default function RiskManager() {
 
       {/* Paper vs Live Exposure */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Panel title="Paper Trading Exposure">
+        <Panel title="Paper Exposure">
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Paper Exposure</span>
@@ -186,26 +189,24 @@ export default function RiskManager() {
             </div>
           </div>
         </Panel>
-        <Panel title="Live Trading Exposure">
+        <Panel title="Simulated Funds At Risk">
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Open Live Exposure</span>
+              <span className="text-muted-foreground">Simulated Exposure</span>
               <span className="font-mono font-bold text-chart-5">${(liveExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Live Trading Status</span>
-              <span className="font-mono font-bold">{settings.liveTradingEnabled ? <StatusBadge status="danger">ENABLED</StatusBadge> : <StatusBadge status="ok">DISABLED</StatusBadge>}</span>
+              <span className="text-muted-foreground">Future Live Review</span>
+              <span className="font-mono font-bold"><StatusBadge status="neutral">Disabled — Paper Only</StatusBadge></span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Live Bankroll</span>
-              <span className="font-mono font-bold">${settings.bankroll?.toLocaleString() || '10,000'}</span>
+              <span className="text-muted-foreground">Paper Bankroll</span>
+              <span className="font-mono font-bold">${settings.paperBankroll?.toLocaleString() || '10,000'}</span>
             </div>
             <div className="pt-2 border-t border-border">
               {settings.forcedPaperOnlyMode
-                ? <StatusBadge status="warning">Forced Paper-Only Mode</StatusBadge>
-                : settings.liveTradingEnabled
-                  ? <StatusBadge status="danger">Live Funds At Risk</StatusBadge>
-                  : <StatusBadge status="ok">No Live Exposure</StatusBadge>}
+                ? <StatusBadge status="warning">Paper-Only Mode</StatusBadge>
+                : <StatusBadge status="ok">No Real Funds At Risk</StatusBadge>}
             </div>
           </div>
         </Panel>
@@ -215,7 +216,7 @@ export default function RiskManager() {
       <RiskOverview />
 
       {/* Live Risk Status */}
-      <Panel title="Live Risk Checks — Evaluated Before Every Order">
+      <Panel title="Risk Checks — Evaluated Before Every Paper Order">
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(riskStatus).map(([key, check]) => (
             <div key={key} className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
@@ -236,16 +237,39 @@ export default function RiskManager() {
       <Panel title="Risk Rules — Checked Before Every Order">
         <div className="p-4 space-y-2">
           {RISK_RULES.map(rule => {
-            const active = rule.check && !settings.riskLimitsDisabled;
+            const disabled = settings.riskLimitsDisabled;
+            const active = rule.check && !disabled;
+            // Calculate actual status per rule
+            let status = 'ok';
+            let statusLabel = 'OK';
+            if (disabled) {
+              status = 'neutral'; statusLabel = 'BYPASS';
+            } else if (rule.key === 'dailyLossLimit' || rule.key === 'dailyLossStop') {
+              const lossUsed = bankrollStats.todayPL < 0 ? Math.abs(bankrollStats.todayPL) : 0;
+              const pct = lossUsed / settings.dailyLossLimit;
+              if (pct >= 1) { status = 'danger'; statusLabel = 'BREACHED'; }
+              else if (pct >= 0.8) { status = 'warning'; statusLabel = 'WARNING'; }
+            } else if (rule.key === 'maxOpenOrders') {
+              const openCount = paperOrders.filter(o => ['pending', 'executable', 'unmatched', 'partially_matched', 'matched'].includes(o.status) && o.result === 'pending').length;
+              if (openCount >= settings.maxOpenOrders) { status = 'danger'; statusLabel = 'BREACHED'; }
+              else if (openCount >= settings.maxOpenOrders * 0.8) { status = 'warning'; statusLabel = 'WARNING'; }
+            } else if (rule.key === 'maxMarketExposure') {
+              const exposure = (riskMetrics.paperExposure || 0) + (riskMetrics.liveExposure || 0);
+              if (exposure >= settings.maxMarketExposure) { status = 'danger'; statusLabel = 'BREACHED'; }
+              else if (exposure >= settings.maxMarketExposure * 0.8) { status = 'warning'; statusLabel = 'WARNING'; }
+            }
             return (
               <div key={rule.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                 <div className="flex items-center gap-3">
-                  {active ? <CheckCircle2 className="h-4 w-4 text-chart-1" /> : <XCircle className="h-4 w-4 text-muted-foreground" />}
-                  <span className={`text-sm ${settings.riskLimitsDisabled ? 'text-muted-foreground' : ''}`}>{rule.label}</span>
+                  {disabled ? <XCircle className="h-4 w-4 text-muted-foreground" /> :
+                   status === 'danger' ? <XCircle className="h-4 w-4 text-chart-5" /> :
+                   status === 'warning' ? <AlertTriangle className="h-4 w-4 text-chart-4" /> :
+                   <CheckCircle2 className="h-4 w-4 text-chart-1" />}
+                  <span className={`text-sm ${disabled ? 'text-muted-foreground' : ''}`}>{rule.label}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono text-muted-foreground">{rule.getValue(settings)}</span>
-                  <StatusBadge status={active ? 'ok' : 'neutral'}>{settings.riskLimitsDisabled ? 'BYPASS' : active ? 'OK' : 'FAIL'}</StatusBadge>
+                  <StatusBadge status={status}>{statusLabel}</StatusBadge>
                 </div>
               </div>
             );
@@ -295,7 +319,9 @@ export default function RiskManager() {
               <span className="font-mono font-bold">{bankrollStats.longestLosingStreak}</span>
             </div>
             <div className="pt-2 border-t border-border">
-              <StatusBadge status="ok">Within Limits</StatusBadge>
+              <StatusBadge status={Math.abs(bankrollStats.maxDrawdown || 0) > (settings.bankroll || 10000) * 0.08 ? 'warning' : Math.abs(bankrollStats.maxDrawdown || 0) > (settings.bankroll || 10000) * 0.1 ? 'danger' : 'ok'}>
+                {Math.abs(bankrollStats.maxDrawdown || 0) > (settings.bankroll || 10000) * 0.1 ? 'BREACHED' : Math.abs(bankrollStats.maxDrawdown || 0) > (settings.bankroll || 10000) * 0.08 ? 'WARNING' : 'Within Limits'}
+              </StatusBadge>
             </div>
           </div>
         </Panel>

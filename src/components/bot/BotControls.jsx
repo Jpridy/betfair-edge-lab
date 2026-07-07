@@ -25,7 +25,7 @@ export default function BotControls() {
       color: 'chart-1',
     },
     {
-      label: 'Pause Bot',
+      label: 'Pause Paper Bot',
       helper: 'Stops new paper trades but keeps the dashboard running.',
       icon: Pause,
       onClick: pauseBot,
@@ -33,7 +33,7 @@ export default function BotControls() {
       color: 'chart-4',
     },
     {
-      label: 'Stop Bot',
+      label: 'Stop Paper Bot',
       helper: 'Stops scanning, signals, and paper trading.',
       icon: Square,
       onClick: stopBot,
@@ -87,7 +87,7 @@ export default function BotControls() {
           {emergencyStop && '⚠ Emergency stop is active. All bot activity halted. Clear the emergency stop to resume.'}
           {!emergencyStop && isRunning && '✓ Bot is running — automatically scanning markets, detecting signals, and creating paper orders.'}
           {!emergencyStop && botState.paused && '⏸ Bot is paused — no new paper orders will be created. Markets are still being scanned.'}
-          {!emergencyStop && !botState.running && 'Bot is stopped. Press "Start Paper Bot" to begin automated trading.'}
+          {!emergencyStop && !botState.running && 'Bot is stopped. Press "Start Paper Bot" to begin automated paper trading.'}
         </div>
       </div>
     </Panel>

@@ -17,7 +17,7 @@ function ToggleRow({ label, checked, onChange }) {
 }
 
 export default function StrategyLab() {
-  const { featherlessSettings, setFeatherlessSettings, addAuditLog } = useApp();
+  const { featherlessSettings, updateFeatherlessSettings, addAuditLog } = useApp();
   const [config, setConfig] = useState({
     minConfidence: featherlessSettings?.minConfidence || 75,
     minEdge: featherlessSettings?.minEdge || 5,
@@ -30,9 +30,6 @@ export default function StrategyLab() {
     maxBetsPerRace: 1,
     maxStakePercent: 1,
     stakingMode: featherlessSettings?.stakingMode || 'confidence_weighted_fractional_kelly',
-    enableBookmakerConfirmation: false,
-    enableFormConfirmation: true,
-    enableAIOverride: false,
     paperTradeOnly: featherlessSettings?.paperTradeOnly ?? true,
   });
   const [saved, setSaved] = useState(false);
@@ -43,7 +40,7 @@ export default function StrategyLab() {
   };
 
   const handleSave = () => {
-    setFeatherlessSettings({ ...featherlessSettings, ...config });
+    updateFeatherlessSettings({ ...featherlessSettings, ...config, paperTradeOnly: true, allowLiveHandoff: false });
     addAuditLog('Featherless AI Strategy Updated', 'strategy', 'info', `Min confidence ${config.minConfidence}%, min edge ${config.minEdge}%, min ROI ${config.minExpectedROI}%`);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -53,7 +50,7 @@ export default function StrategyLab() {
     <div className="space-y-5">
       <div className="bg-primary/10 border border-primary/30 rounded-lg p-4 text-xs text-muted-foreground">
         <span className="text-primary font-medium flex items-center gap-1"><Brain className="h-3 w-3" /> Featherless AI Value Decision Engine</span>
-        <span className="mt-1 block">Uses Betfair historical data, form data and live Betfair market data to estimate true runner probabilities, detect value against the exchange price, and paper trade validated bets. This is the only active strategy in the system.</span>
+        <span className="mt-1 block">Uses live Betfair market data to estimate true runner probabilities, detect value against the exchange price, and paper trade validated bets. This is the only active strategy in the system. No external form data or historical data is connected.</span>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Panel title="Strategy Parameters">
@@ -101,10 +98,9 @@ export default function StrategyLab() {
               </div>
             </div>
             <div className="space-y-2 pt-3 border-t border-border">
-              <ToggleRow label="Enable Bookmaker Confirmation" checked={config.enableBookmakerConfirmation} onChange={v => update('enableBookmakerConfirmation', v)} />
-              <ToggleRow label="Enable Form Data Confirmation" checked={config.enableFormConfirmation} onChange={v => update('enableFormConfirmation', v)} />
-              <ToggleRow label="Enable AI Override" checked={config.enableAIOverride} onChange={v => update('enableAIOverride', v)} />
-              <ToggleRow label="Paper Trade Only" checked={config.paperTradeOnly} onChange={v => update('paperTradeOnly', v)} />
+              <ToggleRow label="Paper Trade Only (always on)" checked={true} onChange={() => {}} />
+              <ToggleRow label="Bookmaker Confirmation (not connected)" checked={false} onChange={() => {}} />
+              <ToggleRow label="Form Data Confirmation (not connected)" checked={false} onChange={() => {}} />
             </div>
             <Button className="w-full" onClick={handleSave}>
               {saved ? <><CheckCircle2 className="h-4 w-4" /> Saved!</> : <><Save className="h-4 w-4" /> Save Strategy Settings</>}
@@ -144,8 +140,8 @@ export default function StrategyLab() {
               </div>
             </div>
             <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3 mt-3">
-              <div className="text-xs text-chart-5 font-bold">⚠ Live betting is disabled by default</div>
-              <div className="text-xs text-muted-foreground mt-1">Featherless decides only. The app executes only after all validation passes. Enable live handoff in Settings → AI after sufficient paper trading evidence.</div>
+              <div className="text-xs text-chart-5 font-bold">Paper-only mode</div>
+              <div className="text-xs text-muted-foreground mt-1">Featherless AI decides only. The app executes paper trades only after all validation passes. Future live review is disabled.</div>
             </div>
           </div>
         </Panel>

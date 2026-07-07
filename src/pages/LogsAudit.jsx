@@ -4,7 +4,8 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, XCircle, CheckCircle2 } from 'lucide-react';
+import { Trash2, XCircle, CheckCircle2, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 const CATEGORY_ICONS = {
   api: '🔌',
@@ -21,11 +22,17 @@ export default function LogsAudit() {
   const { auditLogs, clearLogs } = useApp();
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [severityFilter, setSeverityFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const filtered = auditLogs.filter(l => {
     if (categoryFilter !== 'all' && l.category !== categoryFilter) return false;
     if (severityFilter !== 'all' && l.severity !== severityFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const haystack = `${l.action} ${l.details || ''} ${l.reason || ''} ${l.objectName || ''}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
 
@@ -84,6 +91,10 @@ export default function LogsAudit() {
               </SelectContent>
             </Select>
           </div>
+          <div className="relative w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search logs..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9 text-xs" />
+          </div>
           <div className="ml-auto">
             {showClearConfirm ? (
               <div className="flex items-center gap-2">
@@ -104,6 +115,9 @@ export default function LogsAudit() {
         </div>
       </Panel>
 
+      <div className="text-xs text-muted-foreground bg-muted/20 rounded-lg p-2">
+        Clearing logs only removes audit log entries. It does not delete paper orders, settings, or trading history.
+      </div>
       <Panel title={`Audit Log (${filtered.length})`} action={<span className="text-xs text-muted-foreground">Showing before/after values and reasons</span>}>
         <Table>
           <TableHeader>

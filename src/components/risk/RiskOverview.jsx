@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
-import { Wifi, WifiOff, Database, ShieldCheck, AlertTriangle, Globe } from 'lucide-react';
+import { Wifi, WifiOff, Database, ShieldCheck, Globe } from 'lucide-react';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
 
 export default function RiskOverview() {
@@ -16,7 +16,7 @@ export default function RiskOverview() {
   const drawdownPercent = Math.abs(bankrollStats.maxDrawdown) / (bankrollStats.bankroll || 1) * 100;
 
   const globalState = emergencyStop
-    ? { label: 'EMERGENCY STOP', status: 'danger', desc: 'All trading halted' }
+    ? { label: 'EMERGENCY STOP', status: 'danger', desc: 'All paper trading halted' }
     : exposurePercent > 10
     ? { label: 'HIGH EXPOSURE', status: 'warning', desc: 'Open exposure exceeds 10%' }
     : dailyLossUsed > settings.dailyLossLimit * 0.8
@@ -57,7 +57,7 @@ export default function RiskOverview() {
           <div className="flex items-center gap-3">
             {apiConnected ? <Wifi className="h-5 w-5 text-chart-1" /> : <WifiOff className="h-5 w-5 text-chart-4" />}
             <div>
-              <div className="text-xs text-muted-foreground">Betfair API</div>
+              <div className="text-xs text-muted-foreground">Betfair Data</div>
               <div className={`text-sm font-bold ${apiConnected ? 'text-chart-1' : 'text-chart-4'}`}>
                 {apiConnected ? 'Connected' : appMode === 'paper' ? 'Paper (No Data)' : 'Disconnected'}
               </div>
@@ -68,7 +68,7 @@ export default function RiskOverview() {
             <div>
               <div className="text-xs text-muted-foreground">Data Feed</div>
               <div className={`text-sm font-bold ${apiConnected ? 'text-chart-1' : 'text-chart-4'}`}>
-                {apiConnected ? 'Live' : 'Stale (Demo)'}
+                {apiConnected ? 'Data connection OK' : 'Stale (Demo)'}
               </div>
             </div>
           </div>

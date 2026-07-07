@@ -37,6 +37,12 @@ export default function MarketScanner() {
 
   const filtered = useMemo(() => {
     return markets.filter(m => {
+      // eventType filter — matches market.eventType or eventTypeName
+      if (filters.eventType !== 'all') {
+        const et = (m.eventType || m.eventTypeName || '').toLowerCase();
+        if (filters.eventType === 'Horse Racing' && !et.includes('horse') && !et.includes('race')) return false;
+        if (filters.eventType === 'Greyhounds' && !et.includes('greyhound') && !et.includes('dog') && !et.includes('grey')) return false;
+      }
       if (filters.country !== 'all' && m.country !== filters.country) return false;
       if (filters.venue !== 'all' && m.venue !== filters.venue) return false;
       if (filters.marketType !== 'all' && m.marketType !== filters.marketType) return false;
@@ -44,6 +50,18 @@ export default function MarketScanner() {
       if (filters.placeOnly && m.marketType !== 'PLACE') return false;
       if (filters.preRaceOnly && m.inPlay) return false;
       if (filters.minVolume > 0 && m.totalMatched < filters.minVolume) return false;
+      // minLiquidity filter — uses totalMatched as liquidity proxy
+      if (filters.minLiquidity > 0 && m.totalMatched < filters.minLiquidity) return false;
+      // maxSpread filter — checks best back/lay spread across runners
+      if (filters.maxSpread < 100) {
+        const marketRunners = runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
+        if (marketRunners.length > 0) {
+          const bestBack = Math.min(...marketRunners.map(r => r.bestBackPrice || 999));
+          const bestLay = Math.max(...marketRunners.map(r => r.bestLayPrice || 0));
+          const spread = bestLay - bestBack;
+          if (spread > filters.maxSpread) return false;
+        }
+      }
       if (filters.exactlyTwo && m.numberOfRunners !== 2) return false;
       if (filters.numRunners > 0 && m.numberOfRunners !== filters.numRunners) return false;
       const now = new Date();
@@ -52,15 +70,18 @@ export default function MarketScanner() {
       if (secsToStart > filters.timeToStart) return false;
       return true;
     });
-  }, [markets, filters]);
+  }, [markets, filters, runners]);
 
   const getRunnerData = (marketId) => {
     const marketRunners = runners.filter(r => r.marketId === marketId);
     if (marketRunners.length === 0) return { bestBack: null, bestLay: null, spread: null, spreadTicks: 0 };
-    const bestBack = Math.min(...marketRunners.map(r => r.bestBackPrice));
-    const bestLay = Math.max(...marketRunners.map(r => r.bestLayPrice));
-    const spreadTicks = calculateSpreadTicks(bestBack, bestLay);
-    return { bestBack, bestLay, spread: bestLay - bestBack, spreadTicks };
+    const bestBackRange = marketRunners.map(r => r.bestBackPrice).filter(p => p > 0);
+    const bestLayRange = marketRunners.map(r => r.bestLayPrice).filter(p => p > 0);
+    const bestBack = bestBackRange.length > 0 ? Math.min(...bestBackRange) : null;
+    const bestLay = bestLayRange.length > 0 ? Math.max(...bestLayRange) : null;
+    const spreadTicks = bestBack && bestLay ? calculateSpreadTicks(bestBack, bestLay) : 0;
+    const favourite = marketRunners.sort((a, b) => (a.bestBackPrice || 999) - (b.bestBackPrice || 999))[0];
+    return { bestBack, bestLay, spread: bestBack && bestLay ? bestLay - bestBack : null, spreadTicks, favourite, runnerCount: marketRunners.length };
   };
 
   const getTimeToStart = (startTime) => {
@@ -152,7 +173,7 @@ export default function MarketScanner() {
             </Select>
           </div>
           <div>
-            <Label className="text-xs">Time to Start (sec)</Label>
+            <Label className="text-xs">Show races starting within (sec)</Label>
             <Input type="number" value={filters.timeToStart} onChange={e => setFilters({...filters, timeToStart: +e.target.value})} className="h-8 mt-1 text-xs" />
           </div>
           <div>
@@ -197,8 +218,9 @@ export default function MarketScanner() {
               <TableHead className="text-xs">Market Name</TableHead>
               <TableHead className="text-xs text-right">Runners</TableHead>
               <TableHead className="text-xs text-right">Active</TableHead>
-              <TableHead className="text-xs text-right">Best Back</TableHead>
-              <TableHead className="text-xs text-right">Best Lay</TableHead>
+              <TableHead className="text-xs text-right">Back Range</TableHead>
+              <TableHead className="text-xs text-right">Lay Range</TableHead>
+              <TableHead className="text-xs text-right">Fav Price</TableHead>
               <TableHead className="text-xs text-right">Spread (ticks)</TableHead>
               <TableHead className="text-xs text-right">Traded Vol</TableHead>
               <TableHead className="text-xs text-right">MBR %</TableHead>
@@ -215,7 +237,7 @@ export default function MarketScanner() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={20} className="py-0">
+                <TableCell colSpan={21} className="py-0">
                   {markets.length === 0 && !dataLoading ? (
                     <EmptyState
                       icon={apiConnected ? Filter : WifiOff}
@@ -250,6 +272,7 @@ export default function MarketScanner() {
                   <TableCell className="text-xs text-right font-mono text-muted-foreground">{m.numberOfActiveRunners || m.numberOfRunners}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-chart-3">{rd.bestBack?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-chart-5">{rd.bestLay?.toFixed(2) || '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-chart-2">{rd.favourite?.bestBackPrice?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{rd.spreadTicks || 0}</TableCell>
                   <TableCell className="text-xs text-right font-mono">${(m.totalMatched / 1000).toFixed(1)}k</TableCell>
                   <TableCell className="text-xs text-right font-mono">

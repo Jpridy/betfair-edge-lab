@@ -5,12 +5,11 @@ import { useApp } from '@/lib/AppContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft, Plus, FileText, Target, AlertTriangle } from 'lucide-react';
+import { Activity, Gauge, ArrowLeft, Plus, FileText, AlertTriangle, Radar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
-import { calculateSpreadTicks, generatePriceLadder, getSpreadQuality, getNextTickUp, getNextTickDown } from '@/lib/tickLadder';
-import { runPreOrderChecks } from '@/lib/orderValidation';
+import { calculateSpreadTicks, generatePriceLadder, getSpreadQuality } from '@/lib/tickLadder';
 
 // Generate synthetic price history for a runner
 function generatePriceHistory(basePrice) {
@@ -65,8 +64,30 @@ export default function RunnerView() {
   const priceHistory = useMemo(() => runner ? generatePriceHistory(runner.lastTradedPrice) : [], [runner?.id, runner?.lastTradedPrice]);
   const ladder = useMemo(() => runner ? generateLadder(runner.bestBackPrice, runner.bestLayPrice) : [], [runner?.id, runner?.bestBackPrice, runner?.bestLayPrice]);
 
+  if (markets.length === 0) {
+    return (
+      <Panel>
+        <div className="p-8 text-center space-y-4">
+          <div className="text-sm text-muted-foreground">Select a market from the Markets page first.</div>
+          <Link to="/scanner">
+            <Button size="sm"><Radar className="h-3 w-3" /> Go to Markets</Button>
+          </Link>
+        </div>
+      </Panel>
+    );
+  }
+
   if (!runner) {
-    return <Panel><div className="p-8 text-center text-muted-foreground text-sm">No runners available for this market.</div></Panel>;
+    return (
+      <Panel>
+        <div className="p-8 text-center space-y-4">
+          <div className="text-sm text-muted-foreground">No runners available for this market.</div>
+          <Link to="/scanner">
+            <Button size="sm"><Radar className="h-3 w-3" /> Go to Markets</Button>
+          </Link>
+        </div>
+      </Panel>
+    );
   }
 
   const spread = runner.bestLayPrice - runner.bestBackPrice;
@@ -108,7 +129,63 @@ export default function RunnerView() {
 
   const handleCreatePaperOrder = () => {
     if (emergencyStop) return;
+    // Central validation checks
+    const validationErrors = [];
+    if (!market || market.status !== 'OPEN') validationErrors.push('Market is not open');
+    if (market?.inPlay && !settings.allowInPlay) validationErrors.push('Market is in-play (locked)');
+    if (runner.status !== 'ACTIVE') validationErrors.push(`Runner is ${runner.status}`);
+    if (paperForm.stake > settings.maxStake) validationErrors.push(`Stake exceeds max ($${settings.maxStake})`);
+    if (paperForm.stake < 1) validationErrors.push('Invalid stake');
     const price = paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
+    if (!price || price < settings.minOdds || price > settings.maxOdds) validationErrors.push('Odds outside allowed range');
+    // Available size check
+    const availableSize = paperForm.side === 'BACK' ? (runner.bestBackSize || 0) : (runner.bestLaySize || 0);
+    if (availableSize <= 0) validationErrors.push('Available size is zero');
+
+    if (validationErrors.length > 0) {
+      const rejectedOrder = {
+        strategyName: paperForm.strategy,
+        marketId: selectedMarket,
+        betfairMarketId: market?.betfairMarketId || selectedMarket,
+        selectionId: runner.betfairSelectionId || runner.selectionId,
+        runnerId: selectedRunner,
+        runnerName: runner.runnerName,
+        marketName: market?.marketName || 'Unknown',
+        venue: market?.venue || '',
+        raceNumber: market?.raceNumber || 0,
+        side: paperForm.side,
+        orderType: 'LIMIT',
+        size: paperForm.stake,
+        price: price,
+        persistenceType: paperForm.persistenceType || 'LAPSE',
+        paper_mode: true,
+        liveMode: false,
+        requested_size: paperForm.stake,
+        matched_size: 0,
+        remaining_size: paperForm.stake,
+        requestedStake: paperForm.stake,
+        matchedStake: 0,
+        requestedOdds: price,
+        matchedOdds: null,
+        status: 'rejected',
+        rejection_reason: validationErrors.join('; '),
+        failed_validation_field: validationErrors[0],
+        result: 'pending',
+        entryReason: `${paperForm.strategy} manual paper order`,
+        warningFlags: validationErrors,
+        paperSimulationQuality: 'High',
+      };
+      addPaperOrder(rejectedOrder);
+      addAuditLog('Paper Order Rejected', 'order', 'warning', `${paperForm.side} ${runner.runnerName} — rejected: ${validationErrors.join('; ')}`);
+      setShowPaperForm(false);
+      return;
+    }
+
+    // Calculate matched/unmatched based on available size
+    const matchedStake = Math.min(paperForm.stake, availableSize);
+    const unmatchedStake = paperForm.stake - matchedStake;
+    const orderStatus = unmatchedStake > 0 ? 'partially_matched' : 'matched';
+
     const order = {
       strategyName: paperForm.strategy,
       marketId: selectedMarket,
@@ -130,18 +207,18 @@ export default function RunnerView() {
       paper_mode: true,
       liveMode: false,
       requested_size: paperForm.stake,
-      matched_size: paperForm.stake,
-      remaining_size: 0,
-      average_price_matched: price,
+      matched_size: matchedStake,
+      remaining_size: unmatchedStake,
+      average_price_matched: matchedStake > 0 ? price : null,
       requested_price: price,
-      matched_price: price,
+      matched_price: matchedStake > 0 ? price : null,
       placed_date: new Date().toISOString(),
-      matched_date: new Date().toISOString(),
+      matched_date: matchedStake > 0 ? new Date().toISOString() : null,
       requestedOdds: price,
-      matchedOdds: price,
+      matchedOdds: matchedStake > 0 ? price : null,
       requestedStake: paperForm.stake,
-      matchedStake: paperForm.stake,
-      status: 'matched',
+      matchedStake: matchedStake,
+      status: orderStatus,
       expectedValue: edge * paperForm.stake / 100,
       result: 'pending',
       grossProfit: 0,
@@ -155,7 +232,7 @@ export default function RunnerView() {
       paperSimulationQuality: 'High',
     };
     addPaperOrder(order);
-    addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${price} × $${paperForm.stake} (${paperForm.persistenceType || 'LAPSE'})`, { objectName: runner.runnerName });
+    addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${price} × $${paperForm.stake} (${paperForm.persistenceType || 'LAPSE'}) — ${orderStatus}`, { objectName: runner.runnerName });
     setShowPaperForm(false);
     navigate('/orders');
   };

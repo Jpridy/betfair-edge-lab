@@ -2,32 +2,43 @@ import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy } from 'react';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
-// Add page imports here
+// Eager imports — auth pages and layout must load immediately
 import Layout from '@/components/Layout';
 import DashboardHome from '@/pages/DashboardHome';
-import MarketScanner from '@/pages/MarketScanner';
-import RunnerView from '@/pages/RunnerView';
-import StrategyLab from '@/pages/StrategyLab';
-import PaperTrading from '@/pages/PaperTrading';
-import Backtesting from '@/pages/Backtesting';
-import Orders from '@/pages/Orders';
-import RiskManager from '@/pages/RiskManager';
-import Settings from '@/pages/Settings';
-import LogsAudit from '@/pages/LogsAudit';
-import BotControlCentre from '@/pages/BotControlCentre';
-import PerformanceAnalytics from '@/pages/PerformanceAnalytics';
-import StrategyLibrary from '@/pages/StrategyLibrary';
-import StrategyDetail from '@/pages/StrategyDetail';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { AppProvider } from '@/lib/AppContext';
+
+// Lazy-loaded pages — reduces initial bundle size
+const BotControlCentre = lazy(() => import('@/pages/BotControlCentre'));
+const MarketScanner = lazy(() => import('@/pages/MarketScanner'));
+const PaperTrading = lazy(() => import('@/pages/PaperTrading'));
+const PerformanceAnalytics = lazy(() => import('@/pages/PerformanceAnalytics'));
+const Settings = lazy(() => import('@/pages/Settings'));
+
+// Admin/Advanced pages — lazy loaded, not in main sidebar
+const RunnerView = lazy(() => import('@/pages/RunnerView'));
+const StrategyLab = lazy(() => import('@/pages/StrategyLab'));
+const Backtesting = lazy(() => import('@/pages/Backtesting'));
+const Orders = lazy(() => import('@/pages/Orders'));
+const RiskManager = lazy(() => import('@/pages/RiskManager'));
+const LogsAudit = lazy(() => import('@/pages/LogsAudit'));
+const StrategyLibrary = lazy(() => import('@/pages/StrategyLibrary'));
+const StrategyDetail = lazy(() => import('@/pages/StrategyDetail'));
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
+  </div>
+);
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -59,19 +70,20 @@ const AuthenticatedApp = () => {
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardHome />} />
-            <Route path="/bot-control" element={<BotControlCentre />} />
-            <Route path="/scanner" element={<MarketScanner />} />
-            <Route path="/runner" element={<RunnerView />} />
-            <Route path="/strategy" element={<StrategyLab />} />
-            <Route path="/paper-trading" element={<PaperTrading />} />
-            <Route path="/backtesting" element={<Backtesting />} />
-            <Route path="/orders" element={<Orders />} />
-            <Route path="/risk" element={<RiskManager />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/logs" element={<LogsAudit />} />
-            <Route path="/performance-analytics" element={<PerformanceAnalytics />} />
-            <Route path="/strategy-library" element={<StrategyLibrary />} />
-            <Route path="/strategy/:id" element={<StrategyDetail />} />
+            <Route path="/bot-control" element={<Suspense fallback={<PageLoader />}><BotControlCentre /></Suspense>} />
+            <Route path="/scanner" element={<Suspense fallback={<PageLoader />}><MarketScanner /></Suspense>} />
+            <Route path="/paper-trading" element={<Suspense fallback={<PageLoader />}><PaperTrading /></Suspense>} />
+            <Route path="/performance-analytics" element={<Suspense fallback={<PageLoader />}><PerformanceAnalytics /></Suspense>} />
+            <Route path="/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
+            {/* Admin/Advanced pages — accessible but not in main sidebar */}
+            <Route path="/runner" element={<Suspense fallback={<PageLoader />}><RunnerView /></Suspense>} />
+            <Route path="/strategy" element={<Suspense fallback={<PageLoader />}><StrategyLab /></Suspense>} />
+            <Route path="/backtesting" element={<Suspense fallback={<PageLoader />}><Backtesting /></Suspense>} />
+            <Route path="/orders" element={<Suspense fallback={<PageLoader />}><Orders /></Suspense>} />
+            <Route path="/risk" element={<Suspense fallback={<PageLoader />}><RiskManager /></Suspense>} />
+            <Route path="/logs" element={<Suspense fallback={<PageLoader />}><LogsAudit /></Suspense>} />
+            <Route path="/strategy-library" element={<Suspense fallback={<PageLoader />}><StrategyLibrary /></Suspense>} />
+            <Route path="/strategy/:id" element={<Suspense fallback={<PageLoader />}><StrategyDetail /></Suspense>} />
           </Route>
         </Route>
         <Route path="*" element={<PageNotFound />} />

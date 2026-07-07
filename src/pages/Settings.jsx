@@ -9,10 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, RotateCcw, Save, ShieldAlert, AlertTriangle, CheckCircle2, Wifi, RefreshCw, Trash2 } from 'lucide-react';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
-import { calculateCommission, getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
+import { getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
 
 export default function Settings() {
-  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair, apiConnected, resetAllPaperTrading, resetDailyStats, featherlessSettings, setFeatherlessSettings, updateFeatherlessSettings } = useApp();
+  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair, apiConnected, resetAllPaperTrading, resetDailyStats, featherlessSettings, updateFeatherlessSettings } = useApp();
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -34,7 +34,11 @@ export default function Settings() {
   };
 
   const handleExport = () => {
-    const data = JSON.stringify(local, null, 2);
+    // Export app settings only — no API keys, passwords, session tokens, or secrets
+    const exportData = { ...local };
+    delete exportData.id; delete exportData.created_date; delete exportData.updated_date; delete exportData.created_by_id;
+    delete exportData.appKey; delete exportData.sessionToken; delete exportData.password; delete exportData.username;
+    const data = JSON.stringify(exportData, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -42,8 +46,32 @@ export default function Settings() {
     a.download = 'betfair-edge-lab-settings.json';
     a.click();
     URL.revokeObjectURL(url);
-    addAuditLog('Settings Exported', 'settings', 'info', 'Settings JSON exported');
+    addAuditLog('Settings Exported', 'settings', 'info', 'App settings JSON exported (no API keys or secrets included)');
   };
+
+  const SETTINGS_WHITELIST = {
+    defaultCommissionRate: 'number', useMarketBaseRate: 'boolean', manualCommissionRate: 'number',
+    commissionSource: 'string', commissionRate: 'number',
+    bankroll: 'number', paperBankroll: 'number', baseStake: 'number', maxStake: 'number',
+    maxStakePercent: 'number', maxLayLiability: 'number',
+    dailyLossLimit: 'number', weeklyLossLimit: 'number', maxMarketExposure: 'number',
+    maxOpenOrders: 'number', maxUnmatchedOrders: 'number', maxTradesPerMarket: 'number',
+    maxTradesPerRunner: 'number', maxTradesPerDay: 'number',
+    minimumLiquidity: 'number', minimumTradedVolume: 'number',
+    minOdds: 'number', maxOdds: 'number',
+    defaultTimeWindowStartSeconds: 'number', defaultTimeWindowEndSeconds: 'number',
+    allowInPlay: 'boolean', persistApproved: 'boolean',
+    selectedJurisdiction: 'string', apiPollingInterval: 'number', marketRefreshInterval: 'number',
+    dataFreshnessLimit: 'number', streamApiEnabled: 'boolean',
+    strategyValueBetEnabled: 'boolean', strategyScalpingEnabled: 'boolean',
+    strategyFavOutsiderEnabled: 'boolean', strategySteamDriftEnabled: 'boolean',
+    strategyCrossMarketEnabled: 'boolean',
+    favouriteSideEnabled: 'boolean', outsiderSideEnabled: 'boolean',
+    forcedPaperOnlyMode: 'boolean', dailyDepositReminderEnabled: 'boolean',
+    riskLimitsDisabled: 'boolean', minimumPaperTrades: 'number',
+  };
+  const BLOCKED_KEYS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v',
+    'appKey', 'sessionToken', 'password', 'username', 'apiKey', 'api_key', 'betfairPassword', 'betfairUsername'];
 
   const handleImport = (e) => {
     const file = e.target.files[0];
@@ -57,9 +85,42 @@ export default function Settings() {
           setImportError('Invalid file: expected a settings JSON object.');
           return;
         }
-        // Merge with current defaults so missing fields keep their values
-        setLocal(prev => ({ ...prev, ...imported }));
-        addAuditLog('Settings Imported', 'settings', 'info', 'Settings JSON imported and merged with defaults');
+        const cleaned = {};
+        const rejected = [];
+        for (const [key, value] of Object.entries(imported)) {
+          if (BLOCKED_KEYS.some(bk => key.toLowerCase() === bk.toLowerCase())) {
+            rejected.push(`${key} (blocked: sensitive/metadata)`);
+            continue;
+          }
+          const expectedType = SETTINGS_WHITELIST[key];
+          if (!expectedType) {
+            rejected.push(`${key} (unknown field)`);
+            continue;
+          }
+          if (expectedType === 'number' && typeof value !== 'number') {
+            rejected.push(`${key} (wrong type: expected number)`);
+            continue;
+          }
+          if (expectedType === 'boolean' && typeof value !== 'boolean') {
+            rejected.push(`${key} (wrong type: expected boolean)`);
+            continue;
+          }
+          if (expectedType === 'string' && typeof value !== 'string') {
+            rejected.push(`${key} (wrong type: expected string)`);
+            continue;
+          }
+          cleaned[key] = value;
+        }
+        // Force safety: never allow live trading or risk bypass from import
+        cleaned.liveTradingEnabled = false;
+        cleaned.riskLimitsDisabled = false;
+        cleaned.forcedPaperOnlyMode = cleaned.forcedPaperOnlyMode || false;
+        setLocal(prev => ({ ...prev, ...cleaned }));
+        addAuditLog('Settings Imported', 'settings', 'info',
+          `Imported ${Object.keys(cleaned).length} fields. Rejected: ${rejected.length > 0 ? rejected.join('; ') : 'none'}. Live trading and risk bypass forced off.`);
+        if (rejected.length > 0) {
+          setImportError(`Imported with ${rejected.length} rejected field(s): ${rejected.slice(0, 3).join(', ')}${rejected.length > 3 ? '...' : ''}. Live trading and risk bypass forced off.`);
+        }
       } catch (err) {
         setImportError('Invalid JSON file: could not parse.');
       }
@@ -159,12 +220,12 @@ export default function Settings() {
               </div>
 
               {/* Live Mode Commission Check */}
-              <div className={`rounded-lg p-3 border ${isCommissionValidForLive({ marketBaseRate: 0.05 }, local) ? 'bg-chart-1/10 border-chart-1/30' : 'bg-chart-5/10 border-chart-5/30'}`}>
+              <div className={`rounded-lg p-3 border ${isCommissionValidForLive({ marketBaseRate: 0.05 }, local) ? 'bg-chart-1/10 border-chart-1/30' : 'bg-chart-4/10 border-chart-4/30'}`}>
                 <div className="text-xs font-bold">
-                  {isCommissionValidForLive({ marketBaseRate: 0.05 }, local) ? '✓ Commission calculation valid for live mode' : '✗ Live mode blocked: Commission calculation invalid'}
+                  {isCommissionValidForLive({ marketBaseRate: 0.05 }, local) ? '✓ Commission calculation valid for paper trading' : '⚠ Commission calculation using fallback rate'}
                 </div>
                 {!isCommissionValidForLive({ marketBaseRate: 0.05 }, local) && (
-                  <div className="text-xs text-muted-foreground mt-1">Market Base Rate required before live use. Set a default commission rate or enable Market Base Rate.</div>
+                  <div className="text-xs text-muted-foreground mt-1">Market Base Rate not set. Using default commission rate as fallback for paper trading.</div>
                 )}
               </div>
 
@@ -212,10 +273,10 @@ export default function Settings() {
               <Field label="Maximum Odds"><Input type="number" step="0.1" value={local.maxOdds} onChange={e => update('maxOdds', +e.target.value)} /></Field>
               <Field label="Time Window Start (sec before start)"><Input type="number" value={local.defaultTimeWindowStartSeconds} onChange={e => update('defaultTimeWindowStartSeconds', +e.target.value)} /></Field>
               <Field label="Time Window End (sec before start)"><Input type="number" value={local.defaultTimeWindowEndSeconds} onChange={e => update('defaultTimeWindowEndSeconds', +e.target.value)} /></Field>
-              <Field label="Minimum Paper Trades Before Live Review"><Input type="number" value={local.minimumPaperTrades || 200} onChange={e => update('minimumPaperTrades', +e.target.value)} /></Field>
+              <Field label="Minimum Paper Trades (reference only)"><Input type="number" value={local.minimumPaperTrades || 200} onChange={e => update('minimumPaperTrades', +e.target.value)} /></Field>
               <div className="flex items-center gap-3 pt-6">
-                <Switch checked={local.allowInPlay} onCheckedChange={v => update('allowInPlay', v)} />
-                <Label className="text-sm">Allow In-Play Trading</Label>
+              <Switch checked={local.allowInPlay} onCheckedChange={v => update('allowInPlay', v)} />
+              <Label className="text-sm">Allow In-Play Paper Trading</Label>
               </div>
               <div className="flex items-center gap-3 pt-6">
                 <Switch checked={local.persistApproved || false} onCheckedChange={v => update('persistApproved', v)} />
@@ -263,7 +324,7 @@ export default function Settings() {
               <div className="pt-2 border-t border-border">
                 <div className="text-xs font-bold text-primary uppercase tracking-wider mb-2">AI Strategy</div>
                 <ToggleRow label="Featherless AI Value Decision Engine" checked={featherlessSettings?.enabled || false} onChange={v => {
-                  setFeatherlessSettings({ ...featherlessSettings, enabled: v });
+                  updateFeatherlessSettings({ ...featherlessSettings, enabled: v, paperTradeOnly: true, allowLiveHandoff: false });
                   addAuditLog('Featherless AI Strategy Toggled', 'strategy', v ? 'info' : 'warning', `Featherless AI ${v ? 'enabled' : 'disabled'}`);
                 }} />
               </div>
@@ -353,16 +414,16 @@ export default function Settings() {
 
           <BetfairConnection />
 
-          <Panel title="Live Trading Lockout" className="mt-5">
+          <Panel title="Future Live Review (Disabled)" className="mt-5">
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Live Trading Status</span>
-                <StatusBadge status="danger">LOCKED — Disabled</StatusBadge>
+                <span className="text-muted-foreground">Future Live Review Status</span>
+                <StatusBadge status="neutral">Disabled — Paper Only</StatusBadge>
               </div>
-              <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3 mt-3">
-                <div className="text-xs text-chart-5 font-bold flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Live Trading is Hard-Locked</div>
+              <div className="bg-muted/30 border border-border rounded-lg p-3 mt-3">
+                <div className="text-xs text-muted-foreground font-bold flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Paper-Only Mode</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Live mode is blocked until ALL of the following pass: strategy status is Green, admin approval, 200+ settled paper trades, positive ROI, positive CLV, profit factor &gt; 1.20, drawdown within limit, data quality Clean, commission calculation valid, Betfair connection healthy, Risk Manager allows, persistence type approved, and user confirms live betting warning modal.
+                  This app is paper-only. No real bets are placed. Future live review is disabled. All orders are simulated paper trades for research purposes.
                 </div>
               </div>
             </div>
@@ -406,9 +467,9 @@ export default function Settings() {
                 <div className="text-sm font-bold text-chart-4 flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Responsible Gambling Warning</div>
                 <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
                   <li>This tool is for personal strategy research unless proper permissions are in place.</li>
-                  <li>Live betting can lose real money — never bet more than you can afford to lose.</li>
+                  <li>This is a paper-only research tool. No real bets are placed.</li>
                   <li>Paper results do not guarantee live results. Slippage, latency, and liquidity differ in live markets.</li>
-                  <li>Automation must remain locked until validation passes (200+ settled trades, positive CLV, profit factor &gt; 1.20).</li>
+                  <li>Automation runs paper trades only. Future live review is disabled.</li>
                   <li>You are responsible for Betfair account compliance, including terms of service and jurisdictional regulations.</li>
                   <li>Never share your Betfair app key or session token.</li>
                 </ul>

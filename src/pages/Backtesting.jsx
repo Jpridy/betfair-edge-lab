@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Panel, StatusBadge, PLValue } from '@/components/ui/Trading';
+import { Panel, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { runBacktest, AVAILABLE_STRATEGIES } from '@/lib/backtestEngine';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
-import { Play, Loader2, History, TrendingUp, AlertTriangle, CheckCircle2, XCircle, ShieldAlert } from 'lucide-react';
+import { Play, Loader2, AlertTriangle, CheckCircle2, XCircle, ShieldAlert } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function Backtesting() {
@@ -92,7 +92,7 @@ export default function Backtesting() {
       <Panel title="Synthetic Backtest Configuration">
         <div className="p-4 space-y-4">
           <div className="bg-chart-3/10 border border-chart-3/30 rounded-lg p-3 text-xs text-muted-foreground">
-            <span className="text-chart-3 font-medium">How it works:</span> Select your active strategies, choose how many historical races to simulate, and the engine will replay each race in time order — generating signals, running risk checks, placing simulated orders, and settling them against the actual race outcome. Results include equity curve, drawdown, profit factor, and CLV.
+            <span className="text-chart-3 font-medium">How it works:</span> Select your active strategies, choose how many synthetic races to simulate, and the engine will generate probability-weighted synthetic race samples — generating signals, running risk checks, placing simulated orders, and settling them using probability-weighted synthetic settlement. Results include equity curve, drawdown, profit factor, and CLV.
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -187,7 +187,7 @@ export default function Backtesting() {
 
           <div className="flex items-center gap-4">
             <div className="flex-1">
-              <Label className="text-xs">Historical Period: {daysBack} days</Label>
+              <Label className="text-xs">Synthetic Sample Period: {daysBack} days</Label>
               <input
                 type="range"
                 min={30}
@@ -216,7 +216,7 @@ export default function Backtesting() {
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <Param label="Commission" value={`${(settings.commissionRate * 100).toFixed(1)}%`} />
           <Param label="Fill Logic" value="Conservative" />
-          <Param label="Settlement" value="Race outcome" />
+          <Param label="Settlement" value="Synthetic" />
           <Param label="Risk Checks" value="Your settings" />
           <Param label="Min Liquidity" value={`$${settings.minimumLiquidity.toLocaleString()}`} />
           <Param label="Min Odds" value={settings.minOdds.toFixed(2)} />

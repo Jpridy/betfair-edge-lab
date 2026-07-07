@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Panel, StatusBadge, PLValue } from '@/components/ui/Trading';
+import { Panel, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ const CATEGORY_ICONS = {
 
 const TABS = [
   { key: 'all', label: 'All Strategies' },
-  { key: 'green', label: 'Live Approved' },
+  { key: 'green', label: 'Paper Approved' },
   { key: 'yellow', label: 'Paper Testing' },
   { key: 'red', label: 'Failing' },
   { key: 'grey', label: 'Archived' },
@@ -85,7 +85,7 @@ export default function StrategyLibrary() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Live Approved</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Paper Approved</span>
             <CheckCircle2 className="h-4 w-4 text-chart-1" />
           </div>
           <div className="text-2xl font-bold font-mono text-chart-1">{counts.green}</div>

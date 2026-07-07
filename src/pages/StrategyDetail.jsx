@@ -8,11 +8,10 @@ import { ArrowLeft, Archive, Copy, RotateCcw, FileDown, AlertTriangle, CheckCirc
 import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, computeDataQuality, getPaperProgress } from '@/lib/strategyValidation';
-import { StrategyStatusBadge, DataQualityBadge, MetricWarningBadge } from '@/components/strategy/StrategyStatusBadge';
+import { StrategyStatusBadge, DataQualityBadge } from '@/components/strategy/StrategyStatusBadge';
 import AuditPanel from '@/components/strategy/AuditPanel';
 import StrategyCharts from '@/components/strategy/StrategyCharts';
 import FavOutsiderBreakdown from '@/components/strategy/FavOutsiderBreakdown';
-import LiveLockoutPanel from '@/components/strategy/LiveLockoutPanel';
 import { generateStrategyDocument } from '@/lib/strategyDocument';
 
 const RISK_COLORS = {
@@ -61,10 +60,6 @@ export default function StrategyDetail() {
     addAuditLog('Strategy Cloned', 'strategy', 'info', `Cloned "${strategy.name}" as new paper-only test strategy`);
   };
 
-  const handleReset = () => {
-    addAuditLog('Paper Testing Reset', 'strategy', 'warning', `Reset paper testing for "${strategy.name}"`);
-  };
-
   const handleArchive = () => {
     addAuditLog('Strategy Archived', 'strategy', 'warning', `Archived strategy "${strategy.name}"`);
   };
@@ -106,7 +101,7 @@ export default function StrategyDetail() {
         <div className="rounded-lg border border-chart-5/30 bg-chart-5/5 p-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-chart-5 shrink-0" />
           <div>
-            <div className="text-sm font-bold text-chart-5">This strategy is currently underperforming and is locked to paper testing only.</div>
+            <div className="text-sm font-bold text-chart-5">This strategy is currently underperforming and is limited to paper testing only.</div>
             <div className="text-xs text-muted-foreground mt-1">{status.reasons.join(' · ')}</div>
           </div>
         </div>
@@ -125,7 +120,7 @@ export default function StrategyDetail() {
           <Clock className="h-5 w-5 text-chart-4 shrink-0" />
           <div>
             <div className="text-sm font-bold text-chart-4">Needs More Data</div>
-            <div className="text-xs text-muted-foreground mt-1">Only {audit.totalPaperOrders} paper orders recorded. Minimum 200 required before live consideration.</div>
+            <div className="text-xs text-muted-foreground mt-1">Only {audit.totalPaperOrders} paper orders recorded. Minimum 200 recommended for meaningful analysis.</div>
           </div>
         </div>
       )}
@@ -295,22 +290,44 @@ export default function StrategyDetail() {
 
       {activeTab === 'controls' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <LiveLockoutPanel strategy={strategy} audit={audit} settings={settings} />
+          <Panel title="Paper-Only Status">
+            <div className="p-4 space-y-3">
+              <div className="bg-muted/30 border border-border rounded-lg p-3 text-xs text-muted-foreground">
+                This strategy operates in paper-only mode. Future live review is disabled. No real bets are placed.
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Paper Trade Only</span>
+                <StatusBadge status="ok">Always On</StatusBadge>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Form Data</span>
+                <StatusBadge status="neutral">Not Connected</StatusBadge>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Bookmaker Data</span>
+                <StatusBadge status="neutral">Not Connected</StatusBadge>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Historical Data</span>
+                <StatusBadge status="neutral">Not Connected</StatusBadge>
+              </div>
+            </div>
+          </Panel>
 
           <Panel title="Admin Controls">
             <div className="p-4 space-y-3">
-              <div className="text-xs text-muted-foreground mb-2">Every admin action creates an audit log entry.</div>
-              <Button variant="outline" size="sm" className="w-full justify-start" onClick={handleReset}>
-                <RotateCcw className="h-3 w-3" /> Reset Paper Testing
+              <div className="text-xs text-muted-foreground mb-2">Admin actions are logged. Some actions are disabled in paper-only mode.</div>
+              <Button variant="outline" size="sm" className="w-full justify-start opacity-50 cursor-not-allowed" disabled>
+                <RotateCcw className="h-3 w-3" /> Reset Paper Testing (disabled)
               </Button>
-              <Button variant="outline" size="sm" className="w-full justify-start" onClick={handleArchive}>
-                <Archive className="h-3 w-3" /> Archive Strategy
+              <Button variant="outline" size="sm" className="w-full justify-start opacity-50 cursor-not-allowed" disabled>
+                <Archive className="h-3 w-3" /> Archive Strategy (disabled)
               </Button>
-              <Button variant="outline" size="sm" className="w-full justify-start" onClick={handleClone}>
-                <Copy className="h-3 w-3" /> Clone as New Test Strategy
+              <Button variant="outline" size="sm" className="w-full justify-start opacity-50 cursor-not-allowed" disabled>
+                <Copy className="h-3 w-3" /> Clone as New Test (disabled)
               </Button>
-              <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => generateStrategyDocument()}>
-                <FileDown className="h-3 w-3" /> Export Strategy Audit PDF
+              <Button variant="outline" size="sm" className="w-full justify-start opacity-50 cursor-not-allowed" disabled>
+                <FileDown className="h-3 w-3" /> Export PDF (disabled)
               </Button>
 
               <div className="pt-3 border-t border-border">

@@ -79,14 +79,16 @@ export default function Orders() {
     exportToCSV(`paper-orders-${new Date().toISOString().slice(0, 10)}.csv`, filtered, columns);
   };
 
-  const totalStake = filtered.reduce((sum, o) => sum + (o.matchedStake || o.requestedStake || 0), 0);
+  // Only count matched/partially_matched orders in staked totals — rejected/unmatched don't stake real funds
+  const stakedOrders = filtered.filter(o => o.status === 'matched' || o.status === 'partially_matched' || o.status === 'settled');
+  const totalStake = stakedOrders.reduce((sum, o) => sum + (o.matchedStake || 0), 0);
+  const totalUnmatched = filtered.filter(o => o.status !== 'rejected').reduce((sum, o) => sum + ((o.requestedStake || 0) - (o.matchedStake || 0)), 0);
   const totalPL = filtered.reduce((sum, o) => sum + (o.netProfit || 0), 0);
   const matched = filtered.filter(o => o.status === 'matched').length;
-  const pending = filtered.filter(o => o.result === 'pending').length;
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Total Orders</span>
           <div className="text-xl font-bold font-mono mt-1">{filtered.length}</div>
@@ -96,8 +98,12 @@ export default function Orders() {
           <div className="text-xl font-bold font-mono text-chart-1 mt-1">{matched}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Total Stake</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Matched Stake</span>
           <div className="text-xl font-bold font-mono mt-1">${totalStake.toFixed(2)}</div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Unmatched Stake</span>
+          <div className="text-xl font-bold font-mono text-chart-4 mt-1">${totalUnmatched.toFixed(2)}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Net P/L</span>
@@ -169,7 +175,6 @@ export default function Orders() {
               <SelectContent>
                 <SelectItem value="all">All Modes</SelectItem>
                 <SelectItem value="paper">Paper Only</SelectItem>
-                <SelectItem value="live">Live Only</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -199,7 +204,9 @@ export default function Orders() {
               <TableHead className="text-xs">Mode</TableHead>
               <TableHead className="text-xs text-right">Req Odds</TableHead>
               <TableHead className="text-xs text-right">Match Odds</TableHead>
-              <TableHead className="text-xs text-right">Stake</TableHead>
+              <TableHead className="text-xs text-right">Req Stake</TableHead>
+              <TableHead className="text-xs text-right">Match Stake</TableHead>
+              <TableHead className="text-xs text-right">Unmatched</TableHead>
               <TableHead className="text-xs text-right">Liability</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Result</TableHead>
@@ -213,7 +220,7 @@ export default function Orders() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={19} className="py-0">
+                <TableCell colSpan={21} className="py-0">
                   {paperOrders.length === 0 && !dataLoading ? (
                     <EmptyState
                       icon={Inbox}
@@ -244,7 +251,9 @@ export default function Orders() {
                 </TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${(o.matchedStake || o.requestedStake || 0).toFixed(2)}</TableCell>
+                <TableCell className="text-xs text-right font-mono">${(o.requestedStake || 0).toFixed(2)}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-chart-1">${(o.matchedStake || 0).toFixed(2)}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-chart-4">${((o.requestedStake || 0) - (o.matchedStake || 0)).toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">
                   ${(o.side === 'LAY' ? ((o.matchedStake || o.requestedStake || 0) * ((o.matchedOdds || o.requestedOdds || 0) - 1)) : (o.matchedStake || o.requestedStake || 0)).toFixed(2)}
                 </TableCell>

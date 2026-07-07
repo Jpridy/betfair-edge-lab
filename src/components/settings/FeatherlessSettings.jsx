@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Panel, StatusBadge } from '@/components/ui/Trading';
+import { Panel } from '@/components/ui/Trading';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -170,14 +170,5 @@ export default function FeatherlessSettings({ settings, onSave }) {
         </div>
       </div>
     </Panel>
-  );
-}
-
-function ToggleRow({ label, checked, onChange }) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <Label className="text-sm">{label}</Label>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </div>
   );
 }

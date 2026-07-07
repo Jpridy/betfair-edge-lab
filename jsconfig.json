@@ -18,6 +18,6 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["src/**/*.{js,jsx}"],
+  "include": ["src/**/*.js", "src/**/*.jsx"],
   "exclude": ["node_modules", "dist", "src/vite-plugins", "src/components/ui"]
 }

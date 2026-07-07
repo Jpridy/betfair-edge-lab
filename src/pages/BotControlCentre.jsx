@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import BotStatusCard from '@/components/bot/BotStatusCard';
 import BotControls from '@/components/bot/BotControls';
 import BotLoopDisplay from '@/components/bot/BotLoopDisplay';
@@ -7,8 +7,12 @@ import LiveBotLockPanel from '@/components/bot/LiveBotLockPanel';
 import BotScanStats from '@/components/bot/BotScanStats';
 import BotSyncControls from '@/components/bot/BotSyncControls';
 import StrategyControlPanel from '@/components/bot/StrategyControlPanel';
+import { Panel } from '@/components/ui/Trading';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 export default function BotControlCentre() {
+  const [showAdmin, setShowAdmin] = useState(false);
+
   return (
     <div className="space-y-5">
       <BotControls />
@@ -19,8 +23,23 @@ export default function BotControlCentre() {
       <BotLoopDisplay />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <BotRulesPanel />
-        <LiveBotLockPanel />
       </div>
+
+      {/* Admin/Advanced — collapsed by default */}
+      <Panel>
+        <button
+          onClick={() => setShowAdmin(!showAdmin)}
+          className="w-full flex items-center gap-2 px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+        >
+          {showAdmin ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          Admin / Advanced (Future Live Review — Disabled)
+        </button>
+        {showAdmin && (
+          <div className="p-4 pt-0">
+            <LiveBotLockPanel />
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

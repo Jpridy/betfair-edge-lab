@@ -4,7 +4,7 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink, KeyRound } from 'lucide-react';
+import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, ExternalLink, KeyRound } from 'lucide-react';
 import { connectToBetfair, connectWithSessionToken } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
@@ -198,7 +198,7 @@ export default function BetfairConnection() {
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Stream Status</div>
                 <div className="text-lg font-bold font-mono mt-1 flex items-center gap-1.5">
                   {betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling' ? (
-                    <><span className="h-2 w-2 rounded-full bg-chart-1 animate-pulse" /><span className="text-chart-1">LIVE</span></>
+                    <><span className="h-2 w-2 rounded-full bg-chart-1 animate-pulse" /><span className="text-chart-1">DATA</span></>
                   ) : betfairConnection.streamConnectionStatus === 'connecting' || betfairConnection.streamConnectionStatus === 'authenticating' || betfairConnection.streamConnectionStatus === 'subscribing' ? (
                     <><Loader2 className="h-3.5 w-3.5 animate-spin text-chart-4" /><span className="text-chart-4">{betfairConnection.streamConnectionStatus}</span></>
                   ) : (
@@ -215,7 +215,7 @@ export default function BetfairConnection() {
                 <div className="text-lg font-bold font-mono text-chart-1 mt-1">{runners.length}</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Sync</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Refresh</div>
                 <div className="text-sm font-bold font-mono text-foreground mt-1">
                   {betfairConnection.lastMarketSyncTime ? new Date(betfairConnection.lastMarketSyncTime).toLocaleTimeString('en-AU') : '—'}
                 </div>

@@ -3,7 +3,7 @@ import { Panel, PLValue, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, TrendingDown, DollarSign, Target, Percent, Activity, BarChart3 } from 'lucide-react';
+import { TrendingUp, DollarSign, Target, Percent, Activity, BarChart3 } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { buildEquityCurve, buildMonthlyGrowth, buildWinLossDistribution, buildDrawdownCurve, buildCLVByStrategy, buildStrikeRateByStrategy, buildProfitByOddsRange, buildProfitByVenue, buildProfitBySide } from '@/lib/performanceData';
 
