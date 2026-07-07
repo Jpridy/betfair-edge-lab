@@ -177,7 +177,7 @@ export function createPaperOrder(signal, market, runner, settings) {
     availablePrice > 0 &&
     availableSize > 0;
 
-  const matched = canMatch && Math.random() > 0.15;
+  const matched = canMatch;
 
   // Partial fill: match the lesser of requested stake and available size
   const matchedStakeAmount = matched
