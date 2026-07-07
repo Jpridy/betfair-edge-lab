@@ -12,7 +12,7 @@ import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import { calculateCommission, getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
 
 export default function Settings() {
-  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, apiConnected, resetAllPaperTrading, featherlessSettings, setFeatherlessSettings } = useApp();
+  const { settings, updateSettings, addAuditLog, botSettings, updateBotSettings, betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair, apiConnected, resetAllPaperTrading, resetDailyStats, featherlessSettings, setFeatherlessSettings, updateFeatherlessSettings } = useApp();
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -68,6 +68,7 @@ export default function Settings() {
   };
 
   const handleResetDaily = () => {
+    resetDailyStats();
     addAuditLog('Daily Stats Reset', 'settings', 'warning', 'Daily P/L and trade counters manually reset');
   };
 
@@ -306,10 +307,15 @@ export default function Settings() {
               <div className="pt-3 border-t border-border">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Connection Test</div>
-                  <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testingConnection}>
-                    {testingConnection ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Wifi className="h-4 w-4 mr-1" />}
-                    Test Betfair Connection
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testingConnection}>
+                      {testingConnection ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Wifi className="h-4 w-4 mr-1" />}
+                      Test Betfair Connection
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => { if (window.confirm('Disconnect from Betfair? This clears all session tokens, markets, and runners from memory.')) disconnectBetfair(); }} disabled={!apiConnected}>
+                      Disconnect
+                    </Button>
+                  </div>
                 </div>
                 {testResults && (
                   <div className="space-y-3">
@@ -367,7 +373,7 @@ export default function Settings() {
           <FeatherlessSettings
             settings={featherlessSettings}
             onSave={(newSettings) => {
-              setFeatherlessSettings(newSettings);
+              updateFeatherlessSettings(newSettings);
               addAuditLog('Featherless AI Settings Updated', 'settings', 'info', `Featherless AI ${newSettings.enabled ? 'enabled' : 'disabled'}, model: ${newSettings.modelName}`);
             }}
           />

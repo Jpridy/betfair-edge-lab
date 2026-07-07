@@ -1,17 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Wifi, WifiOff, Database, ShieldCheck, AlertTriangle, Globe } from 'lucide-react';
+import { calculateRiskMetrics } from '@/lib/riskCalculations';
 
 export default function RiskOverview() {
-  const { bankrollStats, settings, emergencyStop, apiConnected, appMode } = useApp();
+  const { bankrollStats, settings, emergencyStop, apiConnected, appMode, paperOrders } = useApp();
 
-  const weeklyPL = bankrollStats.totalPL * 0.35;
-  const weeklyLossLimit = settings.dailyLossLimit * 5;
+  const riskMetrics = useMemo(() => calculateRiskMetrics(paperOrders, settings), [paperOrders, settings]);
+  const weeklyPL = riskMetrics.weeklyPL;
+  const weeklyLossLimit = settings.weeklyLossLimit || settings.dailyLossLimit * 5;
   const dailyLossUsed = bankrollStats.todayPL < 0 ? Math.abs(bankrollStats.todayPL) : 0;
   const weeklyLossUsed = weeklyPL < 0 ? Math.abs(weeklyPL) : 0;
-  const exposurePercent = (((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)) / (bankrollStats.bankroll || 1)) * 100;
-  const drawdownPercent = Math.abs(bankrollStats.maxDrawdown) / bankrollStats.bankroll * 100;
+  const exposurePercent = (riskMetrics.openExposure / (bankrollStats.bankroll || 1)) * 100;
+  const drawdownPercent = Math.abs(bankrollStats.maxDrawdown) / (bankrollStats.bankroll || 1) * 100;
 
   const globalState = emergencyStop
     ? { label: 'EMERGENCY STOP', status: 'danger', desc: 'All trading halted' }

@@ -8,7 +8,7 @@ import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, User, ExternalLink, 
 import { connectToBetfair, connectWithSessionToken } from '@/lib/betfairApi';
 
 export default function BetfairConnection() {
-  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, addAuditLog, betfairConnection, updateBetfairConnection, markets, runners } = useApp();
+  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, addAuditLog, betfairConnection, updateBetfairConnection, disconnectBetfair, markets, runners } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
@@ -89,13 +89,10 @@ export default function BetfairConnection() {
   };
 
   const handleDisconnect = () => {
-    setApiConnected(false);
-    setBetfairAccount(null);
-    setBetfairSessionToken(null);
+    disconnectBetfair();
     setUsernameInput('');
     setPasswordInput('');
     setSessionTokenInput('');
-    addAuditLog('Betfair Account Unlinked', 'api', 'warning', 'Betfair account disconnected');
   };
 
   return (

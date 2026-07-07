@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Wifi, WifiOff, Clock, Zap } from 'lucide-react';
 
 export default function BotSyncControls() {
-  const { apiConnected, betfairConnection, syncMarkets, syncCurrentOrders, syncClearedOrders, recalculateRiskState, settings, addAuditLog, appMode, markets, runners } = useApp();
+  const { apiConnected, betfairConnection, refreshMarketState, refreshOrderState, recalculateSettledStats, recalculateRiskState, settings, addAuditLog, appMode, markets, runners } = useApp();
 
   const isStreaming = betfairConnection?.streamConnectionStatus === 'connected';
 
@@ -21,15 +21,15 @@ export default function BotSyncControls() {
   const passedChecks = connectionChecks.filter(c => c.ok).length;
 
   const handleSync = (type) => {
-    if (type === 'markets') syncMarkets?.();
-    else if (type === 'orders') syncCurrentOrders?.();
-    else if (type === 'cleared') syncClearedOrders?.();
+    if (type === 'markets') refreshMarketState?.();
+    else if (type === 'orders') refreshOrderState?.();
+    else if (type === 'cleared') recalculateSettledStats?.();
     else if (type === 'risk') recalculateRiskState?.();
-    addAuditLog?.(`Manual Sync: ${type}`, 'api', 'info', `Operator triggered ${type} sync from Bot Control Centre`);
+    addAuditLog?.(`Manual Refresh: ${type}`, 'api', 'info', `Operator triggered ${type} state refresh from Bot Control Centre`);
   };
 
   return (
-    <Panel title="Betfair API Connection & Sync Controls">
+    <Panel title="Betfair API Connection & State Controls">
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -56,16 +56,16 @@ export default function BotSyncControls() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Button size="sm" variant="outline" onClick={() => handleSync('markets')} disabled={!apiConnected}>
-            <RefreshCw className="h-3 w-3" /> Sync Markets
+            <RefreshCw className="h-3 w-3" /> Refresh Markets
           </Button>
           <Button size="sm" variant="outline" onClick={() => handleSync('orders')} disabled={!apiConnected}>
-            <RefreshCw className="h-3 w-3" /> Sync Orders
+            <RefreshCw className="h-3 w-3" /> Refresh Orders
           </Button>
           <Button size="sm" variant="outline" onClick={() => handleSync('cleared')} disabled={!apiConnected}>
-            <RefreshCw className="h-3 w-3" /> Sync Settled
+            <RefreshCw className="h-3 w-3" /> Refresh Settled
           </Button>
           <Button size="sm" variant="outline" onClick={() => handleSync('risk')} disabled={!apiConnected}>
-            <Zap className="h-3 w-3" /> Sync Risk
+            <Zap className="h-3 w-3" /> Refresh Risk
           </Button>
         </div>
 
