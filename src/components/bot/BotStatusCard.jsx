@@ -5,7 +5,7 @@ import { Bot, Activity, Zap, Clock, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function BotStatusCard() {
-  const { botState, mode, emergencyStop, botSettings, markets, demoMode, botCycles } = useApp();
+  const { botState, emergencyStop, botSettings, markets, apiConnected, botCycles } = useApp();
 
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
@@ -39,7 +39,7 @@ export default function BotStatusCard() {
             <div className={cn('text-2xl font-bold', statusColor)}>{statusLabel}</div>
             <div className="text-xs text-muted-foreground">
               {emergencyStop ? 'All activity halted'
-              : isRunning ? `${mode === 'live' ? 'Live' : 'Demo'} mode · scanning every ${botSettings.scanIntervalSeconds}s`
+              : isRunning ? `Paper trading · scanning every ${botSettings.scanIntervalSeconds}s`
               : isPaused ? 'Scanning continues, no new orders'
               : 'Press Start to begin'}
             </div>
@@ -75,14 +75,13 @@ export default function BotStatusCard() {
           <StatusBadge status={emergencyStop ? 'danger' : 'ok'}>
             {emergencyStop ? 'Emergency Stop Active' : 'Emergency Stop Ready'}
           </StatusBadge>
-          <StatusBadge status={demoMode ? 'info' : 'ok'}>
-            {demoMode ? 'Demo Data Active' : 'Live API Connected'}
+          <StatusBadge status={apiConnected ? 'ok' : 'info'}>
+            {apiConnected ? 'Live API Connected' : 'API Disconnected'}
           </StatusBadge>
           <StatusBadge status="ok">API Health: OK</StatusBadge>
           <StatusBadge status={botSettings.autoPaperTradingEnabled ? 'ok' : 'neutral'}>
             Auto Paper Trading: {botSettings.autoPaperTradingEnabled ? 'ON' : 'OFF'}
           </StatusBadge>
-          <StatusBadge status={mode === 'live' ? 'danger' : 'neutral'}>Live Trading: {mode === 'live' ? 'ACTIVE' : 'LOCKED'}</StatusBadge>
         </div>
       </div>
     </Panel>

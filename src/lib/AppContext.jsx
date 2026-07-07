@@ -26,9 +26,7 @@ const DEFAULT_BOT_SETTINGS = {
 };
 
 export function AppProvider({ children }) {
-  const [mode, setMode] = useState('demo');
   const [emergencyStop, setEmergencyStop] = useState(false);
-  const demoMode = mode === 'demo';
   const [apiConnected, setApiConnected] = useState(false);
   const [betfairAccount, setBetfairAccount] = useState(null);
   const [betfairSessionToken, setBetfairSessionToken] = useState(null);
@@ -238,7 +236,7 @@ export function AppProvider({ children }) {
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, mode, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings };
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
@@ -438,7 +436,6 @@ export function AppProvider({ children }) {
   // ── Emergency Controls ──
   const triggerEmergencyStop = () => {
     setEmergencyStop(true);
-    setMode('demo');
     setBotState(prev => ({ ...prev, running: false, paused: false, botMode: 'stopped' }));
     // Cancel all unmatched orders
     setPaperOrders(prev => prev.map(o =>
@@ -486,9 +483,8 @@ export function AppProvider({ children }) {
 
   const forcePaperOnly = () => {
     setSettings(prev => ({ ...prev, forcedPaperOnlyMode: true, liveTradingEnabled: false }));
-    setMode('demo');
-    addAuditLog('Forced Demo Mode', 'mode', 'warning', 'Forced demo mode activated. Live trading disabled.');
-    addToBotActivity('Demo mode forced', 'Live trading disabled system-wide');
+    addAuditLog('Forced Paper-Only Mode', 'mode', 'warning', 'Forced paper-only mode activated. Live trading disabled.');
+    addToBotActivity('Paper-only mode forced', 'Live trading disabled system-wide');
   };
 
   const resetAllPaperTrading = async () => {
@@ -563,15 +559,6 @@ export function AppProvider({ children }) {
     setAiDecisions([]);
     addAuditLog('Strategy Data Reset', 'strategy', 'critical', 'All strategy stats, signals, and AI decisions cleared to zero.');
     addToBotActivity('Strategy data reset', 'All strategy stats, signals, and AI decisions cleared');
-  };
-
-  // ── Mode Management ──
-  const changeMode = (newMode) => {
-    if (emergencyStop) return;
-    if (newMode === 'live' && (settings.forcedPaperOnlyMode || !apiConnected)) return;
-    setMode(newMode);
-    const label = newMode === 'live' ? 'Live' : 'Demo';
-    addAuditLog('Mode Changed', 'mode', 'info', `Switched to ${label} mode`);
   };
 
   const updateSettings = (newSettings) => {
@@ -740,9 +727,6 @@ export function AppProvider({ children }) {
   // ── Bot Controls ──
   const startBot = () => {
     if (emergencyStop) return;
-    if (settings.forcedPaperOnlyMode) {
-      setMode('demo');
-    }
     setBotState(prev => ({ ...prev, running: true, paused: false, nextScanCountdown: 1, botMode: 'paper_scanning' }));
     addAuditLog('Paper Scanner Started', 'mode', 'info', 'Paper scanner started. Auto scanning, signal detection, and paper order creation enabled.');
     addToBotActivity('Paper scanner started', 'Paper scanning mode activated');
@@ -836,7 +820,7 @@ export function AppProvider({ children }) {
     cycleInProgressRef.current = true;
     try {
     const s = stateRef.current;
-    if (s.emergencyStop || (s.mode !== 'demo' && s.mode !== 'live')) return;
+    if (s.emergencyStop) return;
 
     const cycleNum = s.botState.cycleNumber + 1;
     const now = new Date().toISOString();
@@ -1244,24 +1228,24 @@ export function AppProvider({ children }) {
 
   // ── Bot Cycle Interval ──
   useEffect(() => {
-    if (!botState.running || emergencyStop || (mode !== 'demo' && mode !== 'live')) return;
+    if (!botState.running || emergencyStop) return;
     const intervalMs = (botSettings.scanIntervalSeconds || 10) * 1000;
 
     const initialDelay = setTimeout(() => { runBotCycleRef.current(); }, 500);
     const timer = setInterval(() => { runBotCycleRef.current(); }, intervalMs);
 
     return () => { clearTimeout(initialDelay); clearInterval(timer); };
-  }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
+  }, [botState.running, emergencyStop, botSettings.scanIntervalSeconds]);
 
   // ── Countdown Timer ──
   useEffect(() => {
-    if (!botState.running || emergencyStop || (mode !== 'demo' && mode !== 'live')) return;
+    if (!botState.running || emergencyStop) return;
     setBotState(prev => ({ ...prev, nextScanCountdown: botSettings.scanIntervalSeconds || 10 }));
     const timer = setInterval(() => {
       setBotState(prev => ({ ...prev, nextScanCountdown: Math.max(0, prev.nextScanCountdown - 1) }));
     }, 1000);
     return () => clearInterval(timer);
-  }, [botState.running, mode, emergencyStop, botSettings.scanIntervalSeconds]);
+  }, [botState.running, emergencyStop, botSettings.scanIntervalSeconds]);
 
   // ── Betfair Stream API — real-time market data via WebSocket ──
   // Connects through the Cloudflare Worker's TCP bridge to
@@ -1450,8 +1434,7 @@ export function AppProvider({ children }) {
 
 
   const value = {
-    mode, changeMode, setMode, emergencyStop, triggerEmergencyStop, clearEmergencyStop,
-    demoMode,
+    emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     betfairConnection, updateBetfairConnection, testBetfairConnection,

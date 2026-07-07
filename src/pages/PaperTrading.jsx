@@ -15,7 +15,7 @@ import { exportToCSV } from '@/lib/csvExport';
 const ORDER_STATUSES = ['pending', 'executable', 'execution_complete', 'matched', 'partially_matched', 'unmatched', 'cancelled', 'lapsed', 'voided', 'settled', 'rejected'];
 
 export default function PaperTrading() {
-  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, mode, emergencyStop, addAuditLog, cancelUnmatchedOrders } = useApp();
+  const { paperOrders, addPaperOrder, markets, runners, settings, bankrollStats, emergencyStop, addAuditLog, cancelUnmatchedOrders } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     marketId: markets[0]?.id || '',
@@ -43,7 +43,7 @@ export default function PaperTrading() {
 
   const handleSubmit = () => {
     if (!form.runnerId || !selectedRunner) return;
-    if (emergencyStop || mode === 'live_locked') return;
+    if (emergencyStop) return;
 
     // Risk checks
     const riskChecks = [];
@@ -180,7 +180,7 @@ export default function PaperTrading() {
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => setShowForm(true)} disabled={emergencyStop || mode === 'live_locked'}>
+        <Button size="sm" onClick={() => setShowForm(true)} disabled={emergencyStop}>
           <Plus className="h-4 w-4" /> Create Manual Paper Order
         </Button>
         <Button size="sm" variant="outline" onClick={handleCancelUnmatched} disabled={openOrders.length === 0}>

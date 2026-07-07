@@ -1,14 +1,12 @@
 import React from 'react';
-import { Menu, FlaskConical, Zap } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
 export default function TopBar({ title, subtitle, onMenuClick }) {
-  const { apiConnected, jurisdiction, setJurisdiction, mode, emergencyStop, changeMode } = useApp();
-
-  const modeLabel = emergencyStop ? 'EMERGENCY STOP' : mode === 'live' ? 'LIVE' : 'DEMO';
+  const { apiConnected, jurisdiction, setJurisdiction, emergencyStop } = useApp();
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-card border-b border-border flex items-center justify-between px-4 md:px-6">
@@ -26,31 +24,15 @@ export default function TopBar({ title, subtitle, onMenuClick }) {
         <Badge variant="outline" className={cn(
           'text-xs font-bold border',
           emergencyStop ? 'bg-destructive/10 text-destructive border-destructive/30'
-          : mode === 'live' ? 'bg-chart-5/10 text-chart-5 border-chart-5/30'
           : 'bg-chart-3/10 text-chart-3 border-chart-3/30'
         )}>
-          {modeLabel}
+          {emergencyStop ? 'EMERGENCY STOP' : 'PAPER TRADING'}
         </Badge>
 
         <div className="hidden lg:flex items-center gap-1.5">
           <div className={cn('h-2 w-2 rounded-full', apiConnected ? 'bg-chart-1' : 'bg-muted-foreground')} />
-          <span className="text-xs font-medium text-muted-foreground">{apiConnected ? 'API Connected' : 'Demo Mode'}</span>
+          <span className="text-xs font-medium text-muted-foreground">{apiConnected ? 'API Connected' : 'Disconnected'}</span>
         </div>
-
-        <button
-          onClick={() => changeMode(mode === 'demo' ? 'live' : 'demo')}
-          disabled={!apiConnected && mode === 'demo'}
-          className={cn(
-            'h-8 px-3 rounded-md text-xs font-bold border flex items-center gap-1.5 transition-colors shrink-0',
-            mode === 'live'
-              ? 'bg-chart-5/10 text-chart-5 border-chart-5/30'
-              : 'bg-chart-3/10 text-chart-3 border-chart-3/30',
-            !apiConnected && mode === 'demo' && 'opacity-50 cursor-not-allowed'
-          )}
-          title={mode === 'demo' && !apiConnected ? 'Connect Betfair API in Settings to enable Live mode' : `Switch to ${mode === 'demo' ? 'Live' : 'Demo'} mode`}
-        >
-          {mode === 'live' ? <><Zap className="h-3.5 w-3.5" /> LIVE</> : <><FlaskConical className="h-3.5 w-3.5" /> DEMO</>}
-        </button>
 
         <Select value={jurisdiction} onValueChange={setJurisdiction}>
           <SelectTrigger className="h-8 w-[140px] md:w-[180px] text-xs hidden sm:flex">

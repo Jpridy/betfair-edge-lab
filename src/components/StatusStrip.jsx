@@ -4,7 +4,7 @@ import { Bot, Wifi, WifiOff, Shield, ShieldAlert, ShieldX, AlertOctagon } from '
 import { cn } from '@/lib/utils';
 
 export default function StatusStrip() {
-  const { botState, mode, emergencyStop, apiConnected, demoMode, botCycles } = useApp();
+  const { botState, emergencyStop, apiConnected, botCycles } = useApp();
 
   const botRunning = botState.running && !botState.paused && !emergencyStop;
   const botPaused = botState.paused && !emergencyStop;
@@ -21,18 +21,11 @@ export default function StatusStrip() {
       dot: emergencyStop ? 'bg-chart-5' : botRunning ? 'bg-chart-1 animate-pulse' : 'bg-muted-foreground',
     },
     {
-      label: 'Mode',
-      value: emergencyStop ? 'Emergency' : mode === 'live' ? 'Live' : 'Demo',
-      icon: null,
-      color: emergencyStop ? 'text-chart-5' : mode === 'live' ? 'text-chart-5' : 'text-chart-3',
-      dot: emergencyStop ? 'bg-chart-5' : mode === 'live' ? 'bg-chart-5' : 'bg-chart-3',
-    },
-    {
       label: 'Data',
-      value: apiConnected ? 'API Connected' : demoMode ? 'Demo Data' : 'Disconnected',
+      value: apiConnected ? 'API Connected' : 'Disconnected',
       icon: apiConnected ? Wifi : WifiOff,
-      color: apiConnected ? 'text-chart-1' : demoMode ? 'text-chart-3' : 'text-chart-4',
-      dot: apiConnected ? 'bg-chart-1' : demoMode ? 'bg-chart-3' : 'bg-chart-4',
+      color: apiConnected ? 'text-chart-1' : 'text-chart-4',
+      dot: apiConnected ? 'bg-chart-1' : 'bg-chart-4',
     },
     {
       label: 'Risk',

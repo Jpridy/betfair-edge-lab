@@ -23,7 +23,7 @@ const navItems = [
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const location = useLocation();
-  const { emergencyStop, triggerEmergencyStop, bankrollStats, mode } = useApp();
+  const { emergencyStop, triggerEmergencyStop, bankrollStats } = useApp();
 
   return (
     <>
@@ -70,7 +70,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
           <div className="bg-sidebar-accent/50 rounded-lg p-3 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {mode === 'live' ? 'Live Mode' : 'Demo Mode'}
+                Paper Trading
               </span>
               {emergencyStop && <span className="text-[10px] font-bold text-destructive animate-pulse">STOPPED</span>}
             </div>

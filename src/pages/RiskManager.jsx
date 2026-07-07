@@ -27,7 +27,7 @@ const RISK_RULES = [
 ];
 
 export default function RiskManager() {
-  const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus, mode, paperOrders, addAuditLog, updateSettings } = useApp();
+  const { settings, emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, riskStatus, paperOrders, addAuditLog, updateSettings } = useApp();
 
   const paperExposure = paperOrders.filter(o => o.result === 'pending' && o.paper_mode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
   const liveExposure = paperOrders.filter(o => o.result === 'pending' && o.liveMode).reduce((sum, o) => sum + (o.matchedStake || 0), 0);
@@ -41,7 +41,7 @@ export default function RiskManager() {
     addAuditLog('Disable Live Trading', 'emergency', 'critical', 'Risk Manager: live trading disabled from Risk Manager panel');
   };
   const handleForcePaperOnly = () => {
-    updateSettings({ forcedPaperOnlyMode: true, liveTradingEnabled: false, mode: 'demo' });
+    updateSettings({ forcedPaperOnlyMode: true, liveTradingEnabled: false });
     addAuditLog('Force Paper-Only Mode', 'emergency', 'critical', 'Risk Manager: forced paper-only mode activated');
   };
 

@@ -38,7 +38,7 @@ function QuickAction({ to, icon: Icon, label, sub, accent }) {
 }
 
 export default function DashboardHome() {
-  const { mode, emergencyStop, botState } = useApp();
+  const { emergencyStop, botState } = useApp();
 
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;

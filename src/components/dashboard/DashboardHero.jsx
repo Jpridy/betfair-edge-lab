@@ -3,7 +3,7 @@ import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { useApp } from '@/lib/AppContext';
 
 export default function DashboardHero() {
-  const { bankrollStats, botState, mode, emergencyStop, plData } = useApp();
+  const { bankrollStats, botState, emergencyStop, plData } = useApp();
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
   const todayPL = bankrollStats.todayPL;
@@ -13,7 +13,6 @@ export default function DashboardHero() {
 
   const statusText = emergencyStop ? 'Emergency Stop' : isRunning ? 'Bot Running' : isPaused ? 'Bot Paused' : 'Bot Stopped';
   const dotColor = emergencyStop ? 'bg-chart-5' : isRunning ? 'bg-chart-1' : isPaused ? 'bg-chart-4' : 'bg-muted-foreground';
-  const modeLabel = mode === 'live' ? 'Live Mode' : 'Demo Mode';
 
   const stats = [
     { label: "Today's P/L", value: `${positive ? '+' : ''}$${Math.abs(todayPL).toFixed(2)}`, color: positive ? 'text-chart-1' : 'text-chart-5' },
@@ -39,7 +38,7 @@ export default function DashboardHero() {
             </span>
             <span className="text-xs font-semibold text-foreground uppercase tracking-wider">{statusText}</span>
             <span className="text-muted-foreground/50">·</span>
-            <span className="text-xs font-medium text-muted-foreground">{modeLabel}</span>
+            <span className="text-xs font-medium text-muted-foreground">Paper Trading</span>
             {botState.cycleNumber > 0 && (
               <>
                 <span className="text-muted-foreground/50">·</span>
