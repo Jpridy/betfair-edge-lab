@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
 import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, getPaperProgress } from '@/lib/strategyValidation';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { StrategyStatusBadge } from '@/components/strategy/StrategyStatusBadge';
 import { ArrowRight } from 'lucide-react';
 
 export default function PaperProgress() {
   const { settings, paperOrders, strategyStats } = useApp();
 
-  const strategies = DEMO_STRATEGY_LIBRARY
+  const strategies = STRATEGY_LIBRARY
     .filter(s => s.status !== 'archived')
     .map(s => {
       const audit = getLiveAuditData(s.name, paperOrders, strategyStats);

@@ -5,7 +5,7 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Archive, Copy, RotateCcw, FileDown, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, computeDataQuality, getPaperProgress } from '@/lib/strategyValidation';
 import { StrategyStatusBadge, DataQualityBadge, MetricWarningBadge } from '@/components/strategy/StrategyStatusBadge';
@@ -28,7 +28,7 @@ export default function StrategyDetail() {
   const { settings, paperOrders, strategyStats, addAuditLog } = useApp();
   const [activeTab, setActiveTab] = useState('overview');
 
-  const strategy = useMemo(() => DEMO_STRATEGY_LIBRARY.find(s => s.id === id), [id]);
+  const strategy = useMemo(() => STRATEGY_LIBRARY.find(s => s.id === id), [id]);
   const audit = useMemo(() => strategy ? getLiveAuditData(strategy.name, paperOrders, strategyStats) : null, [strategy, paperOrders, strategyStats]);
   const status = useMemo(() => strategy ? computeTrafficLight(strategy, audit, settings) : null, [strategy, audit, settings]);
   const dataQuality = useMemo(() => strategy ? computeDataQuality(strategy, audit) : null, [strategy, audit]);

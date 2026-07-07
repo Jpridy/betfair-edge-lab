@@ -5,7 +5,7 @@ import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPape
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
 import { countTicksBetween } from '@/lib/tickLadder';
-import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 
 const AppContext = createContext(null);
 
@@ -835,21 +835,15 @@ export function AppProvider({ children }) {
     setSyncState(prev => ({ ...prev, marketsScannedToday: prev.marketsScannedToday + marketsScanned, runnersScannedToday: prev.runnersScannedToday + s.runners.filter(r => candidates.some(m => m.id === r.marketId)).length }));
 
     // Step 2: Filter Markets (Market Book)
-    // In live mode, stream markets may have totalMatched=0 (just opened) and
-    // numberOfRunners unset (marketDefinition still arriving). We accept any
-    // OPEN market with 2+ runners; the pre-order validation step catches
-    // markets without actual price data. In demo mode we keep the liquidity
-    // check since demo data always has totalMatched populated.
+    // Stream markets may have totalMatched=0 (just opened) and numberOfRunners
+    // unset (marketDefinition still arriving). We accept any OPEN market with
+    // 2+ runners; the pre-order validation step catches markets without actual
+    // price data.
     const filtered = candidates.filter(m => {
       const marketRunners = s.runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
       const runnerCount = m.numberOfRunners || m.numberOfActiveRunners || marketRunners.length;
       const commissionOk = m.marketBaseRate != null || s.settings.defaultCommissionRate > 0;
-      if (s.apiConnected) {
-        // Live mode: just need 2+ runners and determinable commission
-        return runnerCount >= 2 && commissionOk;
-      }
-      // Demo mode: apply liquidity filter
-      return m.totalMatched >= s.settings.minimumLiquidity && runnerCount >= 2 && commissionOk;
+      return runnerCount >= 2 && commissionOk;
     });
     marketsPassed = filtered.length;
     steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
@@ -903,7 +897,7 @@ export function AppProvider({ children }) {
       const maxOdds = s.settings.maxOdds || 20;
       const maxTradesPerMarket = s.settings.maxTradesPerMarket || 5;
       const openStatuses = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
-      const sizeThreshold = s.apiConnected ? 2 : (s.settings.baseStake || 50);
+      const sizeThreshold = 2;
 
       if (enabled.length > 0) {
         // Search across markets × strategies to find a runner that doesn't
@@ -1011,46 +1005,6 @@ export function AppProvider({ children }) {
                 setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
                 base44.entities.PaperOrder.create(order).catch(() => {});
                 setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
-
-                const pending = s.paperOrders.filter(o => o.result === 'pending' && o.status === 'matched');
-                if (!s.apiConnected && pending.length > 0 && Math.random() > 0.5) {
-                  const toSettle = pending[0];
-                  const orderMarket = s.markets.find(m => m.id === toSettle.marketId || m.betfairMarketId === toSettle.betfairMarketId) || market;
-                  const settled = settleOrder(toSettle, orderMarket, s.settings);
-                  setPaperOrders(prev => prev.map(o => o.id === toSettle.id ? settled : o));
-                  base44.entities.PaperOrder.update(toSettle.id, settled).catch(() => {});
-                  setBankrollStats(prev => ({
-                    ...prev,
-                    bankroll: prev.bankroll + settled.netProfit,
-                    todayPL: prev.todayPL + settled.netProfit,
-                    totalPL: prev.totalPL + settled.netProfit,
-                    available: prev.available + settled.netProfit,
-                    commissionPaid: prev.commissionPaid + (settled.commission || 0),
-                    wins: settled.result === 'won' ? prev.wins + 1 : prev.wins,
-                    losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
-                  }));
-                  setBotState(prev => ({ ...prev, botPLToday: prev.botPLToday + settled.netProfit }));
-                  // Auto-update strategy stats after settlement
-                  setStrategyStats(prevStats => prevStats.map(stat => {
-                    if (stat.strategyName !== settled.strategyName) return stat;
-                    const allSettled = s.paperOrders.filter(o => o.status === 'settled' && o.strategyName === stat.strategyName);
-                    const wins = allSettled.filter(o => o.result === 'won').length;
-                    const losses = allSettled.filter(o => o.result === 'lost').length;
-                    const totalStake = allSettled.reduce((sum, o) => sum + (o.matchedStake || o.matched_size || 0), 0);
-                    const netProfit = allSettled.reduce((sum, o) => sum + (o.netProfit || 0), 0);
-                    return {
-                      ...stat,
-                      totalPaperOrders: allSettled.length,
-                      wins, losses,
-                      strikeRate: allSettled.length > 0 ? (wins / allSettled.length) * 100 : 0,
-                      totalStake, netProfit,
-                      roi: totalStake > 0 ? (netProfit / totalStake) * 100 : 0,
-                      updatedAt: new Date().toISOString(),
-                    };
-                  }));
-                  addToBotActivity('Paper order settled', `${settled.strategyName} on ${settled.runnerName} — ${settled.result.toUpperCase()} ${settled.netProfit >= 0 ? '+' : ''}$${settled.netProfit.toFixed(2)}`);
-                  addAuditLog('Paper Order Settled', 'order', 'info', `${settled.runnerName} ${settled.result.toUpperCase()} — Net $${settled.netProfit.toFixed(2)} (commission $${settled.commission?.toFixed(2)} at ${(settled.commissionRateUsed * 100).toFixed(1)}%)`);
-                }
               } else {
                 steps[7].status = 'blocked';
                 steps[7].reason = 'Bot is paused or auto paper trading is disabled.';

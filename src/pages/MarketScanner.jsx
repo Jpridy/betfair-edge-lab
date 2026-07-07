@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Eye, EyeOff, Filter, ExternalLink, AlertTriangle } from 'lucide-react';
-import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { calculateSpreadTicks } from '@/lib/tickLadder';
 
 export default function MarketScanner() {

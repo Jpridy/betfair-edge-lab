@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, computeDataQuality, checkLiveLockout, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
 
@@ -51,7 +51,7 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
   doc.setFontSize(10);
   doc.text(`Generated: ${new Date().toLocaleString('en-AU')}`, margin, y);
   y += 6;
-  doc.text(`Total Strategies: ${DEMO_STRATEGY_LIBRARY.length}`, margin, y);
+  doc.text(`Total Strategies: ${STRATEGY_LIBRARY.length}`, margin, y);
   y += 10;
   addDivider();
 
@@ -78,7 +78,7 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
   y += 7;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  DEMO_STRATEGY_LIBRARY.forEach((s, i) => {
+  STRATEGY_LIBRARY.forEach((s, i) => {
     ensureSpace(5);
     doc.text(`${i + 1}. ${s.name} (${s.category})`, margin, y);
     y += 5;
@@ -87,7 +87,7 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
   addDivider();
 
   // Each strategy
-  DEMO_STRATEGY_LIBRARY.forEach((s, index) => {
+  STRATEGY_LIBRARY.forEach((s, index) => {
     if (index > 0) {
       doc.addPage();
       y = margin;

@@ -15,7 +15,7 @@ import { isCommissionValidForLive, isInPlayLocked, isOrderOpen } from './betfair
  * @param {object} order - The proposed order { marketId, selectionId, side, price, size, persistenceType, strategyName }
  * @param {object} market - The market object
  * @param {object} runner - The runner object
- * @param {object} strategy - The strategy object from DEMO_STRATEGY_LIBRARY
+ * @param {object} strategy - The strategy object from STRATEGY_LIBRARY
  * @param {object} settings - App settings
  * @param {object} bankrollStats - Current bankroll stats
  * @param {array} existingOrders - Existing paper/live orders

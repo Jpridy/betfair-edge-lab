@@ -8,7 +8,7 @@ import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianG
 import { TrendingUp, TrendingDown, Activity, Gauge, ArrowLeft, Plus, FileText, Target, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { calculateSpreadTicks, generatePriceLadder, getSpreadQuality, getNextTickUp, getNextTickDown } from '@/lib/tickLadder';
 import { runPreOrderChecks } from '@/lib/orderValidation';
 

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download, ChevronRight, Copy, XCircle, RotateCcw } from 'lucide-react';
-import { DEMO_STRATEGY_LIBRARY } from '@/lib/demoData';
+import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { getLiveAuditData } from '@/lib/liveAuditData';
 import { computeTrafficLight, computeDataQuality, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
 import { StrategyStatusBadge, DataQualityBadge, MetricWarningBadge } from '@/components/strategy/StrategyStatusBadge';
@@ -44,7 +44,7 @@ export default function StrategyLibrary() {
   };
 
   const strategiesWithStatus = useMemo(() => {
-    return DEMO_STRATEGY_LIBRARY.map(s => {
+    return STRATEGY_LIBRARY.map(s => {
       const audit = getLiveAuditData(s.name, paperOrders, strategyStats);
       const status = computeTrafficLight(s, audit, settings);
       const dq = computeDataQuality(s, audit);
