@@ -1038,6 +1038,12 @@ export function AppProvider({ children }) {
                 steps[4].reason = `AI error: ${err.message}`;
                 notes.push(steps[4].reason);
                 errors = 1;
+                // 401 = user session expired — stop the bot so it doesn't
+                // keep failing every cycle. User needs to re-login.
+                if (err.message?.includes('401')) {
+                  stopBot();
+                  addAuditLog('Bot Stopped — Session Expired', 'system', 'critical', 'User session token expired. Bot stopped to prevent repeated 401 errors. Please re-login.');
+                }
               }
             } else {
               // Call Market Microstructure Analysis (NOT horse racing form).
