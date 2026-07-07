@@ -108,7 +108,7 @@ export class BetfairStreamClient {
       // If we exceeded the 200-market subscription limit, fall back to a narrower filter
       if (errorCode === 'SUBSCRIPTION_LIMIT_EXCEEDED' || errorCode === 'TOO_MANY_MARKETS') {
         const nextLevel = (this._subscriptionFilterLevel || 0) + 1;
-        if (nextLevel <= 3) {
+        if (nextLevel <= 4) {
           if (this.onError) this.onError(`Market filter too broad (${errorCode}). Falling back to narrower filter (level ${nextLevel})...`);
           this._subscribeToMarkets(nextLevel);
           return;
@@ -134,15 +134,20 @@ export class BetfairStreamClient {
     // eventTypeIds, eventIds, marketIds, venues, bettingTypes, bspMarket, raceTypes.
     // Max 200 markets per subscription. We try broad filters first and fall back
     // to narrower ones if Betfair rejects for exceeding the limit.
+    // Horse racing only (eventType 7 — no greyhounds).
+    // Filters go broad → narrow so we get the most data possible while
+    // staying under Betfair's 200-market-per-subscription limit.
     const filters = [
-      // Level 0 — global horse racing + greyhounds (broadest)
-      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'] },
-      // Level 1 — AU + GB + IE horse racing + greyhounds
-      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB', 'IE'] },
-      // Level 2 — AU + GB horse racing + greyhounds
-      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB'] },
-      // Level 3 — AU only (safest fallback)
-      { eventTypeIds: ['7', '4339'], marketTypes: ['WIN'], countryCodes: ['AU'] },
+      // Level 0 — global horse racing (broadest)
+      { eventTypeIds: ['7'], marketTypes: ['WIN'] },
+      // Level 1 — AU + GB + IE horse racing
+      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB', 'IE'] },
+      // Level 2 — AU + GB horse racing
+      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB'] },
+      // Level 3 — AU only horse racing
+      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU'] },
+      // Level 4 — AU BSP markets only (narrowest)
+      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU'], bspMarket: true },
     ];
     const filter = filters[Math.min(filterLevel, filters.length - 1)];
     this._subscriptionFilterLevel = filterLevel;
