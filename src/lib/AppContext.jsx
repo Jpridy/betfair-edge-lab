@@ -5,7 +5,7 @@ import { BOT_STEPS, getEnabledStrategies, createSignal, runRiskCheck, createPape
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
 import { countTicksBetween } from '@/lib/tickLadder';
-import { ENRICHED_STRATEGY_LIBRARY, BETFAIR_MARKETS, BETFAIR_RUNNERS } from '@/lib/demoData';
+import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/demoData';
 
 const AppContext = createContext(null);
 
@@ -126,8 +126,8 @@ export function AppProvider({ children }) {
 
   // ── Data State — loaded from database, no demo fallback ──
   const [dataLoading, setDataLoading] = useState(true);
-  const [markets, setMarkets] = useState(BETFAIR_MARKETS);
-  const [runners, setRunners] = useState(BETFAIR_RUNNERS);
+  const [markets, setMarkets] = useState([]);
+  const [runners, setRunners] = useState([]);
   const [paperOrders, setPaperOrders] = useState([]);
   const [strategySignals, setStrategySignals] = useState([]);
   const [bankrollStats, setBankrollStats] = useState({
@@ -1085,14 +1085,8 @@ export function AppProvider({ children }) {
 
     if (!apiConnected) {
       setBetfairConnection(prev => ({ ...prev, dataFresh: false, streamConnectionStatus: 'disconnected' }));
-      // Restore demo data when disconnecting in demo mode
-      if (mode === 'demo') {
-        setMarkets(BETFAIR_MARKETS);
-        setRunners(BETFAIR_RUNNERS);
-      } else {
-        setMarkets([]);
-        setRunners([]);
-      }
+      setMarkets([]);
+      setRunners([]);
       return;
     }
 
