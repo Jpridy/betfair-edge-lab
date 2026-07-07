@@ -849,9 +849,8 @@ export function AppProvider({ children }) {
     // price data.
     const filtered = candidates.filter(m => {
       const marketRunners = s.runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
-      const runnerCount = m.numberOfRunners || m.numberOfActiveRunners || marketRunners.length;
-      const commissionOk = m.marketBaseRate != null || s.settings.defaultCommissionRate > 0;
-      return runnerCount >= 2 && commissionOk;
+      const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
+      return runnerCount >= 2;
     });
     marketsPassed = filtered.length;
     steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
