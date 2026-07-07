@@ -10,7 +10,7 @@ import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 const AppContext = createContext(null);
 
 const DEFAULT_BOT_SETTINGS = {
-  scanIntervalSeconds: 10,
+  scanIntervalSeconds: 30,
   selectedStrategies: ['Value Bet', 'Pre-Off Scalping', 'Steam/Drift'],
   autoPaperTradingEnabled: true,
   liveTradingLocked: true,

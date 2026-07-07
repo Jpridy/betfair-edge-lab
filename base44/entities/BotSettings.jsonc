@@ -16,7 +16,7 @@
     },
     "scanIntervalSeconds": {
       "type": "number",
-      "default": 10
+      "default": 30
     },
     "selectedStrategies": {
       "type": "array",
