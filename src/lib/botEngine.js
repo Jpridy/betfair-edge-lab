@@ -83,7 +83,8 @@ export function createSignal(strategyName, market, runner, settings, formData = 
   } else if (strategyName === 'Pre-Off Scalping') {
     side = 'BACK';
   } else if (strategyName === 'Steam/Drift') {
-    side = Math.random() > 0.5 ? 'BACK' : 'LAY';
+    // Deterministic: use price movement direction (not random)
+    side = (runner.priceMovementShortTerm || 0) > 0 ? 'BACK' : 'LAY';
   } else {
     side = 'BACK';
   }
@@ -94,10 +95,10 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     : (runner.bestLayPrice || runner.lastTradedPrice || 3.0);
 
   const baseProb = impliedProb(odds);
-  // Use market microstructure analysis probability if available; otherwise fall back to implied prob adjusted
+  // Use market microstructure analysis probability if available; otherwise use implied prob (no random)
   const modelProb = formData?.estimated_probability != null
     ? Math.min(0.95, Math.max(0.05, formData.estimated_probability))
-    : Math.min(0.95, Math.max(0.05, baseProb * (0.92 + Math.random() * 0.2)));
+    : Math.min(0.95, Math.max(0.05, baseProb));
   
   // Use market base rate or default commission for EV calculation
   const commRate = market?.marketBaseRate || settings.defaultCommissionRate || settings.commissionRate || 0.05;
@@ -110,13 +111,10 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     return null;
   }
 
-  const stake = Math.min(
-    Math.round((settings.baseStake || 100) + Math.random() * ((settings.maxStake || 500) - (settings.baseStake || 100))),
-    settings.maxStake || 500
-  );
+  const stake = settings.baseStake || 100;
   
-  // Calculate CLV estimate
-  const clvEstimate = (Math.random() - 0.3) * 4; // -1.2% to +2.8%
+  // CLV estimate — no random; set to 0 until real closing data available
+  const clvEstimate = 0;
 
   // Calculate spread ticks
   const spreadTicks = calculateSpreadTicks(runner.bestBackPrice, runner.bestLayPrice);
@@ -135,7 +133,7 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     fairOdds: 1 / modelProb,
     edgePercent: edge,
     expectedValue: ev,
-    confidence: formData?.confidence != null ? formData.confidence / 100 : 0.5 + Math.random() * 0.4,
+    confidence: formData?.confidence != null ? formData.confidence / 100 : 50,
     signalStatus: 'active',
     persistenceType: PERSISTENCE_TYPES.LAPSE,
     clvEstimate,
@@ -234,9 +232,10 @@ export function createPaperOrder(signal, market, runner, settings) {
 
   const matched = matchedStakeAmount > 0;
 
-  // Calculate slippage (difference between requested and matched price)
-  const slippage = matched ? (Math.random() * 0.02) : 0; // 0-2% slippage
-  const matchedPrice = matched ? Math.round((signal.odds + slippage) * 100) / 100 : null;
+  // Paper matching uses the exact requested price — no random slippage.
+  // Slippage is only meaningful with real closing line data, which paper mode doesn't have.
+  const slippage = 0;
+  const matchedPrice = matched ? Math.round(signal.odds * 100) / 100 : null;
 
   // Determine simulation quality
   let simQuality = 'Basic';

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
@@ -9,32 +9,60 @@ import { Activity, Gauge, ArrowLeft, Plus, FileText, AlertTriangle, Radar } from
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
-import { calculateSpreadTicks, generatePriceLadder, getSpreadQuality } from '@/lib/tickLadder';
+import { calculateSpreadTicks, getSpreadQuality } from '@/lib/tickLadder';
 import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
 
-// Generate synthetic price history for a runner
-function generatePriceHistory(basePrice) {
-  const data = [];
-  let price = basePrice;
-  for (let i = 0; i < 30; i++) {
-    price += (Math.random() - 0.5) * 0.15;
-    price = Math.max(1.01, price);
-    data.push({ time: i, price: parseFloat(price.toFixed(2)) });
+// Build price history from real traded volume data if available
+function buildPriceHistory(runner) {
+  if (!runner) return [];
+  // Use real traded volume ladder if available from the stream
+  if (runner.tradedVolumeByPrice && runner.tradedVolumeByPrice.length > 0) {
+    return runner.tradedVolumeByPrice.map((vp, i) => ({ time: i, price: vp.price, volume: vp.size }));
   }
-  return data;
+  // Use availableToBack/availableToLay ladders if available
+  if (runner.availableToBackLadder && runner.availableToBackLadder.length > 0) {
+    return runner.availableToBackLadder.map((p, i) => ({ time: i, price: p.price, volume: p.size }));
+  }
+  // No real history available — return empty (chart will show "no data")
+  return [];
 }
 
-// Generate ladder using Betfair tick ladder
-function generateLadder(bestBack, bestLay) {
-  if (!bestBack || !bestLay || bestBack <= 0 || bestLay <= 0) return [];
-  const ladder = generatePriceLadder(bestBack, bestLay, 6);
-  return ladder.map(row => ({
-    price: row.price,
-    backSize: row.type === 'back' ? Math.floor(Math.random() * 800 + 100) : 0,
-    laySize: row.type === 'lay' ? Math.floor(Math.random() * 600 + 50) : 0,
-    isCurrent: row.level === 0,
-    type: row.type,
-  })).sort((a, b) => b.price - a.price);
+// Build ladder from real availableToBack/availableToLay data
+function buildLadder(runner) {
+  if (!runner) return [];
+  const backLadder = runner.availableToBackLadder || runner.availableToBack || [];
+  const layLadder = runner.availableToLayLadder || runner.availableToLay || [];
+
+  const rows = [];
+  const allPrices = new Set([
+    ...backLadder.map(p => p.price),
+    ...layLadder.map(p => p.price),
+  ]);
+
+  // If no ladder data, fall back to best prices only
+  if (allPrices.size === 0) {
+    if (runner.bestBackPrice > 0) {
+      rows.push({ price: runner.bestBackPrice, backSize: runner.bestBackSize || 0, laySize: 0, isCurrent: true, type: 'back' });
+    }
+    if (runner.bestLayPrice > 0) {
+      rows.push({ price: runner.bestLayPrice, backSize: 0, laySize: runner.bestLaySize || 0, isCurrent: true, type: 'lay' });
+    }
+    return rows.sort((a, b) => b.price - a.price);
+  }
+
+  for (const price of allPrices) {
+    const backEntry = backLadder.find(p => p.price === price);
+    const layEntry = layLadder.find(p => p.price === price);
+    rows.push({
+      price,
+      backSize: backEntry?.size || 0,
+      laySize: layEntry?.size || 0,
+      isCurrent: price === runner.bestBackPrice || price === runner.bestLayPrice,
+      type: backEntry ? 'back' : 'lay',
+    });
+  }
+
+  return rows.sort((a, b) => b.price - a.price);
 }
 
 export default function RunnerView() {
@@ -48,13 +76,13 @@ export default function RunnerView() {
   const marketRunners = useMemo(() => runners.filter(r => r.marketId === selectedMarket), [runners, selectedMarket]);
   const [selectedRunner, setSelectedRunner] = useState(marketRunners[0]?.id || '');
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (marketParam && markets.find(m => m.id === marketParam)) {
       setSelectedMarket(marketParam);
     }
   }, [marketParam, markets]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (marketRunners.length > 0 && !marketRunners.find(r => r.id === selectedRunner)) {
       setSelectedRunner(marketRunners[0].id);
     }
@@ -62,8 +90,8 @@ export default function RunnerView() {
 
   const runner = runners.find(r => r.id === selectedRunner);
   const market = markets.find(m => m.id === selectedMarket);
-  const priceHistory = useMemo(() => runner ? generatePriceHistory(runner.lastTradedPrice) : [], [runner?.id, runner?.lastTradedPrice]);
-  const ladder = useMemo(() => runner ? generateLadder(runner.bestBackPrice, runner.bestLayPrice) : [], [runner?.id, runner?.bestBackPrice, runner?.bestLayPrice]);
+  const priceHistory = useMemo(() => runner ? buildPriceHistory(runner) : [], [runner?.id, runner?.tradedVolumeByPrice, runner?.availableToBackLadder]);
+  const ladder = useMemo(() => runner ? buildLadder(runner) : [], [runner?.id, runner?.bestBackPrice, runner?.bestLayPrice, runner?.availableToBackLadder, runner?.availableToLayLadder]);
 
   if (markets.length === 0) {
     return (
@@ -107,8 +135,8 @@ export default function RunnerView() {
   if (runner.bestLaySize < 50) runnerWarnings.push({ level: 'warning', msg: `Insufficient available lay size ($${runner.bestLaySize?.toFixed(2)})` });
   if (market && market.totalMatched < (settings.minimumLiquidity || 5000)) runnerWarnings.push({ level: 'warning', msg: 'Liquidity below strategy minimum' });
 
-  // Model probability (synthetic — based on implied prob adjusted for form factors)
-  const modelProbability = runner.impliedProbability * (1 + (Math.random() - 0.45) * 0.1);
+  // Model probability — use AI model probability if available, otherwise implied probability (no random)
+  const modelProbability = runner.modelProbability || runner.impliedProbability;
   const edge = ((modelProbability / runner.impliedProbability) - 1) * 100;
   const fairOdds = 100 / modelProbability;
   const clvEstimate = ((runner.lastTradedPrice - runner.bestBackPrice) / runner.bestBackPrice) * 100;
