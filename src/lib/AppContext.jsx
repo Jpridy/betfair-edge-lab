@@ -597,6 +597,13 @@ export function AppProvider({ children }) {
     setAuditLogs([]);
   };
 
+  // ── Clear Decision Log (Bot Cycles) ──
+  const clearBotCycles = async () => {
+    await base44.entities.BotCycle.deleteMany({}).catch(() => {});
+    setBotCycles([]);
+    addAuditLog('Decision Log Cleared', 'system', 'warning', 'All bot cycle decision logs cleared.');
+  };
+
   // ── Reset Strategy Data Only ──
   const resetStrategyData = async () => {
     await Promise.all([
@@ -1303,6 +1310,12 @@ export function AppProvider({ children }) {
       bestCandidate: diagnostics?.bestCandidate || null,
       noBetReason: diagnostics?.noBetReason || null,
       scanSummary: diagnostics?.scanSummary || null,
+      assessedRunners: diagnostics?.assessedRunners || [],
+      selectedMarketName: diagnostics?.selectedMarket
+        ? (diagnostics.selectedMarket.venue
+          ? `${diagnostics.selectedMarket.venue} - ${diagnostics.selectedMarket.marketName}`
+          : diagnostics.selectedMarket.marketName)
+        : null,
     };
     setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
     base44.entities.BotCycle.create(cycleRecord).catch(() => {});
@@ -1554,7 +1567,7 @@ export function AppProvider({ children }) {
     // Refresh (local recalculation — not Betfair API sync)
     syncState, refreshMarketState, refreshOrderState, recalculateSettledStats, recalculateMetrics, recalculateRiskState,
     // Bot
-    botState, botSettings, updateBotSettings, botCycles, strategyStats, botActivity,
+    botState, botSettings, updateBotSettings, botCycles, clearBotCycles, strategyStats, botActivity,
     startBot, pauseBot, stopBot, runManualScan, addToBotActivity,
     // Strategy Library
     strategyLibrary,

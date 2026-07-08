@@ -11,6 +11,7 @@ import WhyNoBetPanel from '@/components/bot/WhyNoBetPanel';
 import BestCandidatePanel from '@/components/bot/BestCandidatePanel';
 import ScanSummaryPanel from '@/components/bot/ScanSummaryPanel';
 import CalibrationPanel from '@/components/bot/CalibrationPanel';
+import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import { Panel } from '@/components/ui/Trading';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
@@ -29,6 +30,7 @@ export default function BotControlCentre() {
         <BestCandidatePanel bestCandidate={lastScanDiagnostics?.bestCandidate} />
         <CalibrationPanel />
       </div>
+      <DecisionLogPanel />
       <BotScanStats />
       <BotStatusCard />
       <BotLoopDisplay />

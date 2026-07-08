@@ -70,6 +70,15 @@
     },
     "scanSummary": {
       "type": "object"
+    },
+    "assessedRunners": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "selectedMarketName": {
+      "type": "string"
     }
   },
   "required": [
