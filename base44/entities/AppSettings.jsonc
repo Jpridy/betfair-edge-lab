@@ -187,6 +187,9 @@
     "minimumPaperTrades": {
       "type": "number",
       "default": 200
+    },
+    "dailyResetAt": {
+      "type": "string"
     }
   },
   "required": [
