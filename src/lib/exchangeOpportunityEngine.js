@@ -28,7 +28,7 @@ const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
  * Scan all eligible pre-race markets.
  * @returns {Array} Eligible markets (OPEN, not in-play, 2+ runners, in time window)
  */
-export function scanEligibleMarkets(markets, runners, settings) {
+export function scanEligibleMarkets(markets, runners, settings, debugScanMode = false) {
   const windowStart = settings.defaultTimeWindowStartSeconds || 500;
   const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
   const nowMs = Date.now();
@@ -43,12 +43,163 @@ export function scanEligibleMarkets(markets, runners, settings) {
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount < 2) return false;
 
+    // In debug scan mode, skip the time window filter entirely
+    if (debugScanMode) return true;
+
     // Time window: include markets that are within or approaching the window
     const start = m.startTime ? new Date(m.startTime).getTime() : NaN;
     if (isNaN(start)) return true; // No start time — include (will be filtered later)
     const secsBefore = (start - nowMs) / 1000;
     // Include markets from windowEnd to windowStart * 2 (gives buffer for scanning)
     return secsBefore > windowEnd && secsBefore < windowStart * 2;
+  });
+}
+
+/**
+ * Build pre-filter market feed diagnostics from ALL loaded markets.
+ * Runs before any eligibility filtering to show the raw state of the market feed.
+ */
+function buildMarketFeedDiagnostics(markets, runners) {
+  const nowMs = Date.now();
+  let open = 0, closed = 0, suspended = 0, inPlay = 0, notInPlay = 0;
+  let withStartTime = 0, withoutStartTime = 0;
+  let withRunners = 0, withPriceData = 0, missingPriceData = 0;
+
+  for (const m of markets) {
+    if (m.status === 'OPEN') open++;
+    else if (m.status === 'CLOSED' || m.status === 'SETTLED') closed++;
+    else if (m.status === 'SUSPENDED') suspended++;
+
+    if (m.inPlay) inPlay++; else notInPlay++;
+
+    if (m.startTime || m.marketStartTime) withStartTime++; else withoutStartTime++;
+
+    const marketRunners = runners.filter(r =>
+      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+    );
+    const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
+    if (runnerCount >= 2) withRunners++;
+
+    const hasPriceData = marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
+    if (hasPriceData) withPriceData++; else missingPriceData++;
+  }
+
+  return {
+    marketsInMemory: markets.length,
+    streamMarketsCount: markets.length,
+    catalogueMarketsCount: markets.length,
+    marketsWithStartTime: withStartTime,
+    marketsWithoutStartTime: withoutStartTime,
+    marketsOpen: open,
+    marketsClosed: closed,
+    marketsSuspended: suspended,
+    marketsInPlay: inPlay,
+    marketsNotInPlay: notInPlay,
+    marketsWithRunners: withRunners,
+    marketsWithPriceData: withPriceData,
+    marketsMissingPriceData: missingPriceData,
+  };
+}
+
+/**
+ * Build time-window funnel for all OPEN non-inplay markets.
+ * Shows exactly why markets are rejected by the time window.
+ */
+function buildTimeWindowFunnel(markets, settings, debugScanMode) {
+  const windowStart = settings.defaultTimeWindowStartSeconds || 500;
+  const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
+  const nowMs = Date.now();
+
+  const openNonInPlay = markets.filter(m => m.status === 'OPEN' && !m.inPlay);
+
+  let tooEarly = 0, insideWindow = 0, tooLate = 0, noStartTime = 0;
+  const nearestMarkets = [];
+
+  for (const m of openNonInPlay) {
+    const start = m.startTime ? new Date(m.startTime).getTime() : (m.marketStartTime ? new Date(m.marketStartTime).getTime() : NaN);
+    if (isNaN(start)) {
+      noStartTime++;
+      nearestMarkets.push({
+        marketId: m.betfairMarketId || m.id,
+        eventName: m.eventName || '',
+        marketName: m.marketName || '',
+        marketTypeCode: m.marketTypeCode || m.marketType || '',
+        status: m.status,
+        inPlay: m.inPlay,
+        marketStartTime: m.startTime || m.marketStartTime || null,
+        secondsToJump: null,
+        timeWindowCategory: 'no_start_time',
+      });
+      continue;
+    }
+    const secsBefore = Math.round((start - nowMs) / 1000);
+    let category;
+    if (secsBefore <= 0) { tooLate++; category = 'too_late'; }
+    else if (secsBefore < windowEnd) { tooLate++; category = 'too_late'; }
+    else if (secsBefore > windowStart * 2) { tooEarly++; category = 'too_early'; }
+    else if (secsBefore > windowStart) { tooEarly++; category = 'too_early'; }
+    else { insideWindow++; category = 'inside_window'; }
+
+    nearestMarkets.push({
+      marketId: m.betfairMarketId || m.id,
+      eventName: m.eventName || '',
+      marketName: m.marketName || '',
+      marketTypeCode: m.marketTypeCode || m.marketType || '',
+      status: m.status,
+      inPlay: m.inPlay,
+      marketStartTime: m.startTime || m.marketStartTime || null,
+      secondsToJump: secsBefore,
+      timeWindowCategory: category,
+    });
+  }
+
+  // Sort by secondsToJump (nulls last) and take nearest 20
+  nearestMarkets.sort((a, b) => {
+    if (a.secondsToJump === null && b.secondsToJump === null) return 0;
+    if (a.secondsToJump === null) return 1;
+    if (b.secondsToJump === null) return -1;
+    return a.secondsToJump - b.secondsToJump;
+  });
+
+  return {
+    tooEarlyMarkets: tooEarly,
+    insideWindowMarkets: insideWindow,
+    tooLateMarkets: tooLate,
+    noStartTimeMarkets: noStartTime,
+    windowStartSeconds: windowStart,
+    windowEndSeconds: windowEnd,
+    debugScanMode,
+    nearestMarkets: nearestMarkets.slice(0, 20),
+  };
+}
+
+/**
+ * Build a debug table of the first 50 loaded markets with full details.
+ */
+function buildLoadedMarketsTable(markets, runners) {
+  const nowMs = Date.now();
+  return markets.slice(0, 50).map(m => {
+    const marketRunners = runners.filter(r =>
+      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+    );
+    const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
+    const hasPriceData = marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
+    const start = m.startTime ? new Date(m.startTime).getTime() : (m.marketStartTime ? new Date(m.marketStartTime).getTime() : NaN);
+    const secondsToJump = isNaN(start) ? null : Math.round((start - nowMs) / 1000);
+    return {
+      marketId: m.betfairMarketId || m.id,
+      eventName: m.eventName || '',
+      marketName: m.marketName || '',
+      marketTypeCode: m.marketTypeCode || m.marketType || '',
+      detectedMarketType: detectMarketType(m),
+      status: m.status,
+      inPlay: m.inPlay,
+      marketStartTime: m.startTime || m.marketStartTime || null,
+      secondsToJump,
+      runnerCount,
+      hasPriceData,
+      totalMatched: m.totalMatched || 0,
+    };
   });
 }
 
@@ -64,26 +215,100 @@ export function scanEligibleMarkets(markets, runners, settings) {
  * @param {Array} params.paperOrders - Existing paper orders
  * @param {boolean} params.emergencyStop - Emergency stop active
  * @param {Function} params.callAI - async (cluster, primaryMarket, marketRunners) => aiResult
+ * @param {object} params.connectionState - Betfair connection state
  * @returns {object} { bestOpportunity, allOpportunities, eventClusters, diagnostics }
  */
-export async function runExchangeCycle({ markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI }) {
+export async function runExchangeCycle({ markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, connectionState }) {
+  // ── Build pre-filter diagnostics from ALL loaded markets ──
+  const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners);
+
+  // ── Build time-window funnel ──
+  const debugScanMode = featherlessSettings?.debugScanMode === true;
+  const timeWindowFunnel = buildTimeWindowFunnel(markets, settings, debugScanMode);
+
+  // ── Build loaded markets debug table (first 50) ──
+  const loadedMarketsTable = buildLoadedMarketsTable(markets, runners);
+
+  // ── Connection state ──
+  const connectionDiagnostics = {
+    betfairApiConnected: connectionState?.apiConnected ?? false,
+    streamConnected: connectionState?.streamConnected ?? false,
+    lastStreamUpdateAt: connectionState?.lastStreamUpdateAt ?? null,
+    lastCatalogueRefreshAt: connectionState?.lastCatalogueRefreshAt ?? null,
+    marketCatalogueError: connectionState?.marketCatalogueError ?? null,
+    streamError: connectionState?.streamError ?? null,
+    priceFeedStale: connectionState?.priceFeedStale ?? false,
+  };
+
   if (emergencyStop) {
     return {
       bestOpportunity: null,
       allOpportunities: [],
       eventClusters: [],
-      diagnostics: { noBetReason: 'Emergency stop active', marketsScanned: 0, eventsScanned: 0 },
+      diagnostics: {
+        noBetReason: 'Emergency stop active',
+        marketsScanned: 0,
+        eventsScanned: 0,
+        marketFeedDiagnostics,
+        timeWindowFunnel,
+        loadedMarketsTable,
+        connectionDiagnostics,
+        debugScanMode,
+      },
     };
   }
 
+  // ── Separated scan counts ──
+  const totalMarketsLoaded = markets.length;
+  const openPreRaceMarkets = markets.filter(m => m.status === 'OPEN' && !m.inPlay).length;
+  const marketsInsideTimeWindow = timeWindowFunnel.insideWindowMarkets;
+
   // 1. Scan all eligible pre-race markets
-  const eligibleMarkets = scanEligibleMarkets(markets, runners, settings);
+  const eligibleMarkets = scanEligibleMarkets(markets, runners, settings, debugScanMode);
+
+  // Count eligible after runner filter
+  const eligibleAfterRunnerFilter = markets.filter(m => {
+    if (m.status !== 'OPEN') return false;
+    if (m.inPlay && !settings.allowInPlay) return false;
+    const marketRunners = runners.filter(r =>
+      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+    );
+    const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
+    return runnerCount >= 2;
+  }).length;
+
+  const eligibleAfterPriceFilter = eligibleMarkets.filter(m => {
+    const marketRunners = runners.filter(r =>
+      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+    );
+    return marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
+  }).length;
+
   if (eligibleMarkets.length === 0) {
+    const reason = debugScanMode
+      ? `No open pre-race markets with 2+ runners found (${totalMarketsLoaded} markets loaded, ${openPreRaceMarkets} open pre-race)`
+      : `No eligible markets in time window — ${marketsInsideTimeWindow} inside window, ${timeWindowFunnel.tooEarlyMarkets} too early, ${timeWindowFunnel.tooLateMarkets} too late, ${timeWindowFunnel.noStartTimeMarkets} no start time (of ${openPreRaceMarkets} open pre-race markets)`;
     return {
       bestOpportunity: null,
       allOpportunities: [],
       eventClusters: [],
-      diagnostics: { noBetReason: 'No eligible open pre-race markets found', marketsScanned: 0, eventsScanned: 0, marketDetectionLog: [] },
+      diagnostics: {
+        noBetReason: reason,
+        marketsScanned: 0,
+        eventsScanned: 0,
+        marketFeedDiagnostics,
+        timeWindowFunnel,
+        loadedMarketsTable,
+        connectionDiagnostics,
+        debugScanMode,
+        totalMarketsLoaded,
+        openPreRaceMarkets,
+        marketsInsideTimeWindow,
+        eligibleMarketsAfterRunnerFilter: eligibleAfterRunnerFilter,
+        eligibleMarketsAfterPriceFilter: eligibleAfterPriceFilter,
+        marketsSentToExchangeEngine: 0,
+        marketDetectionLog: [],
+      },
     };
   }
 
@@ -177,7 +402,8 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   const ranked = rankOpportunities(allOpportunities);
 
   // 9. Choose best positive-EV opportunity
-  const bestOpportunity = ranked.find(o => o.decision === 'BET') || null;
+  // In debug scan mode, do NOT select any opportunity for order placement
+  const bestOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
 
   // ── Top 20 opportunities by EV (for export and diagnostics) ──
   const topOpportunities = ranked.slice(0, 20).map(o => ({
@@ -297,11 +523,27 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     topOpportunities,
     topRejected: rejectedOpps,
     bestOpportunity: bestOpportunity,
-    noBetReason: bestOpportunity ? null : (allOpportunities.length === 0
-      ? 'No opportunities generated — check AI availability or market data'
-      : `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`),
+    noBetReason: debugScanMode
+      ? (allOpportunities.length === 0
+        ? 'Debug scan: no opportunities generated — check AI or price data'
+        : `Debug scan: ${allOpportunities.length} opportunities generated, ${allOpportunities.filter(o => o.decision === 'BET').length} positive-EV — NO orders placed (debug mode)`)
+      : (bestOpportunity ? null : (allOpportunities.length === 0
+        ? 'No opportunities generated — check AI availability or market data'
+        : `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`)),
     bestByCategory: getBestByCategory(allOpportunities),
     aiDecisions,
+    // ── New diagnostic layers ──
+    marketFeedDiagnostics,
+    timeWindowFunnel,
+    loadedMarketsTable,
+    connectionDiagnostics,
+    debugScanMode,
+    totalMarketsLoaded,
+    openPreRaceMarkets,
+    marketsInsideTimeWindow,
+    eligibleMarketsAfterRunnerFilter: eligibleAfterRunnerFilter,
+    eligibleMarketsAfterPriceFilter: eligibleAfterPriceFilter,
+    marketsSentToExchangeEngine: eligibleMarkets.length,
   };
 
   return {

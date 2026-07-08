@@ -1,14 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Download, Trash2, FileText, ListChecks } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Download, Trash2, FileText, ListChecks, Globe, TableProperties } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { exportToCSV } from '@/lib/csvExport';
 
 const CYCLE_EXPORT_COLUMNS = [
   { key: 'cycleId', label: 'CycleId' },
   { key: 'timestamp', label: 'Timestamp' },
+  { key: 'debugScanMode', label: 'DebugScanMode' },
+  { key: 'totalMarketsLoaded', label: 'TotalMarketsLoaded' },
+  { key: 'openPreRaceMarkets', label: 'OpenPreRaceMarkets' },
+  { key: 'marketsInsideTimeWindow', label: 'MarketsInsideTimeWindow' },
+  { key: 'eligibleMarketsAfterRunnerFilter', label: 'EligibleMarketsAfterRunnerFilter' },
+  { key: 'eligibleMarketsAfterPriceFilter', label: 'EligibleMarketsAfterPriceFilter' },
+  { key: 'marketsSentToExchangeEngine', label: 'MarketsSentToExchangeEngine' },
   { key: 'openMarketsScanned', label: 'OpenMarketsScanned' },
   { key: 'winMarketsFound', label: 'WinMarketsFound' },
   { key: 'placeMarketsFound', label: 'PlaceMarketsFound' },
@@ -20,6 +28,27 @@ const CYCLE_EXPORT_COLUMNS = [
   { key: 'layOpportunities', label: 'LayOpportunities' },
   { key: 'positiveEvOpportunities', label: 'PositiveEvOpportunities' },
   { key: 'rejectedOpportunities', label: 'RejectedOpportunities' },
+  { key: 'marketsOpen', label: 'MarketsOpen' },
+  { key: 'marketsClosed', label: 'MarketsClosed' },
+  { key: 'marketsSuspended', label: 'MarketsSuspended' },
+  { key: 'marketsInPlay', label: 'MarketsInPlay' },
+  { key: 'marketsNotInPlay', label: 'MarketsNotInPlay' },
+  { key: 'marketsWithStartTime', label: 'MarketsWithStartTime' },
+  { key: 'marketsWithoutStartTime', label: 'MarketsWithoutStartTime' },
+  { key: 'marketsWithRunners', label: 'MarketsWithRunners' },
+  { key: 'marketsWithPriceData', label: 'MarketsWithPriceData' },
+  { key: 'marketsMissingPriceData', label: 'MarketsMissingPriceData' },
+  { key: 'tooEarlyMarkets', label: 'TooEarlyMarkets' },
+  { key: 'insideWindowMarkets', label: 'InsideWindowMarkets' },
+  { key: 'tooLateMarkets', label: 'TooLateMarkets' },
+  { key: 'noStartTimeMarkets', label: 'NoStartTimeMarkets' },
+  { key: 'betfairApiConnected', label: 'BetfairApiConnected' },
+  { key: 'streamConnected', label: 'StreamConnected' },
+  { key: 'lastStreamUpdateAt', label: 'LastStreamUpdateAt' },
+  { key: 'lastCatalogueRefreshAt', label: 'LastCatalogueRefreshAt' },
+  { key: 'marketCatalogueError', label: 'MarketCatalogueError' },
+  { key: 'streamError', label: 'StreamError' },
+  { key: 'priceFeedStale', label: 'PriceFeedStale' },
   { key: 'selectedOpportunityId', label: 'SelectedOpportunityId' },
   { key: 'marketId', label: 'MarketId' },
   { key: 'eventName', label: 'EventName' },
@@ -110,11 +139,21 @@ function num(v) {
 function cycleToRow(c) {
   const ss = c.scanSummary || {};
   const bc = c.bestCandidate || {};
+  const mfd = ss.marketFeedDiagnostics || {};
+  const twf = ss.timeWindowFunnel || {};
+  const cd = ss.connectionDiagnostics || {};
 
   return {
     cycleId: c.cycleNumber,
     timestamp: c.finishedAt || c.startedAt || '',
-    openMarketsScanned: c.marketsScanned ?? ss.marketsScanned ?? 0,
+    debugScanMode: ss.debugScanMode ? 'TRUE' : 'FALSE',
+    totalMarketsLoaded: ss.totalMarketsLoaded ?? mfd.marketsInMemory ?? c.marketsScanned ?? 0,
+    openPreRaceMarkets: ss.openPreRaceMarkets ?? 0,
+    marketsInsideTimeWindow: ss.marketsInsideTimeWindow ?? 0,
+    eligibleMarketsAfterRunnerFilter: ss.eligibleMarketsAfterRunnerFilter ?? 0,
+    eligibleMarketsAfterPriceFilter: ss.eligibleMarketsAfterPriceFilter ?? 0,
+    marketsSentToExchangeEngine: ss.marketsSentToExchangeEngine ?? 0,
+    openMarketsScanned: ss.marketsScanned ?? c.marketsScanned ?? 0,
     winMarketsFound: ss.winMarketsFound ?? 0,
     placeMarketsFound: ss.placeMarketsFound ?? 0,
     h2hMarketsFound: ss.h2hMarketsFound ?? 0,
@@ -125,6 +164,27 @@ function cycleToRow(c) {
     layOpportunities: ss.layOpportunities ?? 0,
     positiveEvOpportunities: ss.positiveEVOpportunities ?? 0,
     rejectedOpportunities: ss.rejectedOpportunities ?? 0,
+    marketsOpen: mfd.marketsOpen ?? 0,
+    marketsClosed: mfd.marketsClosed ?? 0,
+    marketsSuspended: mfd.marketsSuspended ?? 0,
+    marketsInPlay: mfd.marketsInPlay ?? 0,
+    marketsNotInPlay: mfd.marketsNotInPlay ?? 0,
+    marketsWithStartTime: mfd.marketsWithStartTime ?? 0,
+    marketsWithoutStartTime: mfd.marketsWithoutStartTime ?? 0,
+    marketsWithRunners: mfd.marketsWithRunners ?? 0,
+    marketsWithPriceData: mfd.marketsWithPriceData ?? 0,
+    marketsMissingPriceData: mfd.marketsMissingPriceData ?? 0,
+    tooEarlyMarkets: twf.tooEarlyMarkets ?? 0,
+    insideWindowMarkets: twf.insideWindowMarkets ?? 0,
+    tooLateMarkets: twf.tooLateMarkets ?? 0,
+    noStartTimeMarkets: twf.noStartTimeMarkets ?? 0,
+    betfairApiConnected: cd.betfairApiConnected ? 'TRUE' : 'FALSE',
+    streamConnected: cd.streamConnected ? 'TRUE' : 'FALSE',
+    lastStreamUpdateAt: cd.lastStreamUpdateAt || '',
+    lastCatalogueRefreshAt: cd.lastCatalogueRefreshAt || '',
+    marketCatalogueError: cd.marketCatalogueError || '',
+    streamError: cd.streamError || '',
+    priceFeedStale: cd.priceFeedStale ? 'TRUE' : 'FALSE',
     selectedOpportunityId: bc.opportunityId || '',
     marketId: bc.betfairMarketId || bc.marketId || '',
     eventName: bc.eventName || '',
@@ -267,8 +327,36 @@ function opportunitiesToRows(cycle) {
   return rows;
 }
 
+const LOADED_MARKETS_COLUMNS = [
+  { key: 'marketId', label: 'MarketId' },
+  { key: 'eventName', label: 'EventName' },
+  { key: 'marketName', label: 'MarketName' },
+  { key: 'marketTypeCode', label: 'MarketTypeCode' },
+  { key: 'detectedMarketType', label: 'DetectedMarketType' },
+  { key: 'status', label: 'Status' },
+  { key: 'inPlay', label: 'InPlay' },
+  { key: 'marketStartTime', label: 'MarketStartTime' },
+  { key: 'secondsToJump', label: 'SecondsToJump' },
+  { key: 'runnerCount', label: 'RunnerCount' },
+  { key: 'hasPriceData', label: 'HasPriceData' },
+  { key: 'totalMatched', label: 'TotalMatched' },
+];
+
+const NEAREST_MARKETS_COLUMNS = [
+  { key: 'marketId', label: 'MarketId' },
+  { key: 'eventName', label: 'EventName' },
+  { key: 'marketName', label: 'MarketName' },
+  { key: 'marketTypeCode', label: 'MarketTypeCode' },
+  { key: 'status', label: 'Status' },
+  { key: 'inPlay', label: 'InPlay' },
+  { key: 'marketStartTime', label: 'MarketStartTime' },
+  { key: 'secondsToJump', label: 'SecondsToJump' },
+  { key: 'timeWindowCategory', label: 'TimeWindowCategory' },
+];
+
 export default function DecisionLogPanel() {
-  const { botCycles, clearBotCycles } = useApp();
+  const { botCycles, clearBotCycles, featherlessSettings, updateFeatherlessSettings } = useApp();
+  const [showDebugTable, setShowDebugTable] = useState(false);
 
   const handleExportCycles = () => {
     if (botCycles.length === 0) return;
@@ -290,14 +378,65 @@ export default function DecisionLogPanel() {
     );
   };
 
+  const handleExportLoadedMarkets = () => {
+    if (botCycles.length === 0) return;
+    const latest = botCycles[0];
+    const table = latest.scanSummary?.loadedMarketsTable || [];
+    if (table.length === 0) return;
+    exportToCSV(
+      `loaded-markets-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`,
+      table,
+      LOADED_MARKETS_COLUMNS
+    );
+  };
+
+  const handleExportNearestMarkets = () => {
+    if (botCycles.length === 0) return;
+    const latest = botCycles[0];
+    const funnel = latest.scanSummary?.timeWindowFunnel || {};
+    const nearest = funnel.nearestMarkets || [];
+    if (nearest.length === 0) return;
+    exportToCSV(
+      `nearest-markets-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`,
+      nearest,
+      NEAREST_MARKETS_COLUMNS
+    );
+  };
+
+  const debugScanMode = featherlessSettings?.debugScanMode === true;
+  const latestCycle = botCycles[0];
+  const latestSS = latestCycle?.scanSummary || {};
+  const loadedMarkets = latestSS.loadedMarketsTable || [];
+  const nearestMarkets = latestSS.timeWindowFunnel?.nearestMarkets || [];
+
   return (
     <Panel
       title={`Decision Log (${botCycles.length})`}
       action={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50">
+            <Switch
+              checked={debugScanMode}
+              onCheckedChange={(checked) => updateFeatherlessSettings({ debugScanMode: checked })}
+              className="scale-75"
+            />
+            <span className="text-[10px] font-medium text-muted-foreground">Debug Scan</span>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setShowDebugTable(!showDebugTable)} disabled={botCycles.length === 0}>
+            <TableProperties className="h-3.5 w-3.5" />
+            {showDebugTable ? 'Hide' : 'Show'} Markets
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleExportNearestMarkets} disabled={botCycles.length === 0}>
+            <Globe className="h-3.5 w-3.5" />
+            Nearest
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleExportLoadedMarkets} disabled={botCycles.length === 0}>
+            <TableProperties className="h-3.5 w-3.5" />
+            Loaded
+          </Button>
           <Button size="sm" variant="outline" onClick={handleExportOpportunities} disabled={botCycles.length === 0}>
             <ListChecks className="h-3.5 w-3.5" />
-            Export Opportunities
+            Opportunities
           </Button>
           <Button size="sm" variant="outline" onClick={handleExportCycles} disabled={botCycles.length === 0}>
             <Download className="h-3.5 w-3.5" />
@@ -305,11 +444,84 @@ export default function DecisionLogPanel() {
           </Button>
           <Button size="sm" variant="destructive" onClick={clearBotCycles} disabled={botCycles.length === 0}>
             <Trash2 className="h-3.5 w-3.5" />
-            Clear Log
+            Clear
           </Button>
         </div>
       }
     >
+      {debugScanMode && (
+        <div className="px-4 py-2 bg-chart-4/10 border-b border-chart-4/30 text-[10px] text-chart-4 font-medium">
+          DEBUG SCAN MODE ACTIVE — Time window ignored, NO orders will be placed. Diagnostic opportunities only.
+        </div>
+      )}
+      {showDebugTable && loadedMarkets.length > 0 && (
+        <div className="border-b border-border">
+          <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/30">
+            Loaded Markets ({loadedMarkets.length} shown · nearest first)
+          </div>
+          <div className="max-h-48 overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-[9px] h-7 px-2">Market</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2">Type</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2">Status</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2 text-right">Secs</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2 text-right">Runners</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2">Prices</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadedMarkets.map((m, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-[10px] px-2 py-1 truncate max-w-[160px]">{m.marketName || m.eventName || m.marketId}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1">{m.detectedMarketType || '—'}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1">{m.status}{m.inPlay ? ' (IP)' : ''}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{m.secondsToJump ?? '—'}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{m.runnerCount}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1">{m.hasPriceData ? '✓' : '✗'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+      {showDebugTable && nearestMarkets.length > 0 && (
+        <div className="border-b border-border">
+          <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/30">
+            Time-Window Funnel — Nearest 20 Markets
+          </div>
+          <div className="max-h-48 overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-[9px] h-7 px-2">Market</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2 text-right">Secs</TableHead>
+                  <TableHead className="text-[9px] h-7 px-2">Window</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {nearestMarkets.map((m, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-[10px] px-2 py-1 truncate max-w-[200px]">{m.marketName || m.eventName || m.marketId}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{m.secondsToJump ?? '—'}</TableCell>
+                    <TableCell className="text-[10px] px-2 py-1">
+                      <StatusBadge status={
+                        m.timeWindowCategory === 'inside_window' ? 'ok' :
+                        m.timeWindowCategory === 'too_early' ? 'info' :
+                        m.timeWindowCategory === 'too_late' ? 'warning' : 'neutral'
+                      }>
+                        {m.timeWindowCategory?.replace('_', ' ')}
+                      </StatusBadge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
       {botCycles.length === 0 ? (
         <div className="p-8 flex flex-col items-center justify-center text-center">
           <FileText className="h-8 w-8 text-muted-foreground mb-2" />
@@ -323,7 +535,7 @@ export default function DecisionLogPanel() {
               <TableRow>
                 <TableHead className="text-[10px] h-8 px-2">#</TableHead>
                 <TableHead className="text-[10px] h-8 px-2">Time</TableHead>
-                <TableHead className="text-[10px] h-8 px-2 text-right">Mkts</TableHead>
+                <TableHead className="text-[10px] h-8 px-2 text-right">Loaded</TableHead>
                 <TableHead className="text-[10px] h-8 px-2 text-right">W/P/H</TableHead>
                 <TableHead className="text-[10px] h-8 px-2 text-right">Opps</TableHead>
                 <TableHead className="text-[10px] h-8 px-2">Decision</TableHead>
@@ -344,13 +556,14 @@ export default function DecisionLogPanel() {
                 const aiHits = ss.aiCacheHits ?? ss.cacheHits ?? 0;
                 const aiCalls = ss.aiCallsMade ?? ss.eventsWithAI ?? 0;
                 const aiLabel = ss.aiDisabled ? 'OFF' : (aiHits > 0 ? `${aiHits}H` : `${aiCalls}C`);
+                const loaded = ss.totalMarketsLoaded ?? c.marketsScanned ?? 0;
                 return (
                   <TableRow key={c.id || c.cycleNumber}>
                     <TableCell className="text-xs px-2 py-1.5 font-mono font-bold">{c.cycleNumber}</TableCell>
                     <TableCell className="text-[10px] px-2 py-1.5 text-muted-foreground whitespace-nowrap">
                       {time ? new Date(time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
                     </TableCell>
-                    <TableCell className="text-xs px-2 py-1.5 text-right font-mono">{c.marketsScanned ?? ss.marketsScanned ?? 0}</TableCell>
+                    <TableCell className="text-xs px-2 py-1.5 text-right font-mono">{loaded}</TableCell>
                     <TableCell className="text-[10px] px-2 py-1.5 text-right font-mono text-muted-foreground">
                       {ss.winMarketsFound ?? 0}/{ss.placeMarketsFound ?? 0}/{ss.h2hMarketsFound ?? 0}
                     </TableCell>

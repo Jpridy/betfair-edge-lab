@@ -31,6 +31,7 @@ const DEFAULT_FEATHERLESS = {
   aiDecisionMode: 'strict',
   requireExternalFormData: false,
   targetPaperBetsPerDay: 'low',
+  debugScanMode: false,
 };
 
 export default function FeatherlessSettings({ settings, onSave }) {
@@ -250,6 +251,19 @@ export default function FeatherlessSettings({ settings, onSave }) {
               <Label className="text-xs">Time Window End (sec before jump)</Label>
               <Input type="number" value={local.timeWindowEnd} onChange={e => update('timeWindowEnd', +e.target.value)} className="mt-1" />
             </div>
+          </div>
+        </div>
+
+        {/* Debug Scan Mode */}
+        <div className="pt-3 border-t border-border">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Debug Scan Mode</div>
+              <div className="text-[10px] text-muted-foreground mt-1">
+                Ignore time window — scan all open markets to prove WIN/PLACE/H2H detection and opportunity generation. NO orders placed.
+              </div>
+            </div>
+            <Switch checked={local.debugScanMode} onCheckedChange={v => update('debugScanMode', v)} />
           </div>
         </div>
 

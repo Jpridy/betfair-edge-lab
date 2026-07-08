@@ -51,6 +51,7 @@ const DEFAULT_FEATHERLESS_SETTINGS = {
   placeMinOdds: 1.2, placeMaxOdds: 30, placeMinLiquidity: 10, placeMaxSpreadTicks: 7, placeMinEdge: 2, placeMinROI: 1,
   h2hMinOdds: 1.2, h2hMaxOdds: 15, h2hMinLiquidity: 10, h2hMaxSpreadTicks: 5, h2hMinEdge: 3, h2hMinROI: 1,
   allowHedging: false,
+  debugScanMode: false,
 };
 
 const AppContext = createContext(null);
@@ -983,6 +984,17 @@ export function AppProvider({ children }) {
 
     if (aiEnabled) {
       try {
+        const debugScanMode = s.featherlessSettings?.debugScanMode === true;
+        const conn = s.betfairConnection || {};
+        const connectionState = {
+          apiConnected: s.apiConnected,
+          streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
+          lastStreamUpdateAt: conn.lastMarketSyncTime || null,
+          lastCatalogueRefreshAt: conn.lastMarketSyncTime || null,
+          marketCatalogueError: null,
+          streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
+          priceFeedStale: conn.dataFresh === false,
+        };
         const result = await runExchangeCycle({
           markets: s.markets,
           runners: s.runners,
@@ -991,6 +1003,7 @@ export function AppProvider({ children }) {
           bankrollStats: s.bankrollStats,
           paperOrders: s.paperOrders,
           emergencyStop: s.emergencyStop,
+          connectionState,
           callAI: async (cluster, primaryMarket, marketRunners) => {
             let webResearch = null;
             if (s.featherlessSettings?.webResearchEnabled) {
@@ -1139,8 +1152,8 @@ export function AppProvider({ children }) {
       startedAt: now,
       finishedAt: new Date().toISOString(),
       status: errors > 0 ? 'failed' : ordersBlocked > 0 ? 'blocked' : 'completed',
-      marketsScanned,
-      marketsPassedFilters: marketsPassed,
+      marketsScanned: useExchange ? (exchangeDiag.totalMarketsLoaded ?? exchangeDiag.marketsScanned ?? 0) : marketsScanned,
+      marketsPassedFilters: useExchange ? (exchangeDiag.marketsSentToExchangeEngine ?? marketsPassed) : marketsPassed,
       signalsCreated,
       ordersCreated,
       ordersBlocked,
@@ -1206,6 +1219,12 @@ export function AppProvider({ children }) {
       noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || (useExchange ? exchangeDiag.noBetReason : diagnostics?.noBetReason) || null),
       scanSummary: useExchange ? {
         marketsScanned: exchangeDiag.marketsScanned,
+        totalMarketsLoaded: exchangeDiag.totalMarketsLoaded ?? 0,
+        openPreRaceMarkets: exchangeDiag.openPreRaceMarkets ?? 0,
+        marketsInsideTimeWindow: exchangeDiag.marketsInsideTimeWindow ?? 0,
+        eligibleMarketsAfterRunnerFilter: exchangeDiag.eligibleMarketsAfterRunnerFilter ?? 0,
+        eligibleMarketsAfterPriceFilter: exchangeDiag.eligibleMarketsAfterPriceFilter ?? 0,
+        marketsSentToExchangeEngine: exchangeDiag.marketsSentToExchangeEngine ?? 0,
         eventsScanned: exchangeDiag.eventsScanned,
         eventsWithAI: exchangeDiag.eventsWithAI,
         cacheHits: exchangeDiag.cacheHits,
@@ -1227,6 +1246,11 @@ export function AppProvider({ children }) {
         topOpportunities: exchangeDiag.topOpportunities,
         topRejected: exchangeDiag.topRejected,
         noBetReason: exchangeDiag.noBetReason,
+        debugScanMode: exchangeDiag.debugScanMode ?? false,
+        marketFeedDiagnostics: exchangeDiag.marketFeedDiagnostics ?? null,
+        timeWindowFunnel: exchangeDiag.timeWindowFunnel ?? null,
+        loadedMarketsTable: exchangeDiag.loadedMarketsTable ?? null,
+        connectionDiagnostics: exchangeDiag.connectionDiagnostics ?? null,
       } : (diagnostics?.scanSummary || null),
       assessedRunners: useExchange ? (exchangeDiag.topOpportunities || []) : (diagnostics?.assessedRunners || []),
       selectedMarketName: useExchange

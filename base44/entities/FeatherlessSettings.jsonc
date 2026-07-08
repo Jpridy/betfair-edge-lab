@@ -176,6 +176,10 @@
     "allowHedging": {
       "type": "boolean",
       "default": false
+    },
+    "debugScanMode": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [
