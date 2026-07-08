@@ -562,9 +562,7 @@ Deno.serve(async (req) => {
     const _windowStart = strategySettings?.timeWindowStart || settings?.defaultTimeWindowStartSeconds || 500;
     const _windowEnd = strategySettings?.timeWindowEnd || settings?.defaultTimeWindowEndSeconds || 30;
     if (!_startTime) {
-      return Response.json({
-        success: true,
-        decision: {
+      const preCheckDecision = {
           strategyName: 'Featherless AI Value Decision Engine',
           marketId: market.id || market.betfairMarketId,
           betfairMarketId: market.betfairMarketId,
@@ -574,14 +572,15 @@ Deno.serve(async (req) => {
           safetyGateFailures: ['No market start time — cannot verify trading window'],
           validationStatus: 'valid',
           validationErrors: [],
-        },
-      });
+          closestRunner: '',
+          mainBlocker: 'No market start time — cannot verify trading window',
+      };
+      try { await base44.entities.FeatherlessAIDecision.create(preCheckDecision); } catch (_) {}
+      return Response.json({ success: true, decision: preCheckDecision });
     }
     const _timeBeforeJump = Math.round((new Date(_startTime).getTime() - Date.now()) / 1000);
     if (_timeBeforeJump > _windowStart) {
-      return Response.json({
-        success: true,
-        decision: {
+      const preCheckDecision = {
           strategyName: 'Featherless AI Value Decision Engine',
           marketId: market.id || market.betfairMarketId,
           betfairMarketId: market.betfairMarketId,
@@ -591,8 +590,11 @@ Deno.serve(async (req) => {
           safetyGateFailures: [`Race starts in ${_timeBeforeJump}s — outside ${_windowStart}s window`],
           validationStatus: 'valid',
           validationErrors: [],
-        },
-      });
+          closestRunner: '',
+          mainBlocker: `Race outside trading window (${_timeBeforeJump}s before jump, max ${_windowStart}s)`,
+      };
+      try { await base44.entities.FeatherlessAIDecision.create(preCheckDecision); } catch (_) {}
+      return Response.json({ success: true, decision: preCheckDecision });
     }
 
     const apiKey = Deno.env.get('FEATHERLESS_API_KEY');

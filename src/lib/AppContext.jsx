@@ -954,6 +954,7 @@ export function AppProvider({ children }) {
     let marketsScanned = 0, marketsPassed = 0, signalsCreated = 0, ordersCreated = 0, ordersBlocked = 0, errors = 0;
     const notes = [];
     let signalCreated = null, orderCreated = null, riskBlockedReason = null, rejectedOrder = null;
+    let cycleNoBetReason = diagnostics?.noBetReason || null;
 
     // Step 1: Scan Markets (Market Catalogue)
     steps[0].status = 'passed';
@@ -1064,6 +1065,7 @@ export function AppProvider({ children }) {
           steps[4].status = 'blocked';
           steps[4].reason = 'No eligible runners with prices on both sides — waiting for stream data.';
           notes.push(steps[4].reason);
+          cycleNoBetReason = steps[4].reason;
         } else {
           let signal = null;
           try {
@@ -1094,6 +1096,7 @@ export function AppProvider({ children }) {
               steps[4].status = 'blocked';
               steps[4].reason = decision?.noBetReason || decision?.mainReason || 'AI decided no bet';
               notes.push(`AI: ${steps[4].reason}`);
+              cycleNoBetReason = `AI: ${steps[4].reason}`;
             } else {
               const aiRunner = aiMarketRunners.find(r =>
                 r.runnerName === decision.selectedRunner ||
@@ -1308,7 +1311,7 @@ export function AppProvider({ children }) {
       candidatesPassedROI: diagnostics?.scanSummary?.candidatesPassedROI || 0,
       candidatesPassedConfidence: diagnostics?.scanSummary?.candidatesPassedConfidence || 0,
       bestCandidate: diagnostics?.bestCandidate || null,
-      noBetReason: diagnostics?.noBetReason || null,
+      noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || diagnostics?.noBetReason || null),
       scanSummary: diagnostics?.scanSummary || null,
       assessedRunners: diagnostics?.assessedRunners || [],
       selectedMarketName: diagnostics?.selectedMarket
@@ -1319,6 +1322,12 @@ export function AppProvider({ children }) {
     };
     setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
     base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+
+    // Update lastScanDiagnostics with the actual cycle reason so the dashboard
+    // WhyNoBetPanel shows the real blocker, not just the candidate-scoring reason.
+    if (cycleNoBetReason && cycleNoBetReason !== diagnostics?.noBetReason) {
+      setLastScanDiagnostics(prev => prev ? { ...prev, noBetReason: cycleNoBetReason } : prev);
+    }
 
     setSyncState(prev => ({ ...prev, signalsGeneratedToday: prev.signalsGeneratedToday + signalsCreated }));
 
