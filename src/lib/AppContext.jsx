@@ -52,6 +52,12 @@ const DEFAULT_FEATHERLESS_SETTINGS = {
   h2hMinOdds: 1.2, h2hMaxOdds: 15, h2hMinLiquidity: 10, h2hMaxSpreadTicks: 5, h2hMinEdge: 3, h2hMinROI: 1,
   allowHedging: false,
   debugScanMode: false,
+  externalSearchEnabled: false,
+  maxExternalProbabilityAdjustment: 0.05,
+  minExternalSourceCount: 2,
+  minExternalDataQuality: 50,
+  requireExternalSearchForLiveBetting: false,
+  externalSearchCacheTtlMinutes: 5,
 };
 
 const AppContext = createContext(null);
@@ -1022,6 +1028,25 @@ export function AppProvider({ children }) {
             if (resp.data?.error) throw new Error(resp.data.error);
             return resp.data?.aiResult || null;
           },
+          callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
+            try {
+              const resp = await base44.functions.invoke('openAIWebSearch', {
+                market: primaryMarket,
+                runners: marketRunners,
+                settings: s.featherlessSettings,
+              });
+              if (resp.data?.error) throw new Error(resp.data.error);
+              return resp.data?.externalSearchResult || null;
+            } catch (err) {
+              notes.push(`External search error: ${err.message}`);
+              return {
+                searchStatus: err.message?.toLowerCase().includes('timeout') ? 'timeout' : 'error',
+                sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '',
+                dataQuality: 0, errorMessage: err.message, searchQuery: '',
+                searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search',
+              };
+            }
+          } : null,
         });
 
         marketsScanned = result.diagnostics.marketsScanned;
@@ -1214,6 +1239,19 @@ export function AppProvider({ children }) {
             passed: bestOppForRecord.decision === 'BET',
             decision: bestOppForRecord.decision,
             overallScore: bestOppForRecord.ev,
+            externalSearchUsed: bestOppForRecord.externalSearchUsed || false,
+            externalSearchStatus: bestOppForRecord.externalSearchStatus || 'not_called',
+            externalSourceCount: bestOppForRecord.externalSourceCount || 0,
+            externalDataQuality: bestOppForRecord.externalDataQuality || 0,
+            preSearchProbability: bestOppForRecord.preSearchProbability ?? null,
+            postSearchProbability: bestOppForRecord.postSearchProbability ?? null,
+            probabilityDelta: bestOppForRecord.probabilityDelta ?? 0,
+            preSearchConfidence: bestOppForRecord.preSearchConfidence ?? null,
+            postSearchConfidence: bestOppForRecord.postSearchConfidence ?? null,
+            confidenceDelta: bestOppForRecord.confidenceDelta ?? 0,
+            externalSearchSummary: bestOppForRecord.externalSearchSummary || '',
+            decisionImpact: bestOppForRecord.decisionImpact || 'no_effect',
+            marketOnlyFallbackReason: bestOppForRecord.marketOnlyFallbackReason || null,
           } : null)
         : oldBestCandidate,
       noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || (useExchange ? exchangeDiag.noBetReason : diagnostics?.noBetReason) || null),
@@ -1251,6 +1289,7 @@ export function AppProvider({ children }) {
         timeWindowFunnel: exchangeDiag.timeWindowFunnel ?? null,
         loadedMarketsTable: exchangeDiag.loadedMarketsTable ?? null,
         connectionDiagnostics: exchangeDiag.connectionDiagnostics ?? null,
+        externalSearchDiagnostics: exchangeDiag.externalSearchDiagnostics ?? null,
       } : (diagnostics?.scanSummary || null),
       assessedRunners: useExchange ? (exchangeDiag.topOpportunities || []) : (diagnostics?.assessedRunners || []),
       selectedMarketName: useExchange

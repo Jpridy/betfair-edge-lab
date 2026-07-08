@@ -20,6 +20,7 @@ import { clusterMarketsByEvent, getPrimaryMarket, getAllMarketsInCluster, detect
 import { generateOpportunitiesForEvent, rankOpportunities, getBestByCategory } from './crossMarketValueScanner';
 import { resolveMarketTypeThresholds, MARKET_TYPE_THRESHOLDS } from './crossMarketValueScanner';
 import { getCachedAIResult, setCachedAIResult, getCacheStats } from './exchangeEngineCache';
+import { getCachedExternalSearch, setCachedExternalSearch, getExternalSearchCacheStats } from './externalSearchCache';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -218,7 +219,7 @@ function buildLoadedMarketsTable(markets, runners) {
  * @param {object} params.connectionState - Betfair connection state
  * @returns {object} { bestOpportunity, allOpportunities, eventClusters, diagnostics }
  */
-export async function runExchangeCycle({ markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, connectionState }) {
+export async function runExchangeCycle({ markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, callExternalSearch, connectionState }) {
   // ── Build pre-filter diagnostics from ALL loaded markets ──
   const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners);
 
@@ -342,6 +343,24 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   let eventsWithAI = 0;
   let cacheHits = 0;
 
+  // ── External search diagnostics ──
+  const externalSearchPerEvent = [];
+  let extSearchCalls = 0;
+  let extSearchCacheHits = 0;
+  let extSearchCacheMisses = 0;
+  let extSearchTimeouts = 0;
+  let extSearchErrors = 0;
+  let extSearchNoResults = 0;
+  let extTotalSources = 0;
+  let extRunnersAffected = 0;
+  const extProbabilityChanges = [];
+  const extDecisionChanges = [];
+  let extLatestQuery = '';
+  let extLatestSummary = '';
+  let extLatestStatus = 'not_called';
+  const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
+  const extCacheTtlMs = (featherlessSettings?.externalSearchCacheTtlMinutes || 5) * 60 * 1000;
+
   // Count market types detected
   const marketTypeCounts = eligibleMarkets.reduce((acc, m) => {
     const type = detectMarketType(m);
@@ -391,11 +410,105 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
     if (!aiResult) continue;
 
+    // ── External search: call OpenAI web search for this event ──
+    let externalSearchResult = null;
+    if (extSearchEnabled && callExternalSearch) {
+      const eventName = cluster.eventName || primaryMarket.eventName || '';
+      const marketStartTime = primaryMarket.startTime || primaryMarket.marketStartTime || '';
+
+      // Check cache first
+      const cached = getCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners);
+      if (cached) {
+        extSearchCacheHits++;
+        externalSearchResult = cached;
+        externalSearchPerEvent.push({
+          eventId: cluster.eventId, eventName,
+          searchStatus: cached.searchStatus, sourceCount: cached.sourceCount || 0,
+          dataQuality: cached.dataQuality || 0, runnersResearched: (cached.runnerResearch || []).length,
+          cacheHit: true,
+        });
+      } else {
+        extSearchCacheMisses++;
+        extSearchCalls++;
+        try {
+          externalSearchResult = await callExternalSearch(cluster, primaryMarket, marketRunners);
+          if (externalSearchResult) {
+            setCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners, externalSearchResult, extCacheTtlMs);
+            extTotalSources += externalSearchResult.sourceCount || 0;
+            extRunnersAffected += (externalSearchResult.runnerResearch || []).length;
+            extLatestQuery = externalSearchResult.searchQuery || extLatestQuery;
+            extLatestStatus = externalSearchResult.searchStatus || extLatestStatus;
+            if (externalSearchResult.searchStatus === 'success' && externalSearchResult.raceLevelNotes) {
+              extLatestSummary = externalSearchResult.raceLevelNotes.slice(0, 200);
+            }
+            if (externalSearchResult.searchStatus === 'timeout') extSearchTimeouts++;
+            else if (externalSearchResult.searchStatus === 'error') extSearchErrors++;
+            else if (externalSearchResult.searchStatus === 'no_results') extSearchNoResults++;
+
+            externalSearchPerEvent.push({
+              eventId: cluster.eventId, eventName,
+              searchStatus: externalSearchResult.searchStatus,
+              sourceCount: externalSearchResult.sourceCount || 0,
+              dataQuality: externalSearchResult.dataQuality || 0,
+              runnersResearched: (externalSearchResult.runnerResearch || []).length,
+              cacheHit: false,
+            });
+          }
+        } catch (extErr) {
+          const isTimeout = extErr.message?.toLowerCase().includes('timeout');
+          if (isTimeout) extSearchTimeouts++; else extSearchErrors++;
+          externalSearchResult = {
+            searchStatus: isTimeout ? 'timeout' : 'error',
+            sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '',
+            dataQuality: 0, errorMessage: extErr.message, searchQuery: '',
+            searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search',
+          };
+          externalSearchPerEvent.push({
+            eventId: cluster.eventId, eventName,
+            searchStatus: externalSearchResult.searchStatus,
+            sourceCount: 0, dataQuality: 0, runnersResearched: 0, cacheHit: false,
+          });
+        }
+      }
+    }
+
     // 5-7. Generate opportunities with exchange maths and safety gates
     const opportunities = generateOpportunitiesForEvent(
-      cluster, runners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders
+      cluster, runners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult
     );
     allOpportunities.push(...opportunities);
+
+    // ── Track probability changes and decision changes from external search ──
+    if (externalSearchResult && externalSearchResult.searchStatus === 'success') {
+      // Find pre-search and post-search best opportunities
+      const oppsWithDelta = opportunities.filter(o => Math.abs(o.probabilityDelta || 0) > 0.001);
+      for (const opp of oppsWithDelta) {
+        extProbabilityChanges.push({
+          eventId: cluster.eventId,
+          runnerName: opp.runnerName,
+          selectionId: opp.selectionId,
+          preSearchProbability: opp.preSearchProbability,
+          postSearchProbability: opp.postSearchProbability,
+          probabilityDelta: opp.probabilityDelta,
+          decisionImpact: opp.decisionImpact,
+        });
+      }
+
+      // Check if best runner changed
+      const sortedPre = [...opportunities].sort((a, b) => (b.preSearchProbability || 0) - (a.preSearchProbability || 0));
+      const sortedPost = [...opportunities].sort((a, b) => (b.postSearchProbability || 0) - (a.postSearchProbability || 0));
+      const bestPre = sortedPre[0];
+      const bestPost = sortedPost[0];
+      if (bestPre && bestPost && bestPre.selectionId !== bestPost.selectionId) {
+        extDecisionChanges.push({
+          eventId: cluster.eventId,
+          runnerName: bestPost.runnerName,
+          was: bestPre.runnerName,
+          changedTo: bestPost.decision,
+          reason: `External search changed best runner from ${bestPre.runnerName} to ${bestPost.runnerName}`,
+        });
+      }
+    }
   }
 
   // 8. Rank all opportunities by EV
@@ -449,6 +562,20 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     blocker: o.blockers?.[0] || null,
     blockers: o.blockers,
     decision: o.decision,
+    externalSearchUsed: o.externalSearchUsed || false,
+    externalSearchStatus: o.externalSearchStatus || 'not_called',
+    externalSourceCount: o.externalSourceCount || 0,
+    externalDataQuality: o.externalDataQuality || 0,
+    preSearchProbability: o.preSearchProbability ?? null,
+    postSearchProbability: o.postSearchProbability ?? null,
+    probabilityDelta: o.probabilityDelta ?? 0,
+    preSearchConfidence: o.preSearchConfidence ?? null,
+    postSearchConfidence: o.postSearchConfidence ?? null,
+    confidenceDelta: o.confidenceDelta ?? 0,
+    externalSearchSummary: o.externalSearchSummary || '',
+    externalSearchSourceUrls: (o.externalSearchSourceUrls || []).slice(0, 5),
+    decisionImpact: o.decisionImpact || 'no_effect',
+    marketOnlyFallbackReason: o.marketOnlyFallbackReason || null,
   }));
 
   // ── Top 10 rejected opportunities (for no-bet logs) ──
@@ -495,6 +622,15 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
       failedGate: o.failedGate || o.blockers?.[0] || 'Unknown',
       blocker: o.blockers?.[0] || 'Unknown',
       blockers: o.blockers,
+      externalSearchUsed: o.externalSearchUsed || false,
+      externalSearchStatus: o.externalSearchStatus || 'not_called',
+      externalSourceCount: o.externalSourceCount || 0,
+      externalDataQuality: o.externalDataQuality || 0,
+      preSearchProbability: o.preSearchProbability ?? null,
+      postSearchProbability: o.postSearchProbability ?? null,
+      probabilityDelta: o.probabilityDelta ?? 0,
+      decisionImpact: o.decisionImpact || 'no_effect',
+      marketOnlyFallbackReason: o.marketOnlyFallbackReason || null,
     }));
 
   // Build diagnostics
@@ -544,6 +680,25 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     eligibleMarketsAfterRunnerFilter: eligibleAfterRunnerFilter,
     eligibleMarketsAfterPriceFilter: eligibleAfterPriceFilter,
     marketsSentToExchangeEngine: eligibleMarkets.length,
+    // ── External search diagnostics ──
+    externalSearchDiagnostics: {
+      enabled: extSearchEnabled,
+      callsThisCycle: extSearchCalls,
+      cacheHits: extSearchCacheHits,
+      cacheMisses: extSearchCacheMisses,
+      timeouts: extSearchTimeouts,
+      errors: extSearchErrors,
+      noResults: extSearchNoResults,
+      totalSourcesFound: extTotalSources,
+      runnersAffected: extRunnersAffected,
+      probabilityChanges: extProbabilityChanges,
+      decisionChanges: extDecisionChanges,
+      latestSearchQuery: extLatestQuery,
+      latestSearchSummary: extLatestSummary,
+      latestSearchStatus: extLatestStatus,
+      perEventResults: externalSearchPerEvent,
+      cacheStats: getExternalSearchCacheStats(),
+    },
   };
 
   return {

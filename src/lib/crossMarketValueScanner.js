@@ -15,6 +15,7 @@ import { calcBackEV, calcLayEV, calcBackEdge, calcLayEdge, calcOverround, calcKe
 import { buildProbabilityMap, buildH2HMap } from './probabilityNormalizer';
 import { calculateSpreadTicks } from './tickLadder';
 import { countTicksBetween } from './tickLadder';
+import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact, getMarketOnlyFallbackReason } from './externalSearchIntegration';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -77,12 +78,14 @@ export function resolveMarketTypeThresholds(marketType, featherlessSettings) {
  * @param {Array} paperOrders - Existing paper orders (for duplicate/exposure checks)
  * @returns {Array} Array of opportunity objects
  */
-export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders) {
+export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult) {
   const opportunities = [];
   const probMap = buildProbabilityMap(aiResult?.runnerProbabilities);
   const h2hMap = buildH2HMap(aiResult?.h2hProbabilities);
   const dataQuality = aiResult?.dataQuality ?? 50;
   const raceSummary = aiResult?.raceSummary || '';
+  const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
+  const extSearchSuccess = externalSearchResult?.searchStatus === 'success';
 
   const allMarkets = [
     ...cluster.winMarkets,
@@ -158,13 +161,83 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 
       if (modelProbability <= 0 || modelProbability >= 1) continue;
 
+      // ── Apply external search probability adjustment ──
+      const preSearchProbability = modelProbability;
+      const preSearchConfidence = probData?.confidence || 0;
+      let postSearchProbability = preSearchProbability;
+      let postSearchConfidence = preSearchConfidence;
+      let probabilityDelta = 0;
+      let confidenceDelta = 0;
+      let decisionImpact = 'no_effect';
+      let externalSearchUsed = false;
+      let externalSearchStatus = 'not_called';
+      let externalSourceCount = 0;
+      let externalDataQuality = 0;
+      let externalPositiveSignals = [];
+      let externalNegativeSignals = [];
+      let externalNeutralSignals = [];
+      let externalSearchSummary = '';
+      let externalSearchSourceUrls = [];
+      let marketOnlyFallbackReason = null;
+
+      if (extSearchEnabled) {
+        if (extSearchSuccess) {
+          const runnerResearch = findRunnerResearch(externalSearchResult, selectionId);
+          externalSearchUsed = !!runnerResearch;
+          externalSearchStatus = externalSearchResult.searchStatus;
+          externalSourceCount = externalSearchResult.sourceCount || 0;
+          externalDataQuality = externalSearchResult.dataQuality || 0;
+
+          if (runnerResearch) {
+            const adjResult = applyExternalAdjustment(preSearchProbability, runnerResearch, featherlessSettings);
+            postSearchProbability = adjResult.postSearchProbability;
+            probabilityDelta = adjResult.probabilityDelta;
+
+            const confResult = applyConfidenceAdjustment(preSearchConfidence, runnerResearch, featherlessSettings);
+            postSearchConfidence = confResult.postSearchConfidence;
+            confidenceDelta = confResult.confidenceDelta;
+
+            externalPositiveSignals = runnerResearch.positiveSignals || [];
+            externalNegativeSignals = runnerResearch.negativeSignals || [];
+            externalNeutralSignals = runnerResearch.neutralSignals || [];
+            externalSearchSummary = `${externalPositiveSignals.length} positive, ${externalNegativeSignals.length} negative, ${externalNeutralSignals.length} neutral signals`;
+            externalSearchSourceUrls = (runnerResearch.sourceUrls || []).slice(0, 10);
+          }
+
+          decisionImpact = determineDecisionImpact(
+            probabilityDelta, confidenceDelta, externalSearchUsed, externalDataQuality, featherlessSettings
+          );
+        } else {
+          // External search enabled but failed/timed out
+          externalSearchStatus = externalSearchResult?.searchStatus || 'error';
+          externalDataQuality = externalSearchResult?.dataQuality || 0;
+          marketOnlyFallbackReason = getMarketOnlyFallbackReason(externalSearchResult);
+          decisionImpact = 'fallback_market_only';
+        }
+      } else {
+        externalSearchStatus = 'not_called';
+        marketOnlyFallbackReason = 'OPENAI_SEARCH_DISABLED';
+        decisionImpact = 'fallback_market_only';
+      }
+
+      // Use post-search probability for all EV calculations
+      // Clamp to valid range
+      const adjustedProbability = Math.max(0.01, Math.min(0.99, postSearchProbability));
+
       // ── BACK opportunity ──
       if (runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) {
         const backOpp = buildOpportunity({
           cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
-          bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
+          bankrollStats, paperOrders, modelProbability: adjustedProbability, probData, dataQuality, raceSummary, overround,
           side: 'BACK', odds: runner.bestBackPrice, availableSize: runner.bestBackSize || 0,
           opponentSelectionId,
+          externalSearchFields: {
+            externalSearchUsed, externalSearchStatus, externalSourceCount, externalDataQuality,
+            preSearchProbability, postSearchProbability, probabilityDelta,
+            preSearchConfidence, postSearchConfidence, confidenceDelta,
+            externalPositiveSignals, externalNegativeSignals, externalNeutralSignals,
+            externalSearchSummary, externalSearchSourceUrls, decisionImpact, marketOnlyFallbackReason,
+          },
         });
         opportunities.push(backOpp);
       }
@@ -173,9 +246,16 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
       if (runner.bestLayPrice > 0 && (runner.bestLaySize || 0) >= 2) {
         const layOpp = buildOpportunity({
           cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
-          bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
+          bankrollStats, paperOrders, modelProbability: adjustedProbability, probData, dataQuality, raceSummary, overround,
           side: 'LAY', odds: runner.bestLayPrice, availableSize: runner.bestLaySize || 0,
           opponentSelectionId,
+          externalSearchFields: {
+            externalSearchUsed, externalSearchStatus, externalSourceCount, externalDataQuality,
+            preSearchProbability, postSearchProbability, probabilityDelta,
+            preSearchConfidence, postSearchConfidence, confidenceDelta,
+            externalPositiveSignals, externalNegativeSignals, externalNeutralSignals,
+            externalSearchSummary, externalSearchSourceUrls, decisionImpact, marketOnlyFallbackReason,
+          },
         });
         opportunities.push(layOpp);
       }
@@ -191,7 +271,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 function buildOpportunity({
   cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
   bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
-  side, odds, availableSize, opponentSelectionId,
+  side, odds, availableSize, opponentSelectionId, externalSearchFields,
 }) {
   const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
   const startTime = market.startTime || market.marketStartTime;
@@ -427,6 +507,24 @@ function buildOpportunity({
     failedGate: blockers[0] || null,
     reasons,
     blockers,
+    // ── External search decision-impact fields ──
+    externalSearchUsed: externalSearchFields?.externalSearchUsed || false,
+    externalSearchStatus: externalSearchFields?.externalSearchStatus || 'not_called',
+    externalSourceCount: externalSearchFields?.externalSourceCount || 0,
+    externalDataQuality: externalSearchFields?.externalDataQuality || 0,
+    preSearchProbability: externalSearchFields?.preSearchProbability ?? modelProbability,
+    postSearchProbability: externalSearchFields?.postSearchProbability ?? modelProbability,
+    probabilityDelta: externalSearchFields?.probabilityDelta || 0,
+    preSearchConfidence: externalSearchFields?.preSearchConfidence ?? confidence,
+    postSearchConfidence: externalSearchFields?.postSearchConfidence ?? confidence,
+    confidenceDelta: externalSearchFields?.confidenceDelta || 0,
+    externalPositiveSignals: externalSearchFields?.externalPositiveSignals || [],
+    externalNegativeSignals: externalSearchFields?.externalNegativeSignals || [],
+    externalNeutralSignals: externalSearchFields?.externalNeutralSignals || [],
+    externalSearchSummary: externalSearchFields?.externalSearchSummary || '',
+    externalSearchSourceUrls: externalSearchFields?.externalSearchSourceUrls || [],
+    decisionImpact: externalSearchFields?.decisionImpact || 'no_effect',
+    marketOnlyFallbackReason: externalSearchFields?.marketOnlyFallbackReason || null,
   };
 }
 

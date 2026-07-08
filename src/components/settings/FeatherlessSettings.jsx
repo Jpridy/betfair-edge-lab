@@ -32,6 +32,12 @@ const DEFAULT_FEATHERLESS = {
   requireExternalFormData: false,
   targetPaperBetsPerDay: 'low',
   debugScanMode: false,
+  externalSearchEnabled: false,
+  maxExternalProbabilityAdjustment: 0.05,
+  minExternalSourceCount: 2,
+  minExternalDataQuality: 50,
+  requireExternalSearchForLiveBetting: false,
+  externalSearchCacheTtlMinutes: 5,
 };
 
 export default function FeatherlessSettings({ settings, onSave }) {
@@ -265,6 +271,50 @@ export default function FeatherlessSettings({ settings, onSave }) {
             </div>
             <Switch checked={local.debugScanMode} onCheckedChange={v => update('debugScanMode', v)} />
           </div>
+        </div>
+
+        {/* External Search (OpenAI Web Search) */}
+        <div className="pt-3 border-t border-border">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">External Search (OpenAI Web Search)</div>
+              <div className="text-[10px] text-muted-foreground mt-1">
+                Uses OpenAI Responses API with web_search tool to gather public race/form/tip/track data. Provides probability adjustments only — exchange engine remains final authority.
+              </div>
+            </div>
+            <Switch checked={local.externalSearchEnabled} onCheckedChange={v => update('externalSearchEnabled', v)} />
+          </div>
+          {local.externalSearchEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs">Max External Probability Adjustment</Label>
+                <Input type="number" step="0.01" min="0" max="0.5" value={local.maxExternalProbabilityAdjustment} onChange={e => update('maxExternalProbabilityAdjustment', +e.target.value)} className="mt-1" />
+                <div className="text-[10px] text-muted-foreground mt-1">Clamps external search adjustment (e.g. 0.05 = ±5%)</div>
+              </div>
+              <div>
+                <Label className="text-xs">Min External Source Count</Label>
+                <Input type="number" value={local.minExternalSourceCount} onChange={e => update('minExternalSourceCount', +e.target.value)} className="mt-1" />
+                <div className="text-[10px] text-muted-foreground mt-1">Min sources required to trust a non-zero adjustment</div>
+              </div>
+              <div>
+                <Label className="text-xs">Min External Data Quality</Label>
+                <Input type="number" value={local.minExternalDataQuality} onChange={e => update('minExternalDataQuality', +e.target.value)} className="mt-1" />
+                <div className="text-[10px] text-muted-foreground mt-1">0-100 scale; below this, adjustments are ignored</div>
+              </div>
+              <div>
+                <Label className="text-xs">External Search Cache TTL (minutes)</Label>
+                <Input type="number" value={local.externalSearchCacheTtlMinutes} onChange={e => update('externalSearchCacheTtlMinutes', +e.target.value)} className="mt-1" />
+                <div className="text-[10px] text-muted-foreground mt-1">5-10 recommended; avoids calling OpenAI every cycle</div>
+              </div>
+              <div className="flex items-center justify-between col-span-full">
+                <div>
+                  <div className="text-xs font-medium">Require External Search for Live Betting</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">Block live bets if external search fails (paper mode unaffected)</div>
+                </div>
+                <Switch checked={local.requireExternalSearchForLiveBetting} onCheckedChange={v => update('requireExternalSearchForLiveBetting', v)} />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end pt-3 border-t border-border">
