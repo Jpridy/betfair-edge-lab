@@ -16,9 +16,10 @@
 // The AI call is delegated to a callback so this engine stays pure.
 // ============================================================================
 
-import { clusterMarketsByEvent, getPrimaryMarket, getAllMarketsInCluster } from './marketClusterer';
+import { clusterMarketsByEvent, getPrimaryMarket, getAllMarketsInCluster, detectMarketType } from './marketClusterer';
 import { generateOpportunitiesForEvent, rankOpportunities, getBestByCategory } from './crossMarketValueScanner';
 import { resolveMarketTypeThresholds, MARKET_TYPE_THRESHOLDS } from './crossMarketValueScanner';
+import { getCachedAIResult, setCachedAIResult, getCacheStats } from './exchangeEngineCache';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -82,32 +83,43 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
       bestOpportunity: null,
       allOpportunities: [],
       eventClusters: [],
-      diagnostics: { noBetReason: 'No eligible open pre-race markets found', marketsScanned: 0, eventsScanned: 0 },
+      diagnostics: { noBetReason: 'No eligible open pre-race markets found', marketsScanned: 0, eventsScanned: 0, marketDetectionLog: [] },
     };
   }
 
   // 2. Group by event/race
   const eventClusters = clusterMarketsByEvent(eligibleMarkets);
 
+  // ── Market detection log: record detected type for every scanned market ──
+  const marketDetectionLog = eligibleMarkets.map(m => {
+    const detectedMarketType = detectMarketType(m);
+    const marketRunners = runners.filter(r =>
+      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+    );
+    return {
+      marketId: m.betfairMarketId || m.id,
+      marketName: m.marketName || '',
+      marketTypeCode: m.marketTypeCode || m.marketType || '',
+      eventId: m.eventId || '',
+      detectedMarketType,
+      numberOfWinners: m.numberOfWinners || 0,
+      marketBaseRate: m.marketBaseRate ?? null,
+      totalMatched: m.totalMatched || 0,
+      runnerCount: Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length),
+    };
+  });
+
   // 3-4. For each event, call AI for probabilities and generate opportunities
   const allOpportunities = [];
   const aiDecisions = [];
   let eventsScanned = 0;
   let eventsWithAI = 0;
+  let cacheHits = 0;
 
   for (const cluster of eventClusters) {
     eventsScanned++;
     const primaryMarket = getPrimaryMarket(cluster);
     if (!primaryMarket) continue;
-
-    // Skip if this event already has a strategy order in all its markets
-    const clusterMarketIds = getAllMarketsInCluster(cluster).map(m => m.betfairMarketId || m.id);
-    const hasStrategyOrder = paperOrders.some(o =>
-      clusterMarketIds.includes(o.betfairMarketId || o.marketId) &&
-      o.strategyName === STRATEGY_NAME &&
-      OPEN_ORDER_STATUSES.includes(o.status)
-    );
-    // Allow multiple opportunities per event — one per market type
 
     // Get runners for the primary market
     const marketRunners = runners.filter(r =>
@@ -116,17 +128,20 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
     if (marketRunners.length === 0) continue;
 
-    // 3-4. Call AI for probabilities (delegated to callback)
-    let aiResult = null;
-    if (callAI) {
+    // ── AI caching: check cache before calling AI ──
+    let aiResult = getCachedAIResult(cluster, marketRunners);
+    if (aiResult) {
+      cacheHits++;
+    } else if (callAI) {
       try {
         aiResult = await callAI(cluster, primaryMarket, marketRunners);
         if (aiResult) {
+          setCachedAIResult(cluster, marketRunners, aiResult);
           eventsWithAI++;
           aiDecisions.push({ eventId: cluster.eventId, aiResult });
         }
       } catch (err) {
-        // AI failed — skip this event
+        // AI failed — skip this event, fall back to market-only estimates
         continue;
       }
     }
@@ -146,13 +161,39 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   // 9. Choose best positive-EV opportunity
   const bestOpportunity = ranked.find(o => o.decision === 'BET') || null;
 
+  // ── Top 10 rejected opportunities (for no-bet logs) ──
+  const rejectedOpps = ranked
+    .filter(o => o.decision === 'NO_BET')
+    .slice(0, 10)
+    .map(o => ({
+      marketType: o.marketType,
+      side: o.side,
+      runner: o.runnerName,
+      runnerName: o.runnerName,
+      odds: o.odds,
+      modelProbability: o.modelProbability,
+      ev: o.ev,
+      roi: o.roi,
+      confidence: o.confidence,
+      failedGate: o.blockers?.[0] || 'Unknown',
+      blockers: o.blockers,
+    }));
+
   // Build diagnostics
   const diagnostics = {
     marketsScanned: eligibleMarkets.length,
     eventsScanned,
     eventsWithAI,
+    cacheHits,
+    cacheStats: getCacheStats(),
+    marketDetectionLog,
     totalOpportunities: allOpportunities.length,
+    backOpportunities: allOpportunities.filter(o => o.side === 'BACK').length,
+    layOpportunities: allOpportunities.filter(o => o.side === 'LAY').length,
     positiveEVOpportunities: allOpportunities.filter(o => o.decision === 'BET').length,
+    rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET').length,
+    topRejected: rejectedOpps,
+    bestOpportunity: bestOpportunity,
     noBetReason: bestOpportunity ? null : (allOpportunities.length === 0
       ? 'No opportunities generated — check AI availability or market data'
       : `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`),

@@ -289,10 +289,22 @@ export function createPaperOrder(signal, market, runner, settings) {
 }
 
 export function settleOrder(order, market, settings, outcome = null) {
-  // outcome: 'won' | 'lost' from real market results, or null for random (demo data mode)
+  // outcome: 'won' | 'lost' from real market results — REQUIRED, no random fallback.
+  // If outcome is null, return the order unchanged with awaiting_result status.
+  if (!outcome) {
+    return {
+      ...order,
+      status: 'awaiting_result',
+      settlementStatus: 'result_unknown',
+      netProfit: null,
+      exitReason: 'No result provided — awaiting real market result',
+      resultSource: 'missing',
+      resultConfidence: 'unknown',
+    };
+  }
   // outcome represents whether the HORSE won the race — NOT whether the bet won.
   // For BACK: bet wins when horse wins. For LAY: bet wins when horse loses.
-  const horseWon = outcome === 'won' ? true : outcome === 'lost' ? false : Math.random() > 0.45;
+  const horseWon = outcome === 'won';
   const won = order.side === 'LAY' ? !horseWon : horseWon;
   
   // Calculate commission using Market Base Rate model
@@ -319,9 +331,9 @@ export function settleOrder(order, market, settings, outcome = null) {
     
     // Calculate CLV — for BACK, positive CLV means odds shortened (good).
     // For LAY, positive CLV means odds drifted (good), so invert the sign.
-    const closingOdds = order.matchedOdds * (0.95 + Math.random() * 0.1);
-    const rawClv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
-    const clv = order.side === 'LAY' ? -rawClv : rawClv;
+    // CLV: no random closingOdds — set to null if not provided by caller
+    const closingOdds = null;
+    const clv = 0;
     
     return {
       ...order,
@@ -333,7 +345,9 @@ export function settleOrder(order, market, settings, outcome = null) {
       commission_calculation_status: commResult.status,
       netProfit: net,
       status: 'settled',
+      settlementStatus: 'settled',
       settled_date: new Date().toISOString(),
+      settledAt: new Date().toISOString(),
       matched_date: order.matched_date || order.placed_date,
       matched_size: order.matchedStake,
       remaining_size: 0,
@@ -342,6 +356,9 @@ export function settleOrder(order, market, settings, outcome = null) {
       closingOdds,
       clv,
       exitReason: `Race settled — runner ${horseWon ? 'won' : 'lost'}`,
+      resultSource: 'manual',
+      resultConfidence: 'confirmed',
+      voided: false,
     };
   } else {
     let gross;
@@ -352,9 +369,9 @@ export function settleOrder(order, market, settings, outcome = null) {
       gross = -liability;
     }
     
-    const closingOdds = order.matchedOdds * (0.95 + Math.random() * 0.1);
-    const rawClv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
-    const clv = order.side === 'LAY' ? -rawClv : rawClv;
+    // CLV: no random closingOdds
+    const closingOdds = null;
+    const clv = 0;
     
     return {
       ...order,
@@ -366,7 +383,9 @@ export function settleOrder(order, market, settings, outcome = null) {
       commission_calculation_status: commResult.status,
       netProfit: gross,
       status: 'settled',
+      settlementStatus: 'settled',
       settled_date: new Date().toISOString(),
+      settledAt: new Date().toISOString(),
       matched_date: order.matched_date || order.placed_date,
       matched_size: order.matchedStake,
       remaining_size: 0,
@@ -375,6 +394,9 @@ export function settleOrder(order, market, settings, outcome = null) {
       closingOdds,
       clv,
       exitReason: `Race settled — runner ${horseWon ? 'won' : 'lost'}`,
+      resultSource: 'manual',
+      resultConfidence: 'confirmed',
+      voided: false,
     };
   }
 }

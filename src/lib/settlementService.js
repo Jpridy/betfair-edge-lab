@@ -37,45 +37,122 @@ export function settleOrderWithResult(order, market, settings, result) {
   const placedRunners = result?.placedRunners || [];
   const placeTerms = result?.placeTerms || 2;
   const resultSource = result?.resultSource || 'betfair_stream';
+  const marketStatusAtSettlement = result?.marketStatusAtSettlement || 'CLOSED';
+  const settledDate = new Date().toISOString();
 
-  // Determine if the selection won/placed based on market type
+  // ── Voided market ──
+  if (resultSource === 'market_voided') {
+    return {
+      ...order,
+      result: 'void',
+      status: 'voided',
+      settlementStatus: 'voided',
+      settled_date: settledDate,
+      settledAt: settledDate,
+      grossProfit: 0,
+      commission: 0,
+      netProfit: 0,
+      closingOdds: null,
+      clv: 0,
+      exitReason: 'Market voided by Betfair',
+      resultSource,
+      resultConfidence: 'confirmed',
+      marketStatusAtSettlement,
+      winnerSelectionIds: winners,
+      placedSelectionIds: placedRunners,
+      voided: true,
+      voidReason: 'Market voided by Betfair',
+    };
+  }
+
+  // ── Result unknown: cannot confirm winner/placed from reliable source ──
+  // Do NOT guess. Set status to awaiting_result and netProfit to null.
+  const hasWinners = winners.length > 0;
+  const hasPlaced = placedRunners.length > 0 || (marketType !== 'PLACE');
+
+  if (!hasWinners && (marketType === 'WIN' || marketType === 'H2H')) {
+    return {
+      ...order,
+      result: 'pending',
+      status: 'awaiting_result',
+      settlementStatus: 'result_unknown',
+      settledAt: settledDate,
+      netProfit: null,
+      grossProfit: null,
+      commission: null,
+      closingOdds: null,
+      clv: null,
+      exitReason: 'Result unknown — no winner data from reliable source',
+      resultSource,
+      resultConfidence: 'unknown',
+      marketStatusAtSettlement,
+      winnerSelectionIds: winners,
+      placedSelectionIds: placedRunners,
+      voided: false,
+      voidReason: null,
+      marketType,
+    };
+  }
+
+  if (marketType === 'PLACE' && !hasPlaced && !hasWinners) {
+    return {
+      ...order,
+      result: 'pending',
+      status: 'awaiting_result',
+      settlementStatus: 'result_unknown',
+      settledAt: settledDate,
+      netProfit: null,
+      grossProfit: null,
+      commission: null,
+      closingOdds: null,
+      clv: null,
+      exitReason: 'Result unknown — no place terms data from reliable source',
+      resultSource,
+      resultConfidence: 'unknown',
+      marketStatusAtSettlement,
+      winnerSelectionIds: winners,
+      placedSelectionIds: placedRunners,
+      voided: false,
+      voidReason: null,
+      marketType,
+    };
+  }
+
+  // ── Determine selection outcome based on market type ──
   let selectionWon = false;
   let selectionPlaced = false;
-  let voided = false;
-  let voidReason = null;
+  let selectedRunnerFinishPosition = null;
+  let opponentFinishPosition = null;
 
-  if (resultSource === 'market_voided') {
-    voided = true;
-    voidReason = 'Market voided by Betfair';
-  } else if (marketType === 'WIN') {
-    selectionWon = winners.includes(orderSelectionId);
-    selectionPlaced = selectionWon; // For WIN, placed = won
-  } else if (marketType === 'PLACE') {
-    // For PLACE markets, check if the selection is in the placed list
-    selectionPlaced = placedRunners.includes(orderSelectionId) || winners.includes(orderSelectionId);
-    selectionWon = selectionPlaced; // In PLACE market, "winning" = placing
-  } else if (marketType === 'H2H') {
-    // For H2H, the "winner" is whoever beats the opponent
+  if (marketType === 'WIN') {
     selectionWon = winners.includes(orderSelectionId);
     selectionPlaced = selectionWon;
+    selectedRunnerFinishPosition = winners.indexOf(orderSelectionId) >= 0 ? winners.indexOf(orderSelectionId) + 1 : null;
+  } else if (marketType === 'PLACE') {
+    selectionPlaced = placedRunners.includes(orderSelectionId) || winners.includes(orderSelectionId);
+    selectionWon = selectionPlaced;
+  } else if (marketType === 'H2H') {
+    selectionWon = winners.includes(orderSelectionId);
+    selectionPlaced = selectionWon;
+    // For H2H, opponent is the other runner in the market
+    if (order.opponentSelectionId) {
+      opponentFinishPosition = winners.includes(String(order.opponentSelectionId)) ? 1 : null;
+    }
   } else {
-    // Unknown market type — use winners list
     selectionWon = winners.includes(orderSelectionId);
     selectionPlaced = selectionWon;
   }
 
-  // Determine bet outcome based on side and market type
+  // ── Determine bet outcome based on side and market type ──
   let betWon;
-  if (voided) {
-    betWon = null;
-  } else if (order.side === 'BACK') {
+  if (order.side === 'BACK') {
     betWon = marketType === 'PLACE' ? selectionPlaced : selectionWon;
   } else {
     // LAY: bet wins when selection does NOT win/place
     betWon = marketType === 'PLACE' ? !selectionPlaced : !selectionWon;
   }
 
-  // Calculate commission
+  // ── Calculate commission ──
   const commResult = calculateCommission(
     betWon ? (order.side === 'BACK' ? (order.matchedOdds - 1) * order.matchedStake : order.matchedStake) : 0,
     market,
@@ -84,33 +161,11 @@ export function settleOrderWithResult(order, market, settings, result) {
   const commissionRate = commResult.rate;
   const commissionSource = commResult.source;
 
-  // Calculate CLV (closing line value)
-  // For BACK: positive CLV means odds shortened (good)
-  // For LAY: positive CLV means odds drifted (good)
-  const closingOdds = result?.closingOdds || order.matchedOdds * (0.95 + Math.random() * 0.1);
-  const rawClv = ((order.matchedOdds - closingOdds) / closingOdds) * 100;
-  const clv = order.side === 'LAY' ? -rawClv : rawClv;
+  // ── CLV: only calculate if real closingOdds provided — never random ──
+  const closingOdds = result?.closingOdds || null;
+  const clv = closingOdds ? (((order.matchedOdds - closingOdds) / closingOdds) * 100) * (order.side === 'LAY' ? -1 : 1) : 0;
 
-  const settledDate = new Date().toISOString();
-
-  if (voided) {
-    return {
-      ...order,
-      result: 'void',
-      status: 'voided',
-      settled_date: settledDate,
-      grossProfit: 0,
-      commission: 0,
-      netProfit: 0,
-      closingOdds,
-      clv,
-      exitReason: voidReason,
-      resultSource,
-      voided: true,
-      voidReason,
-    };
-  }
-
+  // ── Calculate P/L ──
   let grossProfit, netProfit, commission;
 
   if (betWon) {
@@ -119,7 +174,6 @@ export function settleOrderWithResult(order, market, settings, result) {
       commission = grossProfit * commissionRate;
       netProfit = grossProfit - commission;
     } else {
-      // LAY: profit = backer's stake minus commission
       grossProfit = order.matchedStake;
       commission = grossProfit * commissionRate;
       netProfit = grossProfit - commission;
@@ -128,7 +182,6 @@ export function settleOrderWithResult(order, market, settings, result) {
     if (order.side === 'BACK') {
       grossProfit = -order.matchedStake;
     } else {
-      // LAY: loss = liability
       grossProfit = -((order.matchedOdds - 1) * order.matchedStake);
     }
     commission = 0;
@@ -143,7 +196,9 @@ export function settleOrderWithResult(order, market, settings, result) {
     ...order,
     result: betWon ? 'won' : 'lost',
     status: 'settled',
+    settlementStatus: 'settled',
     settled_date: settledDate,
+    settledAt: settledDate,
     matched_date: order.matched_date || order.placed_date,
     grossProfit,
     commission,
@@ -155,7 +210,14 @@ export function settleOrderWithResult(order, market, settings, result) {
     clv,
     exitReason,
     resultSource,
+    resultConfidence: 'confirmed',
+    marketStatusAtSettlement,
+    winnerSelectionIds: winners,
+    placedSelectionIds: placedRunners,
+    selectedRunnerFinishPosition,
+    opponentFinishPosition,
     voided: false,
+    voidReason: null,
     marketType,
   };
 }

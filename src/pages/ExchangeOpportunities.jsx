@@ -4,10 +4,11 @@ import { base44 } from '@/api/base44Client';
 import { scanEligibleMarkets, runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
 import { getBestByCategory, MARKET_TYPE_THRESHOLDS } from '@/lib/crossMarketValueScanner';
 import { clusterMarketsByEvent, detectMarketType } from '@/lib/marketClusterer';
+import ExchangeDebugPanel from '@/components/exchange/ExchangeDebugPanel';
 import { Panel, StatCard, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { RefreshCw, TrendingUp, TrendingDown, Zap, Shield, AlertTriangle, Target } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, Zap, Shield, AlertTriangle, Target, Bug } from 'lucide-react';
 
 export default function ExchangeOpportunities() {
   const { markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, addAuditLog } = useApp();
@@ -16,6 +17,7 @@ export default function ExchangeOpportunities() {
   const [eventClusters, setEventClusters] = useState([]);
   const [diagnostics, setDiagnostics] = useState(null);
   const [lastScan, setLastScan] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   const eligibleMarkets = useMemo(() => scanEligibleMarkets(markets, runners, settings), [markets, runners, settings]);
 
@@ -55,15 +57,29 @@ export default function ExchangeOpportunities() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
+      {/* Paper mode warning */}
+      <div className="flex items-center gap-3 bg-chart-4/10 border border-chart-4/30 rounded-lg p-3">
+        <AlertTriangle className="h-5 w-5 text-chart-4 flex-shrink-0" />
+        <p className="text-sm text-chart-4 font-medium">
+          Exchange engine is in paper mode. Live execution disabled until settlement and exposure checks are verified.
+        </p>
+      </div>
+
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold font-heading">Exchange Opportunities</h1>
           <p className="text-sm text-muted-foreground mt-1">Multi-market value scanner: WIN, PLACE & H2H — BACK and LAY</p>
         </div>
-        <Button onClick={handleScan} disabled={scanning || emergencyStop}>
-          <RefreshCw className={`h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
-          {scanning ? 'Scanning...' : 'Scan All Markets'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowDebug(!showDebug)}>
+            <Bug className="h-4 w-4" />
+            {showDebug ? 'Hide Debug' : 'Debug'}
+          </Button>
+          <Button onClick={handleScan} disabled={scanning || emergencyStop}>
+            <RefreshCw className={`h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
+            {scanning ? 'Scanning...' : 'Scan All Markets'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary stats */}
@@ -73,6 +89,11 @@ export default function ExchangeOpportunities() {
         <StatCard label="Opportunities" value={opportunities.length} icon={TrendingUp} accent="text-chart-3" />
         <StatCard label="Positive EV" value={betOpportunities.length} icon={Shield} accent={betOpportunities.length > 0 ? 'text-chart-1' : 'text-muted-foreground'} />
       </div>
+
+      {/* Exchange Engine Debug Panel */}
+      {showDebug && (
+        <ExchangeDebugPanel diagnostics={diagnostics} eventClusters={eventClusters} opportunities={opportunities} />
+      )}
 
       {/* Best by category */}
       <Panel title="Best Opportunities by Category">
@@ -107,6 +128,8 @@ export default function ExchangeOpportunities() {
                       <div><span className="text-muted-foreground">Comm:</span> <span className="font-mono">{(opp.commissionRate * 100).toFixed(1)}%</span></div>
                       <div><span className="text-muted-foreground">Conf:</span> <span className="font-mono">{opp.confidence.toFixed(0)}</span></div>
                       <div><span className="text-muted-foreground">DQ:</span> <span className="font-mono">{opp.dataQuality}</span></div>
+                      <div><span className="text-muted-foreground">Delay:</span> <span className="font-mono">{opp.delayRiskScore?.toFixed(2)}</span></div>
+                      <div><span className="text-muted-foreground">Fill:</span> <span className="font-mono">{(opp.fillProbability * 100).toFixed(0)}%</span></div>
                     </div>
                     <div className="text-xs text-muted-foreground mt-1 italic truncate">{opp.reasons[0]}</div>
                   </div>

@@ -133,9 +133,71 @@
         "lapsed",
         "voided",
         "settled",
+        "awaiting_result",
         "rejected",
         "error"
       ]
+    },
+    "settlementStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "settled",
+        "result_unknown",
+        "voided",
+        "lapsed"
+      ]
+    },
+    "resultSource": {
+      "type": "string"
+    },
+    "resultConfidence": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "probable",
+        "unknown"
+      ]
+    },
+    "settledAt": {
+      "type": "string"
+    },
+    "marketStatusAtSettlement": {
+      "type": "string"
+    },
+    "winnerSelectionIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "placedSelectionIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "selectedRunnerFinishPosition": {
+      "type": "number"
+    },
+    "opponentFinishPosition": {
+      "type": "number"
+    },
+    "voided": {
+      "type": "boolean",
+      "default": false
+    },
+    "voidReason": {
+      "type": "string"
+    },
+    "marketType": {
+      "type": "string"
+    },
+    "eventId": {
+      "type": "string"
+    },
+    "liability": {
+      "type": "number"
     },
     "simulatedMatchedSize": {
       "type": "number"

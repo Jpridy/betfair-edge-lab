@@ -965,6 +965,7 @@ export function AppProvider({ children }) {
     const notes = [];
     let signalCreated = null, orderCreated = null, riskBlockedReason = null, rejectedOrder = null;
     let cycleNoBetReason = diagnostics?.noBetReason || null;
+    let exchangeDiag = null;
 
     // ── Exchange Opportunity Engine ──
     // Scans ALL eligible markets, groups by event, calls AI per event for
@@ -1011,6 +1012,7 @@ export function AppProvider({ children }) {
         marketsPassed = result.eventClusters.length;
         setExchangeOpportunities(result.allOpportunities);
         setLastExchangeDiagnostics(result.diagnostics);
+        exchangeDiag = result.diagnostics;
 
         if (result.bestOpportunity) {
           const opp = result.bestOpportunity;
@@ -1140,7 +1142,23 @@ export function AppProvider({ children }) {
       candidatesPassedConfidence: diagnostics?.scanSummary?.candidatesPassedConfidence || 0,
       bestCandidate: diagnostics?.bestCandidate || null,
       noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || diagnostics?.noBetReason || null),
-      scanSummary: diagnostics?.scanSummary || null,
+      scanSummary: exchangeDiag ? {
+        ...diagnostics?.scanSummary,
+        exchangeDiagnostics: {
+          marketsScanned: exchangeDiag.marketsScanned,
+          eventsScanned: exchangeDiag.eventsScanned,
+          eventsWithAI: exchangeDiag.eventsWithAI,
+          cacheHits: exchangeDiag.cacheHits,
+          totalOpportunities: exchangeDiag.totalOpportunities,
+          backOpportunities: exchangeDiag.backOpportunities,
+          layOpportunities: exchangeDiag.layOpportunities,
+          positiveEVOpportunities: exchangeDiag.positiveEVOpportunities,
+          rejectedOpportunities: exchangeDiag.rejectedOpportunities,
+          marketDetectionLog: exchangeDiag.marketDetectionLog?.slice(0, 20),
+          topRejected: exchangeDiag.topRejected,
+          noBetReason: exchangeDiag.noBetReason,
+        },
+      } : (diagnostics?.scanSummary || null),
       assessedRunners: diagnostics?.assessedRunners || [],
       selectedMarketName: diagnostics?.selectedMarket
         ? (diagnostics.selectedMarket.venue
@@ -1309,9 +1327,13 @@ export function AppProvider({ children }) {
           addAuditLog('Stream Error', 'api', 'warning', message);
         }
       },
-      onMarketSettled: ({ marketId, winners, venue, marketName }) => {
+      onMarketSettled: ({ marketId, winners, placedRunners, venue, marketName, placeTerms }) => {
         if (cancelled) return;
         const s = stateRef.current;
+
+        // If no winners provided, we cannot settle — mark orders as awaiting_result
+        const hasWinners = winners && winners.length > 0;
+
         for (const order of s.paperOrders) {
           if (order.result !== 'pending') continue;
           const orderMarketId = order.betfairMarketId || order.marketId;
@@ -1326,9 +1348,29 @@ export function AppProvider({ children }) {
             continue;
           }
 
+          // If no winners, set to awaiting_result — do NOT guess
+          if (!hasWinners) {
+            const awaiting = {
+              ...order,
+              status: 'awaiting_result',
+              settlementStatus: 'result_unknown',
+              settledAt: new Date().toISOString(),
+              netProfit: null,
+              exitReason: 'Result unknown — no winner data from stream',
+              resultSource: 'betfair_stream',
+              resultConfidence: 'unknown',
+            };
+            setPaperOrders(prev => prev.map(o => o.id === order.id ? awaiting : o));
+            base44.entities.PaperOrder.update(order.id, awaiting).catch(() => {});
+            addAuditLog('Order Awaiting Result', 'order', 'warning', `${order.runnerName} — no winner data available (${venue || ''} ${marketName || ''})`);
+            continue;
+          }
+
           // Matched orders settle using real race results via settlement service
           const settled = settleOrderWithResult(order, { venue, marketName }, s.settings, {
             winners,
+            placedRunners: placedRunners || [],
+            placeTerms: placeTerms || null,
             resultSource: 'betfair_stream',
             marketType: order.marketType || null,
           });
