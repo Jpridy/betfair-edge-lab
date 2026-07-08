@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.35';
 
 const FEATHERLESS_BASE_URL = 'https://api.featherless.ai/v1';
-const PROMPT_VERSION = '1.0';
+const PROMPT_VERSION = '2.0';
 
 const SYSTEM_PROMPT = `You are an elite Australian horse racing analyst and quantitative betting strategist working inside the Betfair Edge Lab app. You specialise in identifying value betting opportunities on Betfair's exchange markets.
 
@@ -18,11 +18,12 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
    - The sum of all runner probabilities MUST equal ~1.0 (±0.05).
 
 2. VALUE IDENTIFICATION
-   - Value edge = (betfair_odds / fair_odds - 1) × 100
-   - After commission (typically 5%), you need a small edge to break even. A genuine betting opportunity requires edge ≥ 5% (the minimum_edge from strategy_settings).
-   - Expected ROI = (estimated_probability × (betfair_odds - 1) × (1 - commission)) - (1 - estimated_probability)
-   - Expected ROI already accounts for commission. Only recommend BET if expected_roi is clearly positive (> 3%).
-   - The minimum_edge and minimum_expected_roi from strategy_settings are your thresholds — do NOT require more than those.
+   - Value edge = estimated_probability - implied_probability (decimal, e.g. 0.05 = 5%)
+   - After commission (typically 5%), you need a small edge to break even.
+   - Expected ROI = estimated_probability × (betfair_odds - 1) × (1 - commission) - (1 - estimated_probability) (decimal, e.g. 0.03 = 3%)
+   - Expected ROI already accounts for commission. Only recommend BET if expected_roi is positive and above minimum_expected_roi from strategy_settings.
+   - The minimum_edge and minimum_expected_roi in strategy_settings are DECIMALS (0.05 = 5%). Do NOT require more than those thresholds.
+   - All value_edge and expected_roi values in your response MUST be decimals, never percentages.
 
 3. RISK ASSESSMENT
    - LIQUIDITY RISK: The key test is whether there is sufficient size available at the target runner's best price (at least $2). Total market traded volume is a secondary signal only — early markets naturally have low volume but can still offer value. Do NOT reject solely because total traded volume is low if the runner has available size at the best price.
@@ -31,14 +32,21 @@ DECISION FRAMEWORK — work through each step before reaching your conclusion:
    - FIELD SIZE RISK: Races with > 12 runners have higher variance. Lower confidence.
    - SHORT-PRICED FAVOURITE RISK: If a dominant favourite (odds < 1.8) exists, other runners' probabilities are compressed and harder to estimate accurately.
 
-4. DISCIPLINE RULES
-   - NO_BET is the default. The burden of proof is on the data to show value, not on you to find a bet.
+4. PAPER DISCOVERY MODE
+   - The strategy_settings include a "decision_mode" field: "strict", "balanced_paper", or "active_paper_discovery".
+   - STRICT mode: NO_BET is the default. Only strong value (edge ≥ min, ROI ≥ min, confidence ≥ min) gets BET.
+   - BALANCED_PAPER mode: Paper-only research. Rank every runner. If the best runner clears configured minimums, return BET. Do not force a bet.
+   - ACTIVE_PAPER_DISCOVERY mode: Paper-only data collection. Lower thresholds. More bets for testing. Do not invent value — if no runner clears minimums, return NO_BET.
+   - In ALL modes: do not invent value. Do not force a bet. But if the best runner clears configured minimums, return BET.
+   - Always return full runner_assessments with diagnostics for every runner, regardless of decision.
+
+5. DISCIPLINE RULES
+   - In strict mode, NO_BET is the default. In paper discovery modes, BET is allowed when minimums are met.
    - Do NOT bet just because a runner is the favourite — favourites are often over-bet.
    - Do NOT bet just because odds are high — longshots are often under-bet but still lose most of the time.
-   - Do NOT chase market drifters (runners whose price is shortening) unless the new price still offers value after the move.
-   - If you cannot identify a runner with edge ≥ 5% and positive expected_roi after commission, return NO_BET.
-   - WATCH means the race is interesting but the data doesn't support a bet yet (monitor for price movement).
-   - Confidence reflects the strength of your evidence, NOT your enthusiasm for the bet. A well-supported bet in a liquid market = 80-90 confidence. A marginal bet in a thin market = 50-60 confidence.
+   - Do NOT chase market drifters unless the new price still offers value after the move.
+   - WATCH means the race is interesting but the data doesn't support a bet yet.
+   - Confidence reflects the strength of your evidence, NOT your enthusiasm for the bet.
 
 5. STAKE SIZING
    - Use fractional Kelly criterion (quarter Kelly) adjusted by confidence.
@@ -73,7 +81,15 @@ Return ONLY this JSON (no markdown, no commentary):
     "race_risk_level": "LOW" | "MEDIUM" | "HIGH",
     "summary": "<max 20 words>",
     "primary_no_bet_reason": "<reason if NO_BET, else empty>",
-    "data_quality_score": <0-100>
+    "data_quality_score": <0-100>,
+    "closest_runner": "<runner name of closest candidate if NO_BET, else empty>",
+    "main_blocker": "<specific threshold that blocked the bet, e.g. 'Edge below threshold'>",
+    "required_thresholds": {
+      "min_confidence": <number>,
+      "min_edge": <decimal>,
+      "min_expected_roi": <decimal>,
+      "min_liquidity": <number>
+    }
   },
   "selected_bet": {
     "runner": "<runner name from race data>",
@@ -81,8 +97,8 @@ Return ONLY this JSON (no markdown, no commentary):
     "estimated_probability": <0-1>,
     "fair_odds": <decimal >1>,
     "betfair_odds": <the back price>,
-    "value_edge": <percentage, e.g. 5.0>,
-    "expected_roi": <decimal, e.g. 0.03>,
+    "value_edge": <decimal, e.g. 0.05 means 5%>,
+    "expected_roi": <decimal, e.g. 0.03 means 3%>,
     "minimum_acceptable_odds": <decimal >1>,
     "reason": "<max 20 words>",
     "risks": ["<risk>"]
@@ -90,6 +106,27 @@ Return ONLY this JSON (no markdown, no commentary):
 }
 
 If NO_BET or WATCH, set selected_bet fields to empty strings and zeros. Probabilities across all runners should sum to ~1.0.
+
+For runner_assessments, include EVERY runner with:
+- runner: name
+- selection_id
+- odds: betfair back price
+- implied_probability: 1 / odds (decimal)
+- estimated_probability: your estimate (decimal)
+- fair_odds: 1 / estimated_probability
+- value_edge: estimated_probability - implied_probability (decimal, e.g. 0.05)
+- expected_roi: estimated_probability * (odds - 1) * (1 - commission) - (1 - estimated_probability) (decimal)
+- confidence: 0-100
+- failed_thresholds: array of strings listing which thresholds this runner failed (empty if none)
+- rating: STRONG_VALUE | SMALL_VALUE | FAIR_PRICE | UNDERPRICED | AVOID
+- notes: brief assessment
+
+If NO_BET, race_decision must include:
+- closest_runner: the runner that came closest to passing all thresholds
+- main_blocker: the specific threshold that blocked the bet (e.g. "Edge below threshold")
+- required_thresholds: { min_confidence, min_edge, min_expected_roi, min_liquidity }
+
+value_edge and expected_roi are ALWAYS decimals (0.05 = 5%), never percentages.
 
 If web_research data is included in the race object, also return:
 {
@@ -115,7 +152,10 @@ const RESPONSE_SCHEMA = {
         race_risk_level: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
         summary: { type: 'string' },
         primary_no_bet_reason: { type: 'string' },
-        data_quality_score: { type: 'number' }
+        data_quality_score: { type: 'number' },
+        closest_runner: { type: 'string' },
+        main_blocker: { type: 'string' },
+        required_thresholds: { type: 'object' }
       },
       required: ['decision', 'overall_confidence', 'race_risk_level', 'data_quality_score']
     },
@@ -161,6 +201,10 @@ const RESPONSE_SCHEMA = {
           value_edge: { type: 'number' },
           expected_roi: { type: 'number' },
           confidence: { type: 'number' },
+          implied_probability: { type: 'number' },
+          estimated_probability: { type: 'number' },
+          fair_odds: { type: 'number' },
+          failed_thresholds: { type: 'array', items: { type: 'string' } },
           rating: { type: 'string', enum: ['STRONG_VALUE', 'SMALL_VALUE', 'FAIR_PRICE', 'UNDERPRICED', 'AVOID'] },
           form_view: { type: 'string' },
           historical_view: { type: 'string' },
@@ -276,12 +320,15 @@ function buildRaceObject(market, runners, settings, strategySettings, raceFormPr
       active_runner_count: runnerObjects.length
     },
     strategy_settings: {
+      decision_mode: strategySettings?.aiDecisionMode || 'strict',
+      require_external_form_data: strategySettings?.requireExternalFormData || false,
       minimum_ai_confidence: strategySettings?.minConfidence || 75,
       minimum_edge: (strategySettings?.minEdge || 5) / 100,
       minimum_expected_roi: (strategySettings?.minExpectedROI || 3) / 100,
-      minimum_liquidity: strategySettings?.minLiquidity || settings?.minimumLiquidity || 5000,
+      minimum_liquidity: strategySettings?.minLiquidity || settings?.minimumLiquidity || 500,
       min_odds: strategySettings?.minOdds || 2.0,
       max_odds: strategySettings?.maxOdds || 12.0,
+      max_spread: strategySettings?.maxSpread || 5,
       kelly_fraction: 0.25,
       max_stake_percent_bankroll: 0.01
     },
@@ -694,6 +741,10 @@ Deno.serve(async (req) => {
       raceContextJson: JSON.stringify(raceObject).slice(0, 10000),
       noBetReason: decision.primary_no_bet_reason || (safetyGate.passed ? '' : safetyGate.failures?.[0] || ''),
       dataSource,
+      closestRunner: decision.closest_runner || '',
+      mainBlocker: decision.main_blocker || decision.primary_no_bet_reason || '',
+      requiredThresholds: decision.required_thresholds || null,
+      runnerDiagnostics: parsed.runner_assessments || [],
       webResearchSummary: webResearch?.research_summary || null,
       webResearchSourceLinks: webResearch?.source_links || [],
       webResearchAssessment: parsed.web_research_assessment?.assessment || (webResearch ? 'neutral' : 'missing'),

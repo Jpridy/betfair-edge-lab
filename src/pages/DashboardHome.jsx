@@ -5,6 +5,7 @@ import StrategyStatusSummary from '@/components/dashboard/StrategyStatusSummary'
 import DashboardActivityFeed from '@/components/dashboard/DashboardActivityFeed';
 import BestWorstStrategy from '@/components/dashboard/BestWorstStrategy';
 import FormDataCoverage from '@/components/dashboard/FormDataCoverage';
+import WhyNoBetPanel from '@/components/bot/WhyNoBetPanel';
 import { useApp } from '@/lib/AppContext';
 import { Link } from 'react-router-dom';
 import { Bot, Radar, BarChart3, TrendingUp, ArrowRight, Shield } from 'lucide-react';
@@ -38,7 +39,7 @@ function QuickAction({ to, icon: Icon, label, sub, accent }) {
 }
 
 export default function DashboardHome() {
-  const { emergencyStop, botState } = useApp();
+  const { emergencyStop, botState, lastScanDiagnostics } = useApp();
 
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
@@ -83,6 +84,9 @@ export default function DashboardHome() {
         }
         </div>
       }
+
+      {/* Why No Bet? — shown when last scan produced no paper order */}
+      {lastScanDiagnostics?.noBetReason && <WhyNoBetPanel diagnostics={lastScanDiagnostics} />}
 
       {/* Stat Cards */}
       <DashboardStatCards />

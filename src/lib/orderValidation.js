@@ -123,12 +123,11 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Form Data Gate ──
-  // No orders may be placed when only market-only data is available.
-  // The signal's dataSource must be BETFAIR_METADATA_PLUS_MARKET or
-  // EXTERNAL_FORM_PLUS_MARKET. This is a secondary safety net — the
-  // primary gate is in createSignal (botEngine.js).
-  if (order.dataSource === 'MARKET_ONLY') {
-    failures.push({ field: 'dataSource', reason: 'No form data available — market-only analysis is insufficient for order placement' });
+  // When requireExternalFormData is enabled, block market-only signals.
+  // When disabled (default), market-only paper signals are allowed and
+  // clearly labeled as "Market-only paper signal".
+  if (order.dataSource === 'MARKET_ONLY' && order.requireExternalFormData === true) {
+    failures.push({ field: 'dataSource', reason: 'Blocked: external form data required.' });
   }
 
   // ── Time Window Check ──

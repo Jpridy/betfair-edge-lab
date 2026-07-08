@@ -43,6 +43,33 @@
     },
     "notes": {
       "type": "string"
+    },
+    "runnersAssessed": {
+      "type": "number"
+    },
+    "candidatesPassedLiquidity": {
+      "type": "number"
+    },
+    "candidatesPassedOddsRange": {
+      "type": "number"
+    },
+    "candidatesPassedEdge": {
+      "type": "number"
+    },
+    "candidatesPassedROI": {
+      "type": "number"
+    },
+    "candidatesPassedConfidence": {
+      "type": "number"
+    },
+    "bestCandidate": {
+      "type": "object"
+    },
+    "noBetReason": {
+      "type": "string"
+    },
+    "scanSummary": {
+      "type": "object"
     }
   },
   "required": [

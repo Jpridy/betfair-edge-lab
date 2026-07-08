@@ -7,20 +7,32 @@ import LiveBotLockPanel from '@/components/bot/LiveBotLockPanel';
 import BotScanStats from '@/components/bot/BotScanStats';
 import BotSyncControls from '@/components/bot/BotSyncControls';
 import StrategyControlPanel from '@/components/bot/StrategyControlPanel';
+import WhyNoBetPanel from '@/components/bot/WhyNoBetPanel';
+import BestCandidatePanel from '@/components/bot/BestCandidatePanel';
+import ScanSummaryPanel from '@/components/bot/ScanSummaryPanel';
+import CalibrationPanel from '@/components/bot/CalibrationPanel';
 import { Panel } from '@/components/ui/Trading';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useApp } from '@/lib/AppContext';
 
 export default function BotControlCentre() {
   const [showAdmin, setShowAdmin] = useState(false);
+  const { lastScanDiagnostics } = useApp();
 
   return (
     <div className="space-y-5">
       <BotControls />
       <StrategyControlPanel />
       <BotSyncControls />
+      <ScanSummaryPanel scanSummary={lastScanDiagnostics?.scanSummary} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <BestCandidatePanel bestCandidate={lastScanDiagnostics?.bestCandidate} />
+        <CalibrationPanel />
+      </div>
       <BotScanStats />
       <BotStatusCard />
       <BotLoopDisplay />
+      {lastScanDiagnostics?.noBetReason && <WhyNoBetPanel diagnostics={lastScanDiagnostics} />}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <BotRulesPanel />
       </div>

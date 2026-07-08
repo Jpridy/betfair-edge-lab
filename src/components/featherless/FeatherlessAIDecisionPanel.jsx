@@ -132,7 +132,7 @@ export default function FeatherlessAIDecisionPanel() {
               requestedStake: stake,
               matchedStake: matchedStake,
               status: orderStatus,
-              expectedValue: decision.expectedROI * stake / 100,
+              expectedValue: decision.expectedROI * stake,
               result: 'pending',
               grossProfit: 0,
               commission: 0,
@@ -244,8 +244,8 @@ export default function FeatherlessAIDecisionPanel() {
               <DecisionMetric label="AI Fair Odds" value={latestDecision.fairOdds?.toFixed(2) || '—'} />
               <DecisionMetric label="Betfair Odds" value={latestDecision.betfairOdds?.toFixed(2) || '—'} />
               <DecisionMetric label="Min Acceptable" value={latestDecision.minimumAcceptableOdds?.toFixed(2) || '—'} />
-              <DecisionMetric label="Value Edge" value={`${latestDecision.valueEdge?.toFixed(2)}%`} positive={latestDecision.valueEdge > 0} />
-              <DecisionMetric label="Expected ROI" value={`${latestDecision.expectedROI?.toFixed(2)}%`} positive={latestDecision.expectedROI > 0} />
+              <DecisionMetric label="Value Edge" value={`${((latestDecision.valueEdge || 0) * 100).toFixed(2)}%`} positive={latestDecision.valueEdge > 0} />
+              <DecisionMetric label="Expected ROI" value={`${((latestDecision.expectedROI || 0) * 100).toFixed(2)}%`} positive={latestDecision.expectedROI > 0} />
               <DecisionMetric label="Race Risk" value={latestDecision.raceRiskLevel} />
               <DecisionMetric label="Data Quality" value={`${latestDecision.dataQualityScore}/100`} />
               <DecisionMetric label="Data Source" value={latestDecision.dataSource?.replace(/_/g, ' ') || 'MARKET ONLY'} />
@@ -324,7 +324,7 @@ export default function FeatherlessAIDecisionPanel() {
                   </div>
                   <div className="flex items-center gap-3 text-muted-foreground">
                     <span>Conf: {d.confidence}%</span>
-                    <span>Edge: {d.valueEdge?.toFixed(1)}%</span>
+                    <span>Edge: {((d.valueEdge || 0) * 100).toFixed(1)}%</span>
                     {d.safetyGatePassed ? <StatusBadge status="ok">Paper Trade</StatusBadge> : <StatusBadge status="neutral">No Trade</StatusBadge>}
                   </div>
                 </div>

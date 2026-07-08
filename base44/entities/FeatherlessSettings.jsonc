@@ -58,6 +58,10 @@
       "type": "number",
       "default": 500
     },
+    "maxSpread": {
+      "type": "number",
+      "default": 5
+    },
     "timeWindowStart": {
       "type": "number",
       "default": 500
@@ -73,6 +77,29 @@
     "webResearchEnabled": {
       "type": "boolean",
       "default": false
+    },
+    "aiDecisionMode": {
+      "type": "string",
+      "enum": [
+        "strict",
+        "balanced_paper",
+        "active_paper_discovery"
+      ],
+      "default": "strict"
+    },
+    "requireExternalFormData": {
+      "type": "boolean",
+      "default": false
+    },
+    "targetPaperBetsPerDay": {
+      "type": "string",
+      "enum": [
+        "very_low",
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "low"
     }
   },
   "required": [

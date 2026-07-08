@@ -171,6 +171,21 @@
     },
     "webResearchDataQuality": {
       "type": "string"
+    },
+    "closestRunner": {
+      "type": "string"
+    },
+    "mainBlocker": {
+      "type": "string"
+    },
+    "requiredThresholds": {
+      "type": "object"
+    },
+    "runnerDiagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "required": [

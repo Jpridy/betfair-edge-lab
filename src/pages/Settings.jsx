@@ -69,6 +69,7 @@ export default function Settings() {
     favouriteSideEnabled: 'boolean', outsiderSideEnabled: 'boolean',
     forcedPaperOnlyMode: 'boolean', dailyDepositReminderEnabled: 'boolean',
     riskLimitsDisabled: 'boolean', minimumPaperTrades: 'number',
+    requireExternalFormData: 'boolean', targetPaperBetsPerDay: 'string', aiDecisionMode: 'string', maxSpread: 'number',
   };
   const BLOCKED_KEYS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v',
     'appKey', 'sessionToken', 'password', 'username', 'apiKey', 'api_key', 'betfairPassword', 'betfairUsername'];

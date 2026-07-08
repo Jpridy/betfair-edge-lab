@@ -6,6 +6,9 @@ import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapp
 import { runPreOrderChecks } from '@/lib/orderValidation';
 import { countTicksBetween } from '@/lib/tickLadder';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
+import { buildScanDiagnostics } from './scanDiagnostics';
+import { computeCalibration } from './calibration';
+import { fmtPct } from './candidateScoring';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
 
 // ── Metadata fields to strip when loading settings from DB ──
@@ -38,6 +41,10 @@ const DEFAULT_FEATHERLESS_SETTINGS = {
   timeWindowEnd: 30,
   stakingMode: 'confidence_weighted_fractional_kelly',
   webResearchEnabled: false,
+  aiDecisionMode: 'strict',
+  requireExternalFormData: false,
+  targetPaperBetsPerDay: 'low',
+  maxSpread: 5,
 };
 
 const AppContext = createContext(null);
@@ -240,6 +247,7 @@ export function AppProvider({ children }) {
   // ── Featherless AI ──
   const [featherlessSettings, setFeatherlessSettings] = useState({ ...DEFAULT_FEATHERLESS_SETTINGS });
   const [aiDecisions, setAiDecisions] = useState([]);
+  const [lastScanDiagnostics, setLastScanDiagnostics] = useState(null);
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
@@ -927,6 +935,11 @@ export function AppProvider({ children }) {
     const s = stateRef.current;
     if (s.emergencyStop) return;
 
+    // Run candidate scoring diagnostics for transparency — always runs
+    // so the user can see why no bet was picked, even when AI is enabled.
+    const diagnostics = buildScanDiagnostics(s.markets, s.runners, s.settings, s.featherlessSettings, s.paperOrders, s.bankrollStats, s.emergencyStop);
+    setLastScanDiagnostics(diagnostics);
+
     const cycleNum = s.botState.cycleNumber + 1;
     const now = new Date().toISOString();
     const steps = BOT_STEPS.map(name => ({ name, status: 'waiting' }));
@@ -1098,7 +1111,7 @@ export function AppProvider({ children }) {
                   impliedProbability: 1 / (decision.betfairOdds || aiRunner.bestBackPrice),
                   fairOdds: decision.fairOdds,
                   edgePercent: decision.valueEdge,
-                  expectedValue: (decision.expectedROI / 100) * (decision.recommendedStake || s.settings.baseStake || 100),
+                  expectedValue: decision.expectedROI * (decision.recommendedStake || s.settings.baseStake || 100),
                   confidence: decision.confidence,
                   signalStatus: 'active',
                   persistenceType: 'LAPSE',
@@ -1144,7 +1157,7 @@ export function AppProvider({ children }) {
             };
 
             const preCheck = runPreOrderChecks(
-              { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType, dataSource: signal.dataSource },
+              { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType, dataSource: signal.dataSource, requireExternalFormData: s.featherlessSettings?.requireExternalFormData ?? false },
               market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
             );
 
@@ -1199,6 +1212,57 @@ export function AppProvider({ children }) {
       }
     }
 
+    // If AI is disabled but candidate scoring found a passing runner,
+    // create a paper signal directly from the local scoring engine.
+    if (!s.featherlessSettings?.enabled && diagnostics?.bestCandidate?.passed && !signalCreated && !s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
+      const bc = diagnostics.bestCandidate;
+      const bcMarket = diagnostics.selectedMarket;
+      const bcRunner = s.runners.find(r => r.id === bc.runnerId || (r.betfairSelectionId && String(r.betfairSelectionId) === String(bc.selectionId)));
+      if (bcMarket && bcRunner) {
+        market = bcMarket;
+        const candidateStrategyName = 'Featherless AI Value Decision Engine';
+        const candidateSignal = {
+          strategyName: candidateStrategyName,
+          marketId: bcMarket.id,
+          betfairMarketId: bcMarket.betfairMarketId || bcMarket.id,
+          selectionId: String(bc.selectionId),
+          runnerId: bcRunner.id,
+          side: 'BACK',
+          odds: bc.odds,
+          stakeSuggestion: s.settings.baseStake || 100,
+          modelProbability: bc.estimatedProbability,
+          impliedProbability: bc.impliedProbability,
+          fairOdds: bc.fairOdds,
+          edgePercent: bc.edge,
+          expectedValue: bc.expectedROI * (s.settings.baseStake || 100),
+          confidence: bc.confidence,
+          signalStatus: 'active',
+          persistenceType: 'LAPSE',
+          spreadTicks: bc.spread,
+          reason: `Candidate scoring: edge ${fmtPct(bc.edge)}, ROI ${fmtPct(bc.expectedROI)}, confidence ${fmtPct(bc.confidence)} (data: ${bc.dataSource})`,
+          dataSource: bc.dataSource,
+        };
+        signalCreated = candidateSignal;
+        signalsCreated = 1;
+        steps[3].status = 'passed';
+        steps[3].reason = 'Candidate scoring (AI disabled)';
+        steps[4].status = 'passed';
+        steps[5].status = 'passed';
+        steps[6].status = 'passed';
+        setStrategySignals(prev => [{ ...candidateSignal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+        base44.entities.StrategySignal.create(candidateSignal).catch(() => {});
+        const order = createPaperOrder(candidateSignal, bcMarket, bcRunner, s.settings);
+        orderCreated = order;
+        ordersCreated = 1;
+        steps[7].status = 'passed';
+        steps[8].status = 'passed';
+        setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
+        base44.entities.PaperOrder.create(order).catch(() => {});
+        setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
+        notes.push(`Candidate scoring: ${bc.runnerName} (score ${bc.overallScore}, ${bc.dataSource})`);
+      }
+    }
+
     // Steps 10-12: Always pass
     steps[9].status = 'passed';
     steps[10].status = 'passed';
@@ -1230,6 +1294,15 @@ export function AppProvider({ children }) {
       ordersBlocked,
       errors,
       notes: notes.join('; ') || 'Cycle completed',
+      runnersAssessed: diagnostics?.scanSummary?.runnersAssessed || 0,
+      candidatesPassedLiquidity: diagnostics?.scanSummary?.candidatesPassedLiquidity || 0,
+      candidatesPassedOddsRange: diagnostics?.scanSummary?.candidatesPassedOddsRange || 0,
+      candidatesPassedEdge: diagnostics?.scanSummary?.candidatesPassedEdge || 0,
+      candidatesPassedROI: diagnostics?.scanSummary?.candidatesPassedROI || 0,
+      candidatesPassedConfidence: diagnostics?.scanSummary?.candidatesPassedConfidence || 0,
+      bestCandidate: diagnostics?.bestCandidate || null,
+      noBetReason: diagnostics?.noBetReason || null,
+      scanSummary: diagnostics?.scanSummary || null,
     };
     setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
     base44.entities.BotCycle.create(cycleRecord).catch(() => {});
@@ -1238,7 +1311,7 @@ export function AppProvider({ children }) {
 
     addToBotActivity('Market scanned', `${marketsScanned} markets scanned, ${marketsPassed} passed filters`);
     if (signalCreated) {
-      addToBotActivity('Signal created', `${signalCreated.strategyName} on ${market?.marketName} — edge ${signalCreated.edgePercent?.toFixed(2)}%, spread ${signalCreated.spreadTicks} ticks`);
+      addToBotActivity('Signal created', `${signalCreated.strategyName} on ${market?.marketName} — edge ${fmtPct(signalCreated.edgePercent)}, spread ${signalCreated.spreadTicks} ticks`);
     }
     if (orderCreated) {
       addToBotActivity('Paper order submitted', `${orderCreated.side} ${orderCreated.runnerName} @ ${orderCreated.requestedOdds} × $${orderCreated.requestedStake} (${orderCreated.persistenceType})`);
@@ -1464,6 +1537,9 @@ export function AppProvider({ children }) {
   const appMode = apiConnected ? 'connected_paper' : 'paper';
   const demoMode = !apiConnected;
 
+  // ── Calibration from settled paper orders ──
+  const calibration = useMemo(() => computeCalibration(paperOrders), [paperOrders]);
+
   const value = {
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
@@ -1487,6 +1563,7 @@ export function AppProvider({ children }) {
     resetAllPaperTrading, resetStrategyData, resetDailyStats, clearLogs,
     // Featherless AI
     featherlessSettings, setFeatherlessSettings, updateFeatherlessSettings, aiDecisions,
+    lastScanDiagnostics, calibration,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
