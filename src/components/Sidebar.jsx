@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Bot, Radar, FileText, BarChart3, Settings, AlertOctagon, X } from 'lucide-react';
+import { Home, Bot, Radar, FileText, BarChart3, Settings, AlertOctagon, X, Footprints, FlaskConical, History, ScrollText, ShieldAlert, BookOpen } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -9,8 +9,15 @@ const navItems = [
   { label: 'Dashboard', path: '/', icon: Home },
   { label: 'Bot', path: '/bot-control', icon: Bot },
   { label: 'Markets', path: '/scanner', icon: Radar },
+  { label: 'Runners', path: '/runner', icon: Footprints },
   { label: 'Paper Orders', path: '/paper-trading', icon: FileText },
+  { label: 'Orders', path: '/orders', icon: ScrollText },
   { label: 'Analytics', path: '/performance-analytics', icon: BarChart3 },
+  { label: 'Strategy Lab', path: '/strategy', icon: FlaskConical },
+  { label: 'Strategy Library', path: '/strategy-library', icon: BookOpen },
+  { label: 'Backtesting', path: '/backtesting', icon: History },
+  { label: 'Risk Manager', path: '/risk', icon: ShieldAlert },
+  { label: 'Logs & Audit', path: '/logs', icon: FileText },
   { label: 'Settings', path: '/settings', icon: Settings },
 ];
 
