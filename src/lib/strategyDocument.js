@@ -1,9 +1,14 @@
-import { jsPDF } from 'jspdf';
 import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { getLiveAuditData } from '@/lib/liveAuditData';
-import { computeTrafficLight, computeDataQuality, checkLiveLockout, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
+import { computeTrafficLight, computeDataQuality, getPaperProgress, reconcileMetrics } from '@/lib/strategyValidation';
 
-export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
+/**
+ * Generate and download a strategy reference PDF.
+ * jspdf is lazy-loaded only when this function is called — never on page load.
+ */
+export async function generateStrategyDocument(paperOrders = [], strategyStats = []) {
+  // Lazy-load jspdf only when the export action is triggered
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -56,14 +61,14 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
   addDivider();
 
   addWrappedText(
-    'This document provides a comprehensive breakdown of every trading strategy available in the Betfair Edge Lab platform. Each strategy is explained in full detail, including its core logic, entry rules, exit rules, risk profile, applicable market types, time windows, and current performance metrics.',
+    'This document provides a comprehensive breakdown of every trading strategy available in the Betfair Edge Lab platform. Each strategy is explained in full detail, including its core logic, entry rules, exit rules, risk profile, applicable market types, time windows, and current paper trading performance metrics.',
     10,
     'normal',
     [60, 60, 60]
   );
   y += 4;
   addWrappedText(
-    'All strategies operate on the Betfair Exchange (Australian jurisdiction) and adhere to the Betfair tick ladder, standard 5% commission rate, and exchange market ID formats.',
+    'All strategies operate in paper-only mode on the Betfair Exchange (Australian jurisdiction). No real bets are placed. All orders are simulated paper trades for research purposes.',
     10,
     'normal',
     [60, 60, 60]
@@ -98,7 +103,6 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
     const dq = computeDataQuality(s, audit);
     const progress = getPaperProgress(audit);
     const recon = reconcileMetrics(audit);
-    const lockout = checkLiveLockout(s, audit, { bankroll: 10000 }, { liveApproved: false, userConfirmed: false });
 
     // Strategy header
     doc.setFontSize(16);
@@ -118,7 +122,7 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
     doc.text(`Status: ${trafficLight.label.toUpperCase()}`, margin, y);
     y += 5;
     doc.setTextColor(100, 100, 100);
-    doc.text(`Data Quality: ${dq.label}  |  Live Mode: ${lockout.locked ? 'LOCKED' : 'AVAILABLE'}`, margin, y);
+    doc.text(`Data Quality: ${dq.label}  |  Paper Mode: ACTIVE (No real bets)`, margin, y);
     y += 7;
     addDivider();
 
@@ -126,13 +130,13 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
     addWrappedText('VALIDATION STATUS', 11, 'bold', [50, 50, 50]);
     y += 2;
     addWrappedText(`Paper Progress: ${progress.current} / ${progress.target} settled trades (${progress.percent.toFixed(0)}%)`, 10, 'normal', [40, 40, 40]);
-    if (lockout.locked) {
-      addWrappedText('Live Mode Lockout Reasons:', 10, 'bold', [180, 0, 0]);
-      lockout.reasons.forEach((r) => {
+    if (trafficLight.light !== 'green') {
+      addWrappedText('Validation Requirements:', 10, 'bold', [180, 0, 0]);
+      trafficLight.reasons.forEach((r) => {
         addWrappedText(`  - ${r}`, 10, 'normal', [120, 0, 0]);
       });
     } else {
-      addWrappedText('All live mode validation criteria passed.', 10, 'bold', [0, 128, 0]);
+      addWrappedText('All validation criteria passed. Paper Validated.', 10, 'bold', [0, 128, 0]);
     }
     if (!recon.valid) {
       addWrappedText('Metric Reconciliation Warnings:', 10, 'bold', [180, 0, 0]);
@@ -229,7 +233,7 @@ export function generateStrategyDocument(paperOrders = [], strategyStats = []) {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(150, 150, 150);
     doc.text(
-      `Betfair Edge Lab — Strategy Reference  |  Page ${i} of ${pageCount}`,
+      `Betfair Edge Lab — Strategy Reference (Paper-Only)  |  Page ${i} of ${pageCount}`,
       margin,
       pageHeight - 10
     );

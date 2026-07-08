@@ -2,9 +2,9 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 const LIGHT_CONFIG = {
-  green: { bg: 'bg-chart-1/10', text: 'text-chart-1', border: 'border-chart-1/30', dot: 'bg-chart-1', label: 'Live Approved' },
+  green: { bg: 'bg-chart-1/10', text: 'text-chart-1', border: 'border-chart-1/30', dot: 'bg-chart-1', label: 'Paper Validated' },
   yellow: { bg: 'bg-chart-4/10', text: 'text-chart-4', border: 'border-chart-4/30', dot: 'bg-chart-4', label: 'Paper Testing' },
-  red: { bg: 'bg-chart-5/10', text: 'text-chart-5', border: 'border-chart-5/30', dot: 'bg-chart-5', label: 'Failing' },
+  red: { bg: 'bg-chart-5/10', text: 'text-chart-5', border: 'border-chart-5/30', dot: 'bg-chart-5', label: 'Failing / Locked' },
   grey: { bg: 'bg-muted/30', text: 'text-muted-foreground', border: 'border-border', dot: 'bg-muted-foreground', label: 'Archived' },
 };
 

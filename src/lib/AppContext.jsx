@@ -548,7 +548,20 @@ export function AppProvider({ children }) {
   };
 
   // ── Reset Daily Stats (does NOT delete paper orders) ──
+  // Sets a dailyResetAt cutoff timestamp. Today metrics will only count
+  // orders settled/created after this timestamp. All historical data preserved.
   const resetDailyStats = () => {
+    const resetAt = new Date().toISOString();
+    setSettings(prev => {
+      const merged = { ...prev, dailyResetAt: resetAt };
+      const payload = { ...merged, mode: 'demo' };
+      if (settingsRecordId.current) {
+        base44.entities.AppSettings.update(settingsRecordId.current, payload).catch(() => {});
+      } else {
+        base44.entities.AppSettings.create(payload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+      }
+      return merged;
+    });
     setBankrollStats(prev => ({ ...prev, todayPL: 0 }));
     setBotState(prev => ({
       ...prev,
@@ -566,8 +579,8 @@ export function AppProvider({ children }) {
       ordersRejectedToday: 0,
       lastRejectedReason: null,
     }));
-    addAuditLog('Daily Stats Reset', 'system', 'warning', 'Daily P/L display, bot daily counters (signals, orders, blocked), and sync daily counters (markets scanned, runners scanned, signals generated, orders created, orders rejected) all reset to zero. Historical paper orders are preserved.');
-    addToBotActivity('Daily stats reset', 'Daily counters reset to zero — historical data preserved');
+    addAuditLog('Daily Stats Reset', 'system', 'warning', `Daily reset at ${resetAt}. Daily P/L, bot daily counters, and sync daily counters reset to zero. Historical paper orders, total P/L, and analytics history are preserved. Today metrics will count only orders settled after ${resetAt}.`);
+    addToBotActivity('Daily stats reset', `Cutoff set to ${resetAt} — daily counters reset, historical data preserved`);
   };
 
   // ── Clear All Audit Logs ──

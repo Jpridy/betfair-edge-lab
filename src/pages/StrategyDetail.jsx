@@ -111,7 +111,7 @@ export default function StrategyDetail() {
           <Archive className="h-5 w-5 text-muted-foreground shrink-0" />
           <div>
             <div className="text-sm font-bold text-muted-foreground">This strategy is archived.</div>
-            <div className="text-xs text-muted-foreground mt-1">No new signals or orders will be generated. Historical performance is available for review. Clone to create a new paper-only test version.</div>
+            <div className="text-xs text-muted-foreground mt-1">No new signals or orders will be generated. Past performance is available for review. Clone to create a new paper-only test version.</div>
           </div>
         </div>
       )}
@@ -158,7 +158,7 @@ export default function StrategyDetail() {
         <Panel title="Paper Testing Progress">
           <div className="p-4">
             <div className="flex justify-between text-xs mb-2">
-              <span className="text-muted-foreground">{progress.current} / {progress.target} settled trades completed before live review</span>
+              <span className="text-muted-foreground">{progress.current} / {progress.target} settled trades completed for validation</span>
               <span className="font-mono font-bold">{progress.percent.toFixed(0)}%</span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -293,7 +293,7 @@ export default function StrategyDetail() {
           <Panel title="Paper-Only Status">
             <div className="p-4 space-y-3">
               <div className="bg-muted/30 border border-border rounded-lg p-3 text-xs text-muted-foreground">
-                This strategy operates in paper-only mode. Future live review is disabled. No real bets are placed.
+                This strategy operates in paper-only mode. Advanced review is disabled. No real bets are placed.
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Paper Trade Only</span>

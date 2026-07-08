@@ -111,15 +111,16 @@ export default function Settings() {
           }
           cleaned[key] = value;
         }
-        // Force safety: never allow live trading or risk bypass from import
+        // Force safety: never allow live trading, risk bypass, or live handoff from import
         cleaned.liveTradingEnabled = false;
         cleaned.riskLimitsDisabled = false;
-        cleaned.forcedPaperOnlyMode = cleaned.forcedPaperOnlyMode || false;
+        cleaned.allowLiveHandoff = false;
+        cleaned.forcedPaperOnlyMode = true;
         setLocal(prev => ({ ...prev, ...cleaned }));
         addAuditLog('Settings Imported', 'settings', 'info',
-          `Imported ${Object.keys(cleaned).length} fields. Rejected: ${rejected.length > 0 ? rejected.join('; ') : 'none'}. Live trading and risk bypass forced off.`);
+          `Imported ${Object.keys(cleaned).length} fields. Rejected: ${rejected.length > 0 ? rejected.join('; ') : 'none'}. Paper-only mode forced on. Live trading, risk bypass, and live handoff forced off.`);
         if (rejected.length > 0) {
-          setImportError(`Imported with ${rejected.length} rejected field(s): ${rejected.slice(0, 3).join(', ')}${rejected.length > 3 ? '...' : ''}. Live trading and risk bypass forced off.`);
+          setImportError(`Imported with ${rejected.length} rejected field(s): ${rejected.slice(0, 3).join(', ')}${rejected.length > 3 ? '...' : ''}. Paper-only mode forced on.`);
         }
       } catch (err) {
         setImportError('Invalid JSON file: could not parse.');
@@ -414,16 +415,16 @@ export default function Settings() {
 
           <BetfairConnection />
 
-          <Panel title="Future Live Review (Disabled)" className="mt-5">
+          <Panel title="Advanced Review (Disabled)" className="mt-5">
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Future Live Review Status</span>
+                <span className="text-muted-foreground">Advanced Review Status</span>
                 <StatusBadge status="neutral">Disabled — Paper Only</StatusBadge>
               </div>
               <div className="bg-muted/30 border border-border rounded-lg p-3 mt-3">
                 <div className="text-xs text-muted-foreground font-bold flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Paper-Only Mode</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  This app is paper-only. No real bets are placed. Future live review is disabled. All orders are simulated paper trades for research purposes.
+                  This app is paper-only. No real bets are placed. Advanced review is disabled. All orders are simulated paper trades for research purposes. Betfair data connected for analysis only.
                 </div>
               </div>
             </div>

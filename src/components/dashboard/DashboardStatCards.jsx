@@ -72,7 +72,7 @@ export default function DashboardStatCards() {
         color={totalROI >= 0 ? 'text-chart-1' : 'text-chart-5'}
       />
       <StatCard
-        to="/risk"
+        to="/settings"
         label="Current Bankroll"
         value={`$${currentBankroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         sublabel="Paper trading"
@@ -96,7 +96,7 @@ export default function DashboardStatCards() {
         color={weeklyPL >= 0 ? 'text-chart-1' : 'text-chart-5'}
       />
       <StatCard
-        to="/risk"
+        to="/settings"
         label="Current Drawdown"
         value={`$${Math.abs(drawdown).toFixed(2)}`}
         sublabel={currentBankroll > 0 ? `${(Math.abs(drawdown) / currentBankroll * 100).toFixed(2)}% of bank` : '—'}
@@ -104,7 +104,7 @@ export default function DashboardStatCards() {
         color="text-chart-5"
       />
       <StatCard
-        to="/risk"
+        to="/settings"
         label="Open Exposure"
         value={`$${openExposure.toFixed(2)}`}
         sublabel={currentBankroll > 0 ? `${(openExposure / currentBankroll * 100).toFixed(1)}% of bank` : '—'}
@@ -112,7 +112,7 @@ export default function DashboardStatCards() {
         color="text-chart-4"
       />
       <StatCard
-        to="/strategy-library"
+        to="/settings"
         label="Active Paper"
         value={activePaper}
         sublabel="Strategies testing"
@@ -120,15 +120,15 @@ export default function DashboardStatCards() {
         color="text-chart-4"
       />
       <StatCard
-        to="/strategy-library"
-        label="Live Approved"
+        to="/settings"
+        label="Paper Validated"
         value={liveApproved}
-        sublabel="Ready for live"
+        sublabel="Research Passed"
         icon={CheckCircle2}
         color="text-chart-1"
       />
       <StatCard
-        to="/strategy-library"
+        to="/settings"
         label="Locked"
         value={locked}
         sublabel="Failing / archived"
@@ -136,7 +136,7 @@ export default function DashboardStatCards() {
         color="text-chart-5"
       />
       <StatCard
-        to="/logs"
+        to="/settings"
         label="Active Warnings"
         value={warnings}
         sublabel="Requires attention"

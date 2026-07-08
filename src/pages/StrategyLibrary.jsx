@@ -4,7 +4,6 @@ import { Panel, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, BookOpen, Archive, CheckCircle2, Clock, TrendingUp, Shield, Target, Zap, Activity, Download, ChevronRight, Copy, XCircle, RotateCcw } from 'lucide-react';
 import { STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
@@ -24,7 +23,7 @@ const CATEGORY_ICONS = {
 
 const TABS = [
   { key: 'all', label: 'All Strategies' },
-  { key: 'green', label: 'Paper Approved' },
+  { key: 'green', label: 'Paper Validated' },
   { key: 'yellow', label: 'Paper Testing' },
   { key: 'red', label: 'Failing' },
   { key: 'grey', label: 'Archived' },
@@ -85,7 +84,7 @@ export default function StrategyLibrary() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Paper Approved</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Paper Validated</span>
             <CheckCircle2 className="h-4 w-4 text-chart-1" />
           </div>
           <div className="text-2xl font-bold font-mono text-chart-1">{counts.green}</div>
@@ -99,7 +98,7 @@ export default function StrategyLibrary() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Failing</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Failing / Locked</span>
             <XCircle className="h-4 w-4 text-chart-5" />
           </div>
           <div className="text-2xl font-bold font-mono text-chart-5">{counts.red}</div>

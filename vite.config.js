@@ -24,7 +24,7 @@ export default defineConfig({
           'vendor-utils': ['lodash', 'moment', 'date-fns', 'clsx', 'tailwind-merge'],
           'vendor-dnd': ['@hello-pangea/dnd'],
           'vendor-markdown': ['react-markdown'],
-          'vendor-export': ['jspdf', 'html2canvas'],
+          'vendor-export': ['jspdf'],
           'vendor-maps': ['react-leaflet', 'leaflet'],
           'vendor-three': ['three'],
         },

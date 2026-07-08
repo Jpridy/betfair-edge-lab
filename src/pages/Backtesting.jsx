@@ -55,6 +55,13 @@ export default function Backtesting() {
         startingBankroll,
         settings,
         daysBack,
+        commissionRate,
+        stakeType,
+        minOddsRange,
+        maxOddsRange,
+        marketType,
+        minLiquidity,
+        timeWindow,
       });
 
       clearInterval(progressTimer);
@@ -162,7 +169,7 @@ export default function Backtesting() {
           <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
             <ShieldAlert className="h-4 w-4 text-chart-4 shrink-0 mt-0.5" />
             <div>
-              <span className="text-chart-4 font-medium">Warning:</span> Backtest results are not live proof. Strategy must still pass paper trading validation (200+ settled trades, positive CLV, profit factor &gt; 1.20) before live mode can be enabled.
+              <span className="text-chart-4 font-medium">Warning:</span> Backtest results are synthetic. Strategy must still pass paper trading validation (200+ settled trades, positive CLV, profit factor &gt; 1.20). No real bets are placed.
             </div>
           </div>
 
@@ -214,13 +221,15 @@ export default function Backtesting() {
       {/* Simulation Parameters */}
       <Panel title="Simulation Parameters">
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-          <Param label="Commission" value={`${(settings.commissionRate * 100).toFixed(1)}%`} />
-          <Param label="Fill Logic" value="Conservative" />
+          <Param label="Commission" value={`${commissionRate.toFixed(1)}%`} />
+          <Param label="Stake Type" value={stakeType === 'flat' ? 'Flat' : 'Percentage'} />
           <Param label="Settlement" value="Synthetic" />
           <Param label="Risk Checks" value="Your settings" />
-          <Param label="Min Liquidity" value={`$${settings.minimumLiquidity.toLocaleString()}`} />
-          <Param label="Min Odds" value={settings.minOdds.toFixed(2)} />
-          <Param label="Max Odds" value={settings.maxOdds.toFixed(2)} />
+          <Param label="Min Liquidity" value={`$${minLiquidity.toLocaleString()}`} />
+          <Param label="Min Odds" value={minOddsRange.toFixed(2)} />
+          <Param label="Max Odds" value={maxOddsRange.toFixed(2)} />
+          <Param label="Market Type" value={marketType === 'all' ? 'All' : marketType} />
+          <Param label="Time Window" value={timeWindow} />
           <Param label="Max Stake" value={`$${settings.maxStake}`} />
         </div>
       </Panel>

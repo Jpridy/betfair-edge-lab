@@ -203,30 +203,36 @@ export function createPaperOrder(signal, market, runner, settings) {
     customerStrategyRef: 'BEL_' + signal.strategyName.toUpperCase().replace(/[^A-Z]/g, ''),
   });
 
-  // Simulate matching — only match if price was realistically available
+  // Simulate matching — respect available size at best price
   const availableSize = signal.side === 'BACK' ? (runner.bestBackSize || 0) : (runner.bestLaySize || 0);
   const availablePrice = signal.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
 
   // Paper matching rules:
-  // - Only match if price was realistically available
-  // - Respect market status (must be OPEN)
-  // - Respect in-play lockout (pre-off strategies)
-  // In live mode, available size at best price is often thin ($2–50).
-  // We match whatever is available (partial fill) rather than requiring 80%+
-  // of the full stake — this mirrors real Betfair partial matching.
+  // - Respect market status (must be OPEN, not in-play unless allowed)
+  // - Respect available size: 0 → unmatched, partial → partially_matched, full → matched
   const canMatch =
     market.status === 'OPEN' &&
-    !market.inPlay &&
-    availablePrice > 0 &&
-    availableSize > 0;
+    (!market.inPlay || signal.persistenceType === 'PERSIST') &&
+    availablePrice > 0;
 
-  const matched = canMatch;
+  // Determine matched/unmatched based on available size
+  let matchedStakeAmount, remainingStakeAmount, orderStatus;
 
-  // Partial fill: match the lesser of requested stake and available size.
-  // Never match more than what's actually available in the order book.
-  const matchedStakeAmount = matched
-    ? Math.min(signal.stakeSuggestion, availableSize)
-    : 0;
+  if (!canMatch || availableSize <= 0) {
+    matchedStakeAmount = 0;
+    remainingStakeAmount = signal.stakeSuggestion;
+    orderStatus = 'unmatched';
+  } else if (availableSize < signal.stakeSuggestion) {
+    matchedStakeAmount = availableSize;
+    remainingStakeAmount = signal.stakeSuggestion - availableSize;
+    orderStatus = 'partially_matched';
+  } else {
+    matchedStakeAmount = signal.stakeSuggestion;
+    remainingStakeAmount = 0;
+    orderStatus = 'matched';
+  }
+
+  const matched = matchedStakeAmount > 0;
 
   // Calculate slippage (difference between requested and matched price)
   const slippage = matched ? (Math.random() * 0.02) : 0; // 0-2% slippage
@@ -251,11 +257,11 @@ export function createPaperOrder(signal, market, runner, settings) {
     requestedOdds: signal.odds,
     matchedOdds: matched ? matchedPrice : null,
     requestedStake: signal.stakeSuggestion,
-    matchedStake: matched ? matchedStakeAmount : 0,
-    status: matched ? 'matched' : 'unmatched',
+    matchedStake: matchedStakeAmount,
+    status: orderStatus,
     // ── Sync Betfair-style tracking fields with match result ──
-    matched_size: matched ? matchedStakeAmount : 0,
-    remaining_size: matched ? Math.max(0, signal.stakeSuggestion - matchedStakeAmount) : signal.stakeSuggestion,
+    matched_size: matchedStakeAmount,
+    remaining_size: remainingStakeAmount,
     average_price_matched: matched ? matchedPrice : 0,
     matched_price: matched ? matchedPrice : null,
     requested_price: signal.odds,
@@ -271,9 +277,9 @@ export function createPaperOrder(signal, market, runner, settings) {
     paper_mode: true,
     liveMode: false,
     paperSimulationQuality: simQuality,
-    simulatedMatchedSize: matched ? matchedStakeAmount : 0,
+    simulatedMatchedSize: matchedStakeAmount,
     simulatedAveragePrice: matched ? matchedPrice : 0,
-    simulatedStatus: matched ? 'matched' : 'unmatched',
+    simulatedStatus: orderStatus,
     simulatedSlippage: slippage,
     entryReason: signal.reason,
     warningFlags: [],

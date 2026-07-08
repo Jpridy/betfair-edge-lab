@@ -1,8 +1,8 @@
 import { calcEdge, calcEdgeLay, calcEVBack, calcEVLay, impliedProb } from './botEngine';
 
-// ─── Historical data generation ───────────────────────────────────
-// Generates realistic historical horse racing markets with runners,
-// odds, and probability-weighted outcomes.
+// ─── Synthetic race data generation ───────────────────────────────
+// Generates synthetic horse racing markets with runners,
+// odds, and probability-weighted synthetic settlement.
 
 const VENUES = ['Flemington', 'Randwick', 'Doomben', 'Eagle Farm', 'Caulfield', 'Moonee Valley', 'Rosehill', 'Sandown'];
 const DISTANCES = ['1000m', '1100m', '1200m', '1350m', '1400m', '1600m', '1800m', '2000m', '2200m'];
@@ -27,7 +27,7 @@ function generateOdds(rank, totalRunners) {
   return { backPrice, layPrice };
 }
 
-function generateHistoricalRace(raceNum, dateOffset) {
+function generateSyntheticRace(raceNum, dateOffset) {
   const numRunners = randInt(5, 12);
   const venue = pick(VENUES);
   const distance = pick(DISTANCES);
@@ -61,7 +61,7 @@ function generateHistoricalRace(raceNum, dateOffset) {
     });
   }
 
-  // Determine winner based on implied probability (not random)
+  // Determine winner using probability-weighted synthetic settlement
   const totalImplied = runners.reduce((sum, r) => sum + 1 / r.bestBackPrice, 0);
   const normalizedProbs = runners.map(r => ({
     runner: r,
@@ -75,7 +75,7 @@ function generateHistoricalRace(raceNum, dateOffset) {
     if (rand <= 0) { winner = np.runner; break; }
   }
 
-  // Closing odds (slightly different from opening — for CLV calculation)
+  // Closing odds (synthetic — for CLV calculation)
   const closingRunners = runners.map(r => ({
     ...r,
     closingBackPrice: parseFloat((r.bestBackPrice * randFloat(0.92, 1.08)).toFixed(2)),
@@ -101,18 +101,18 @@ function generateHistoricalRace(raceNum, dateOffset) {
   };
 }
 
-export function generateHistoricalData(numRaces, daysBack = 90) {
+export function generateSyntheticData(numRaces, daysBack = 90) {
   const races = [];
   for (let i = 0; i < numRaces; i++) {
     const dayOffset = Math.floor((i / numRaces) * daysBack);
-    races.push(generateHistoricalRace(i + 1, dayOffset));
+    races.push(generateSyntheticRace(i + 1, dayOffset));
   }
   return races;
 }
 
 // ─── Strategy simulation ──────────────────────────────────────────
 // Each strategy has its own signal generation logic that runs against
-// historical race data. Returns null if no signal, or a signal object.
+// synthetic race data. Returns null if no signal, or a signal object.
 
 function simulateValueBetSignal(market, runner, settings) {
   const odds = runner.bestBackPrice;
@@ -293,10 +293,10 @@ const STRATEGY_SIMULATORS = {
 
 // ─── Risk check (backtest version) ────────────────────────────────
 
-function backtestRiskCheck(signal, settings, bankroll, openExposure, tradesToday) {
+function backtestRiskCheck(signal, settings, bankroll, openExposure, tradesToday, minOdds, maxOdds) {
   const reasons = [];
-  if (signal.odds < (settings.minOdds || 1.5)) reasons.push(`Odds below minimum (${settings.minOdds})`);
-  if (signal.odds > (settings.maxOdds || 20)) reasons.push(`Odds above maximum (${settings.maxOdds})`);
+  if (signal.odds < minOdds) reasons.push(`Odds below minimum (${minOdds})`);
+  if (signal.odds > maxOdds) reasons.push(`Odds above maximum (${maxOdds})`);
   if (signal.stakeSuggestion > (settings.maxStake || 500)) reasons.push('Stake exceeds max');
   if (openExposure >= (settings.maxMarketExposure || 1000)) reasons.push('Market exposure limit reached');
   if (tradesToday >= (settings.maxTradesPerDay || 50)) reasons.push('Max trades per day reached');
@@ -331,9 +331,12 @@ function settleBacktestOrder(signal, market, settings) {
 
 // ─── Main engine ──────────────────────────────────────────────────
 
-export function runBacktest({ strategies, numRaces, startingBankroll, settings, daysBack = 90 }) {
-  const races = generateHistoricalData(numRaces, daysBack);
-  const commissionRate = settings.commissionRate || 0.05;
+export function runBacktest({ strategies, numRaces, startingBankroll, settings, daysBack = 90, commissionRate: customCommission, stakeType = 'flat', minOddsRange, maxOddsRange, marketType = 'all', minLiquidity, timeWindow }) {
+  const races = generateSyntheticData(numRaces, daysBack);
+  const commissionRate = customCommission ? customCommission / 100 : (settings.commissionRate || 0.05);
+  const effectiveMinOdds = minOddsRange || settings.minOdds || 1.5;
+  const effectiveMaxOdds = maxOddsRange || settings.maxOdds || 20;
+  const effectiveMinLiquidity = minLiquidity || settings.minimumLiquidity || 500;
 
   let bankroll = startingBankroll;
   let peakBankroll = startingBankroll;
@@ -386,7 +389,7 @@ export function runBacktest({ strategies, numRaces, startingBankroll, settings, 
 
       // Risk check
       const openExposure = trades.filter(t => t.result === 'pending').reduce((s, t) => s + t.stake, 0);
-      const risk = backtestRiskCheck(bestSignal, settings, bankroll, openExposure, tradesToday);
+      const risk = backtestRiskCheck(bestSignal, settings, bankroll, openExposure, tradesToday, effectiveMinOdds, effectiveMaxOdds);
 
       if (!risk.passed) {
         ordersBlocked++;
@@ -410,7 +413,7 @@ export function runBacktest({ strategies, numRaces, startingBankroll, settings, 
       totalStake += bestSignal.stakeSuggestion;
       oddsSum += bestSignal.odds;
 
-      // Settle immediately (race is historical — we know the outcome)
+      // Settle immediately using probability-weighted synthetic settlement
       const settlement = settleBacktestOrder(bestSignal, race, settings);
 
       const trade = {

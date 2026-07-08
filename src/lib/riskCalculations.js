@@ -1,38 +1,78 @@
 // Unified risk and exposure calculations — single source of truth.
-// Used by AppContext, RiskManager, RiskOverview, Orders, PerformanceAnalytics, Dashboard.
+// Used by AppContext, RiskManager, RiskOverview, Orders, PerformanceAnalytics, Dashboard, Sidebar, Bot.
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const UNMATCHED_STATUSES = ['unmatched', 'partially_matched'];
 
+/**
+ * Calculate comprehensive risk metrics from paper orders.
+ *
+ * BACK exposure = matched stake (or requested stake if unmatched/pending)
+ * LAY exposure/liability = stake × (odds - 1)
+ *
+ * @param {array} paperOrders - All paper orders
+ * @param {object} settings - App settings (uses dailyResetAt if present)
+ * @returns {object} Risk metrics
+ */
 export function calculateRiskMetrics(paperOrders, settings = {}) {
   const settled = paperOrders.filter(o => o.status === 'settled');
   const openOrders = paperOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status));
   const unmatchedOrders = paperOrders.filter(o => UNMATCHED_STATUSES.includes(o.status));
 
+  // ── Separate BACK and LAY exposure ──
+  const backOrders = openOrders.filter(o => (o.side || '').toUpperCase() === 'BACK');
+  const layOrders = openOrders.filter(o => (o.side || '').toUpperCase() === 'LAY');
+
+  // BACK exposure: matched stake, or requested stake if unmatched/pending
+  const backExposure = backOrders.reduce((s, o) => {
+    const isUnmatched = UNMATCHED_STATUSES.includes(o.status) || o.status === 'pending';
+    return s + (isUnmatched ? (o.requestedStake || o.requested_size || 0) : (o.matchedStake || o.matched_size || o.requestedStake || 0));
+  }, 0);
+
+  // LAY liability: stake × (odds - 1) — this is the real risk for lay bets
+  const layLiability = layOrders.reduce((s, o) => {
+    const stake = o.matchedStake || o.matched_size || o.requestedStake || 0;
+    const odds = o.matchedOdds || o.average_price_matched || o.requestedOdds || 0;
+    return s + (odds > 1 ? stake * (odds - 1) : 0);
+  }, 0);
+
+  // ── Paper vs Live exposure ──
   const paperExposure = openOrders
-    .filter(o => o.paper_mode !== false)
-    .reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
+    .filter(o => o.paper_mode !== false && o.liveMode !== true)
+    .reduce((s, o) => {
+      const isLAY = (o.side || '').toUpperCase() === 'LAY';
+      const stake = o.matchedStake || o.matched_size || o.requestedStake || 0;
+      const odds = o.matchedOdds || o.average_price_matched || o.requestedOdds || 0;
+      return s + (isLAY ? (odds > 1 ? stake * (odds - 1) : 0) : stake);
+    }, 0);
 
   const liveExposure = openOrders
     .filter(o => o.liveMode === true)
-    .reduce((s, o) => s + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
-
-  const totalExposure = paperExposure + liveExposure;
-
-  // Lay liability: stake * (odds - 1) for each open LAY order
-  const layLiability = openOrders
-    .filter(o => (o.side || '').toUpperCase() === 'LAY')
     .reduce((s, o) => {
-      const stake = o.matched_size || o.matchedStake || o.requestedStake || 0;
+      const isLAY = (o.side || '').toUpperCase() === 'LAY';
+      const stake = o.matchedStake || o.matched_size || o.requestedStake || 0;
       const odds = o.matchedOdds || o.average_price_matched || o.requestedOdds || 0;
-      return s + stake * (odds - 1);
+      return s + (isLAY ? (odds > 1 ? stake * (odds - 1) : 0) : stake);
     }, 0);
 
+  // Total exposure = back exposure + lay liability (for all open orders)
+  const totalExposure = backExposure + layLiability;
+
+  // ── P/L Calculations ──
   const totalPL = settled.reduce((s, o) => s + (o.netProfit || 0), 0);
 
+  // Daily reset cutoff — if set, only count orders settled after that timestamp
+  const dailyResetAt = settings.dailyResetAt || null;
   const today = new Date().toISOString().slice(0, 10);
+
   const dailyPL = settled
-    .filter(o => (o.settled_date || o.created_date || '').slice(0, 10) === today)
+    .filter(o => {
+      const settledDate = o.settled_date || o.created_date || '';
+      if (dailyResetAt) {
+        return settledDate >= dailyResetAt;
+      }
+      return settledDate.slice(0, 10) === today;
+    })
     .reduce((s, o) => s + (o.netProfit || 0), 0);
 
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -40,7 +80,7 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
     .filter(o => (o.settled_date || o.created_date || '') >= weekAgo)
     .reduce((s, o) => s + (o.netProfit || 0), 0);
 
-  // Drawdown — peak-to-trough from starting bankroll
+  // ── Drawdown — peak-to-trough from starting bankroll ──
   const startingBankroll = settings.paperBankroll || settings.bankroll || 0;
   let peak = startingBankroll;
   let maxDD = 0;
@@ -67,11 +107,25 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
     }
   }
 
+  // Daily counters (orders settled today or after reset)
+  const dailySettled = settled.filter(o => {
+    const settledDate = o.settled_date || o.created_date || '';
+    return dailyResetAt ? settledDate >= dailyResetAt : settledDate.slice(0, 10) === today;
+  });
+  const dailyOrders = dailySettled.length;
+  const dailyRejected = paperOrders.filter(o => {
+    if (o.status !== 'rejected') return false;
+    const createdDate = o.created_date || o.placed_date || '';
+    return dailyResetAt ? createdDate >= dailyResetAt : createdDate.slice(0, 10) === today;
+  }).length;
+
   return {
-    openExposure: totalExposure,
+    backExposure,
+    layLiability,
     paperExposure,
     liveExposure,
-    layLiability,
+    openExposure: totalExposure,
+    totalExposure,
     dailyPL,
     weeklyPL,
     totalPL,
@@ -80,5 +134,7 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
     activeOrderCount: openOrders.length,
     unmatchedOrderCount: unmatchedOrders.length,
     settledCount: settled.length,
+    dailyOrders,
+    dailyRejected,
   };
 }

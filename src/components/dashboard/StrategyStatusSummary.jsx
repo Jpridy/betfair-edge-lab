@@ -6,7 +6,7 @@ import { computeTrafficLight, getPaperProgress } from '@/lib/strategyValidation'
 import { ArrowRight } from 'lucide-react';
 
 const LIGHT_CONFIG = {
-  green: { label: 'Live Approved', color: 'text-chart-1', bg: 'bg-chart-1/10', border: 'border-chart-1/30', dot: 'bg-chart-1' },
+  green: { label: 'Paper Validated', color: 'text-chart-1', bg: 'bg-chart-1/10', border: 'border-chart-1/30', dot: 'bg-chart-1' },
   yellow: { label: 'Paper Testing', color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', dot: 'bg-chart-4' },
   red: { label: 'Failing / Locked', color: 'text-chart-5', bg: 'bg-chart-5/10', border: 'border-chart-5/30', dot: 'bg-chart-5' },
   grey: { label: 'Archived', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', dot: 'bg-muted-foreground' },

@@ -49,8 +49,8 @@ export default function PaperProgress() {
             </div>
             <div className="text-[10px] text-muted-foreground">
               {s.progress.percent >= 100
-                ? 'Minimum sample reached — eligible for live review'
-                : `${(s.progress.target - s.progress.current)} more settled trades required before live review`}
+                ? 'Minimum sample reached — Research Passed'
+                : `${(s.progress.target - s.progress.current)} more settled trades required for validation`}
             </div>
           </div>
         ))}

@@ -10,9 +10,9 @@ export const MIN_CLV = 0;
 export const MAX_DRAWDOWN_PERCENT = 10; // % of bankroll
 
 // ─── Traffic Light Status ───────────────────────────────────────────────────
-// green  = approved for live consideration
-// yellow = paper testing only
-// red    = disabled / failing
+// green  = paper validated (all criteria passed)
+// yellow = paper testing (needs more data)
+// red    = failing / locked
 // grey   = archived
 export function computeTrafficLight(strategy, audit, settings) {
   if (!strategy || !audit) return { light: 'grey', label: 'No Data', reasons: [] };
@@ -35,7 +35,7 @@ export function computeTrafficLight(strategy, audit, settings) {
   if (audit.dataQualityError) failingReasons.push('Strategy has data quality errors');
 
   if (failingReasons.length > 0) {
-    return { light: 'red', label: 'Failing / Disabled', reasons: failingReasons };
+    return { light: 'red', label: 'Failing / Locked', reasons: failingReasons };
   }
 
   // Green conditions (all must be true)
@@ -68,7 +68,7 @@ export function computeTrafficLight(strategy, audit, settings) {
   }
 
   if (isGreen) {
-    return { light: 'green', label: 'Live Approved', reasons: ['All validation criteria passed'] };
+    return { light: 'green', label: 'Paper Validated', reasons: ['All validation criteria passed'] };
   }
 
   // Yellow: paper testing only

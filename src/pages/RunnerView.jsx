@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { calculateSpreadTicks, generatePriceLadder, getSpreadQuality } from '@/lib/tickLadder';
+import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
 
 // Generate synthetic price history for a runner
 function generatePriceHistory(basePrice) {
@@ -129,110 +130,32 @@ export default function RunnerView() {
 
   const handleCreatePaperOrder = () => {
     if (emergencyStop) return;
-    // Central validation checks
-    const validationErrors = [];
-    if (!market || market.status !== 'OPEN') validationErrors.push('Market is not open');
-    if (market?.inPlay && !settings.allowInPlay) validationErrors.push('Market is in-play (locked)');
-    if (runner.status !== 'ACTIVE') validationErrors.push(`Runner is ${runner.status}`);
-    if (paperForm.stake > settings.maxStake) validationErrors.push(`Stake exceeds max ($${settings.maxStake})`);
-    if (paperForm.stake < 1) validationErrors.push('Invalid stake');
-    const price = paperForm.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
-    if (!price || price < settings.minOdds || price > settings.maxOdds) validationErrors.push('Odds outside allowed range');
-    // Available size check
-    const availableSize = paperForm.side === 'BACK' ? (runner.bestBackSize || 0) : (runner.bestLaySize || 0);
-    if (availableSize <= 0) validationErrors.push('Available size is zero');
 
-    if (validationErrors.length > 0) {
-      const rejectedOrder = {
-        strategyName: paperForm.strategy,
-        marketId: selectedMarket,
-        betfairMarketId: market?.betfairMarketId || selectedMarket,
-        selectionId: runner.betfairSelectionId || runner.selectionId,
-        runnerId: selectedRunner,
-        runnerName: runner.runnerName,
-        marketName: market?.marketName || 'Unknown',
-        venue: market?.venue || '',
-        raceNumber: market?.raceNumber || 0,
-        side: paperForm.side,
-        orderType: 'LIMIT',
-        size: paperForm.stake,
-        price: price,
-        persistenceType: paperForm.persistenceType || 'LAPSE',
-        paper_mode: true,
-        liveMode: false,
-        requested_size: paperForm.stake,
-        matched_size: 0,
-        remaining_size: paperForm.stake,
-        requestedStake: paperForm.stake,
-        matchedStake: 0,
-        requestedOdds: price,
-        matchedOdds: null,
-        status: 'rejected',
-        rejection_reason: validationErrors.join('; '),
-        failed_validation_field: validationErrors[0],
-        result: 'pending',
-        entryReason: `${paperForm.strategy} manual paper order`,
-        warningFlags: validationErrors,
-        paperSimulationQuality: 'High',
-      };
-      addPaperOrder(rejectedOrder);
-      addAuditLog('Paper Order Rejected', 'order', 'warning', `${paperForm.side} ${runner.runnerName} — rejected: ${validationErrors.join('; ')}`);
-      setShowPaperForm(false);
-      return;
-    }
-
-    // Calculate matched/unmatched based on available size
-    const matchedStake = Math.min(paperForm.stake, availableSize);
-    const unmatchedStake = paperForm.stake - matchedStake;
-    const orderStatus = unmatchedStake > 0 ? 'partially_matched' : 'matched';
-
-    const order = {
-      strategyName: paperForm.strategy,
-      marketId: selectedMarket,
-      betfairMarketId: market?.betfairMarketId || selectedMarket,
-      selectionId: runner.betfairSelectionId || runner.selectionId,
-      runnerId: selectedRunner,
-      runnerName: runner.runnerName,
-      marketName: market?.marketName || 'Unknown',
-      venue: market?.venue || '',
-      raceNumber: market?.raceNumber || 0,
+    const { order, rejected, reason } = createValidatedPaperOrder({
+      market,
+      runner,
       side: paperForm.side,
-      orderType: 'LIMIT',
-      size: paperForm.stake,
-      price: price,
+      stake: paperForm.stake,
+      odds: null,
+      strategyName: paperForm.strategy,
+      source: 'runner_view',
+      settings,
+      bankrollStats,
+      existingOrders: [], // RunnerView doesn't have direct access; validation handles critical checks
+      emergencyStop,
+      apiConnected: false,
       persistenceType: paperForm.persistenceType || 'LAPSE',
-      customerRef: 'BEL' + Date.now().toString(36).toUpperCase(),
-      customerStrategyRef: 'BEL_' + paperForm.strategy.toUpperCase().replace(/[^A-Z]/g, ''),
-      handicap: runner.handicap || 0,
-      paper_mode: true,
-      liveMode: false,
-      requested_size: paperForm.stake,
-      matched_size: matchedStake,
-      remaining_size: unmatchedStake,
-      average_price_matched: matchedStake > 0 ? price : null,
-      requested_price: price,
-      matched_price: matchedStake > 0 ? price : null,
-      placed_date: new Date().toISOString(),
-      matched_date: matchedStake > 0 ? new Date().toISOString() : null,
-      requestedOdds: price,
-      matchedOdds: matchedStake > 0 ? price : null,
-      requestedStake: paperForm.stake,
-      matchedStake: matchedStake,
-      status: orderStatus,
       expectedValue: edge * paperForm.stake / 100,
-      result: 'pending',
-      grossProfit: 0,
-      commission: 0,
-      netProfit: 0,
-      commissionRateUsed: market?.marketBaseRate || settings.defaultCommissionRate || 0.05,
-      commissionSource: market?.marketBaseRate ? 'market_base_rate' : 'default_fallback',
-      commission_calculation_status: market?.marketBaseRate ? 'ok' : 'using_default',
       entryReason: `${paperForm.strategy} signal — edge ${edge.toFixed(2)}%`,
-      warningFlags: [],
-      paperSimulationQuality: 'High',
-    };
+      dataSource: 'MARKET_ONLY',
+    });
+
     addPaperOrder(order);
-    addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${price} × $${paperForm.stake} (${paperForm.persistenceType || 'LAPSE'}) — ${orderStatus}`, { objectName: runner.runnerName });
+    if (rejected) {
+      addAuditLog('Paper Order Rejected', 'order', 'warning', `${paperForm.side} ${runner.runnerName} — rejected: ${reason}`);
+    } else {
+      addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${order.requestedOdds} × $${paperForm.stake} (${paperForm.persistenceType || 'LAPSE'}) — ${order.status}`, { objectName: runner.runnerName });
+    }
     setShowPaperForm(false);
     navigate('/orders');
   };
