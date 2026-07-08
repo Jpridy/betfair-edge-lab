@@ -198,6 +198,10 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     if (liability > maxLiability) {
       failures.push({ field: 'liability', reason: `Lay liability $${liability.toFixed(2)} exceeds max $${maxLiability}` });
     }
+    // Also check bankroll can cover the liability
+    if (bankrollStats && bankrollStats.available < liability) {
+      failures.push({ field: 'bankroll', reason: `Insufficient bankroll for lay liability ($${bankrollStats.available?.toFixed(2)} available, $${liability.toFixed(2)} liability required)` });
+    }
   }
 
   // ── Bankroll Check ──
@@ -253,6 +257,38 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     );
     if (dup) {
       failures.push({ field: 'duplicate', reason: 'Duplicate order already exists for this strategy/market/runner' });
+    }
+  }
+
+  // ── Conflicting Opposite-Side Position Check (LAY support) ──
+  // Prevent BACK + LAY on same selection unless hedging is explicitly enabled
+  if (!riskDisabled) {
+    const oppositeSide = order.side === 'BACK' ? 'LAY' : 'BACK';
+    const hasOpposite = existingOrders.some(o =>
+      o.marketId === order.marketId &&
+      (o.selectionId === order.selectionId || o.runnerId === order.runnerId) &&
+      o.side === oppositeSide &&
+      isOrderOpen(o.status)
+    );
+    if (hasOpposite && !settings?.allowHedging) {
+      failures.push({ field: 'conflictingPosition', reason: `Conflicting ${oppositeSide} position exists on this selection (hedging not enabled)` });
+    }
+  }
+
+  // ── Event Exposure Check (cross-market) ──
+  // Sum exposure across all markets from the same event/race
+  if (!riskDisabled && order.eventId) {
+    const eventOrders = existingOrders.filter(o =>
+      o.eventId === order.eventId && isOrderOpen(o.status)
+    );
+    const eventExposure = eventOrders.reduce((sum, o) => {
+      if (o.side === 'LAY') return sum + (o.liability || o.size * (o.price - 1) || 0);
+      return sum + (o.matched_size || o.matchedStake || o.requestedStake || o.size || 0);
+    }, 0);
+    const orderExposure = order.side === 'LAY' ? (order.size * (order.price - 1)) : order.size;
+    const maxEventExposure = (settings.maxMarketExposure || 1000) * 2;
+    if (eventExposure + orderExposure > maxEventExposure) {
+      failures.push({ field: 'eventExposure', reason: `Event exposure $${(eventExposure + orderExposure).toFixed(2)} exceeds max $${maxEventExposure} (across all markets in this race)` });
     }
   }
 

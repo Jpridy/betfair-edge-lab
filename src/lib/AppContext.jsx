@@ -10,6 +10,8 @@ import { buildScanDiagnostics } from './scanDiagnostics';
 import { computeCalibration } from './calibration';
 import { fmtPct } from './candidateScoring';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
+import { runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
+import { settleOrderWithResult, lapseUnmatchedOrder } from '@/lib/settlementService';
 
 // ── Metadata fields to strip when loading settings from DB ──
 const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
@@ -28,15 +30,15 @@ const DEFAULT_FEATHERLESS_SETTINGS = {
   temperature: 0.1,
   maxTokens: 4000,
   timeoutSeconds: 60,
-  minConfidence: 75,
-  minEdge: 5,
-  minExpectedROI: 3,
+  minConfidence: 50,
+  minEdge: 3,
+  minExpectedROI: 1,
   paperTradeOnly: true,
   allowLiveHandoff: false,
   storeLogs: true,
-  minOdds: 2.0,
-  maxOdds: 12.0,
-  minLiquidity: 500,
+  minOdds: 1.5,
+  maxOdds: 50,
+  minLiquidity: 20,
   timeWindowStart: 500,
   timeWindowEnd: 30,
   stakingMode: 'confidence_weighted_fractional_kelly',
@@ -44,7 +46,11 @@ const DEFAULT_FEATHERLESS_SETTINGS = {
   aiDecisionMode: 'strict',
   requireExternalFormData: false,
   targetPaperBetsPerDay: 'low',
-  maxSpread: 5,
+  maxSpread: 7,
+  winMinOdds: 1.5, winMaxOdds: 50, winMinLiquidity: 20, winMaxSpreadTicks: 7, winMinEdge: 3, winMinROI: 1,
+  placeMinOdds: 1.2, placeMaxOdds: 30, placeMinLiquidity: 10, placeMaxSpreadTicks: 7, placeMinEdge: 2, placeMinROI: 1,
+  h2hMinOdds: 1.2, h2hMaxOdds: 15, h2hMinLiquidity: 10, h2hMaxSpreadTicks: 5, h2hMinEdge: 3, h2hMinROI: 1,
+  allowHedging: false,
 };
 
 const AppContext = createContext(null);
@@ -153,6 +159,9 @@ export function AppProvider({ children }) {
     // Testing — bypass all risk limits
     riskLimitsDisabled: false,
 
+    // Hedging — allow conflicting BACK+LAY positions on same selection
+    allowHedging: false,
+
     // Legacy
     emergencyStopActive: false,
     liveTradingEnabled: false,
@@ -248,6 +257,8 @@ export function AppProvider({ children }) {
   const [featherlessSettings, setFeatherlessSettings] = useState({ ...DEFAULT_FEATHERLESS_SETTINGS });
   const [aiDecisions, setAiDecisions] = useState([]);
   const [lastScanDiagnostics, setLastScanDiagnostics] = useState(null);
+  const [exchangeOpportunities, setExchangeOpportunities] = useState([]);
+  const [lastExchangeDiagnostics, setLastExchangeDiagnostics] = useState(null);
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
@@ -943,7 +954,6 @@ export function AppProvider({ children }) {
     if (s.emergencyStop) return;
 
     // Run candidate scoring diagnostics for transparency — always runs
-    // so the user can see why no bet was picked, even when AI is enabled.
     const diagnostics = buildScanDiagnostics(s.markets, s.runners, s.settings, s.featherlessSettings, s.paperOrders, s.bankrollStats, s.emergencyStop);
     setLastScanDiagnostics(diagnostics);
 
@@ -956,218 +966,76 @@ export function AppProvider({ children }) {
     let signalCreated = null, orderCreated = null, riskBlockedReason = null, rejectedOrder = null;
     let cycleNoBetReason = diagnostics?.noBetReason || null;
 
-    // Step 1: Scan Markets (Market Catalogue)
+    // ── Exchange Opportunity Engine ──
+    // Scans ALL eligible markets, groups by event, calls AI per event for
+    // probabilities, generates BACK + LAY opportunities across WIN/PLACE/H2H,
+    // runs deterministic exchange EV maths, ranks by EV, picks best.
+    const aiEnabled = s.featherlessSettings?.enabled !== false;
     steps[0].status = 'passed';
-    const candidates = s.markets.filter(m => m.status === 'OPEN' && !m.inPlay);
-    marketsScanned = candidates.length;
-    setSyncState(prev => ({ ...prev, marketsScannedToday: prev.marketsScannedToday + marketsScanned, runnersScannedToday: prev.runnersScannedToday + s.runners.filter(r => candidates.some(m => m.id === r.marketId)).length }));
+    steps[1].status = 'passed';
+    steps[2].status = 'passed';
+    steps[3].status = aiEnabled ? 'passed' : 'blocked';
+    if (steps[3].status === 'blocked') steps[3].reason = 'Featherless AI is disabled. Enable it in Settings.';
 
-    // Step 2: Filter Markets (Market Book)
-    // Stream markets may have totalMatched=0 (just opened) and numberOfRunners
-    // unset (marketDefinition still arriving). We accept any OPEN market with
-    // 2+ runners; the pre-order validation step catches markets without actual
-    // price data.
-    const filtered = candidates.filter(m => {
-      const marketRunners = s.runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
-      const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
-      return runnerCount >= 2;
-    });
-    marketsPassed = filtered.length;
-    steps[1].status = filtered.length > 0 ? 'passed' : 'blocked';
-    if (steps[1].status === 'blocked') {
-      steps[1].reason = candidates.length === 0
-        ? 'No open markets found. Check API connection or market data stream.'
-        : 'No markets passed filters. Check runner count or commission settings.';
-    }
-
-    // Sort markets by proximity to the pre-off trading window (default 300s–30s before start).
-    // The bot prefers markets about to jump — a random pick would almost always be hours
-    // away and get rejected at the time-window validation check.
-    const windowStart = s.settings.defaultTimeWindowStartSeconds || 500;
-    const windowEnd = s.settings.defaultTimeWindowEndSeconds || 30;
-    const nowMs = Date.now();
-    const sorted = filtered
-      .map(m => {
-        const start = m.startTime ? new Date(m.startTime).getTime() : NaN;
-        const secsBefore = isNaN(start) ? null : (start - nowMs) / 1000;
-        // Distance from the ideal window: 0 if inside, otherwise how far outside
-        let distance;
-        if (secsBefore === null) distance = Infinity; // No start time — lowest priority
-        else if (secsBefore >= windowEnd && secsBefore <= windowStart) distance = 0; // In window
-        else if (secsBefore > windowStart) distance = secsBefore - windowStart; // Too early
-        else if (secsBefore > 0) distance = windowEnd - secsBefore; // Too late (closing)
-        else distance = Infinity; // Already jumped
-        return { market: m, secsBefore, distance };
-      })
-      .sort((a, b) => a.distance - b.distance);
-
-    let market = sorted.length > 0 ? sorted[0].market : null;
-    // Also try other markets if the closest one has no valid runners
-    const marketCandidates = sorted.map(s => s.market);
-
-    if (market) {
-      // Step 3: Read Odds (Market Book)
-      steps[2].status = 'passed';
-
-      // Step 4: Check Strategies — only Featherless AI
-      const aiEnabled = s.featherlessSettings?.enabled !== false;
-      steps[3].status = aiEnabled ? 'passed' : 'blocked';
-      if (steps[3].status === 'blocked') steps[3].reason = 'Featherless AI strategy is disabled. Enable it in Settings.';
-
-      const strategyName = 'Featherless AI Value Decision Engine';
-      const strategy = s.strategyLibrary?.find(sl => sl.name === strategyName);
-      let runner = null;
-      const minOdds = s.settings.minOdds || 1.5;
-      const maxOdds = s.settings.maxOdds || 20;
-      const maxTradesPerMarket = s.settings.maxTradesPerMarket || 5;
-      const openStatuses = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
-      const sizeThreshold = 2;
-
-      if (aiEnabled) {
-        // Find a market with eligible runners (no duplicate orders)
-        for (const candidateMarket of marketCandidates) {
-          const marketOpenCount = s.paperOrders.filter(o =>
-            (o.marketId === candidateMarket.id || o.betfairMarketId === candidateMarket.betfairMarketId) &&
-            openStatuses.includes(o.status)
-          ).length;
-          if (marketOpenCount >= maxTradesPerMarket) continue;
-
-          const marketRunners = s.runners.filter(r => r.marketId === candidateMarket.id && r.status === 'ACTIVE');
-          if (marketRunners.length === 0) continue;
-
-          // 1 trade per strategy per market
-          const strategyMarketOpenCount = s.paperOrders.filter(o =>
-            (o.marketId === candidateMarket.id || o.betfairMarketId === candidateMarket.betfairMarketId) &&
-            o.strategyName === strategyName &&
-            openStatuses.includes(o.status)
-          ).length;
-          if (strategyMarketOpenCount >= 1) continue;
-
-          const runnable = marketRunners
-            .filter(r => r.bestBackPrice > 0 && r.bestLayPrice > 0 && (r.bestBackSize || 0) >= sizeThreshold && (r.bestLaySize || 0) >= sizeThreshold)
-            .filter(r => (r.bestBackPrice >= minOdds && r.bestBackPrice <= maxOdds) || (r.bestLayPrice >= minOdds && r.bestLayPrice <= maxOdds))
-            .filter(r => !s.paperOrders.some(o =>
-              (o.marketId === candidateMarket.id || o.betfairMarketId === candidateMarket.betfairMarketId) &&
-              (o.selectionId === r.betfairSelectionId || o.runnerId === r.id) &&
-              o.strategyName === strategyName &&
-              openStatuses.includes(o.status)
-            ))
-            .sort((a, b) => Math.min(b.bestBackSize || 0, b.bestLaySize || 0) - Math.min(a.bestBackSize || 0, a.bestLaySize || 0));
-
-          if (runnable.length > 0) {
-            runner = runnable[0];
-            market = candidateMarket;
-            break;
-          }
-        }
-
-        if (!runner) {
-          steps[4].status = 'blocked';
-          steps[4].reason = 'No eligible runners with prices on both sides — waiting for stream data.';
-          notes.push(steps[4].reason);
-          cycleNoBetReason = steps[4].reason;
-        } else {
-          let signal = null;
-          try {
-            const aiMarketRunners = s.runners.filter(r => r.marketId === market.id && r.status === 'ACTIVE');
-            // Optional web research (supplementary — if it fails, AI continues without it)
+    if (aiEnabled) {
+      try {
+        const result = await runExchangeCycle({
+          markets: s.markets,
+          runners: s.runners,
+          settings: s.settings,
+          featherlessSettings: s.featherlessSettings,
+          bankrollStats: s.bankrollStats,
+          paperOrders: s.paperOrders,
+          emergencyStop: s.emergencyStop,
+          callAI: async (cluster, primaryMarket, marketRunners) => {
             let webResearch = null;
             if (s.featherlessSettings?.webResearchEnabled) {
               try {
-                const researchResp = await base44.functions.invoke('raceWebResearch', {
-                  market, runners: aiMarketRunners,
-                });
-                if (researchResp.data?.research) {
-                  webResearch = researchResp.data.research;
-                }
-              } catch (err) {
-                notes.push(`Web research error: ${err.message}`);
-              }
+                const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
+                if (researchResp.data?.research) webResearch = researchResp.data.research;
+              } catch (err) { notes.push(`Web research error: ${err.message}`); }
             }
             const resp = await base44.functions.invoke('featherlessAI', {
-              market, runners: aiMarketRunners, settings: s.settings,
+              market: primaryMarket, runners: marketRunners, settings: s.settings,
               strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
-              raceFormProfiles: aiMarketRunners.map(r => r.raceFormProfile).filter(Boolean),
+              raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
               webResearch,
+              allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
             });
             if (resp.data?.error) throw new Error(resp.data.error);
-            const decision = resp.data?.decision;
-            if (!decision || decision.decision !== 'BET' || !decision.safetyGatePassed) {
-              steps[4].status = 'blocked';
-              steps[4].reason = decision?.noBetReason || decision?.mainReason || 'AI decided no bet';
-              notes.push(`AI: ${steps[4].reason}`);
-              cycleNoBetReason = `AI: ${steps[4].reason}`;
-            } else {
-              const aiRunner = aiMarketRunners.find(r =>
-                r.runnerName === decision.selectedRunner ||
-                String(r.betfairSelectionId) === String(decision.selectionId)
-              );
-              if (!aiRunner) {
-                steps[4].status = 'blocked';
-                steps[4].reason = `AI selected ${decision.selectedRunner} but runner not found in market data`;
-                notes.push(steps[4].reason);
-              } else {
-                runner = aiRunner;
-                signal = {
-                  strategyName,
-                  marketId: market.id,
-                  betfairMarketId: market.betfairMarketId || market.id,
-                  selectionId: String(decision.selectionId || aiRunner.betfairSelectionId),
-                  runnerId: aiRunner.id,
-                  side: 'BACK',
-                  odds: decision.betfairOdds || aiRunner.bestBackPrice,
-                  stakeSuggestion: decision.recommendedStake || s.settings.baseStake || 100,
-                  modelProbability: decision.estimatedProbability,
-                  impliedProbability: 1 / (decision.betfairOdds || aiRunner.bestBackPrice),
-                  fairOdds: decision.fairOdds,
-                  edgePercent: decision.valueEdge,
-                  expectedValue: decision.expectedROI * (decision.recommendedStake || s.settings.baseStake || 100),
-                  confidence: decision.confidence,
-                  signalStatus: 'active',
-                  persistenceType: 'LAPSE',
-                  spreadTicks: countTicksBetween(aiRunner.bestBackPrice || 0, aiRunner.bestLayPrice || 0),
-                  reason: `Featherless AI: ${decision.mainReason}`,
-                  dataSource: decision.dataSource || 'MARKET_ONLY',
-                };
-              }
-            }
-          } catch (err) {
-            const errMsg = err.response?.data?.error || err.message;
-            const isAuthError = err.response?.status === 401 || errMsg.includes('401') || errMsg.toLowerCase().includes('authentication');
-            steps[4].status = 'failed';
-            steps[4].reason = isAuthError ? 'Session expired — redirecting to login...' : `AI error: ${errMsg}`;
-            notes.push(steps[4].reason);
-            errors = 1;
-            if (isAuthError) {
-              stopBot();
-              addAuditLog('Bot Stopped — Session Expired', 'system', 'critical', 'User session token expired. Redirecting to login for a fresh token.');
-              setTimeout(() => { window.location.href = '/login'; }, 1500);
-            }
-          }
+            return resp.data?.aiResult || null;
+          },
+        });
 
-          if (!signal) {
-            if (steps[4].status !== 'blocked' && steps[4].status !== 'failed') {
-              steps[4].status = 'blocked';
-              steps[4].reason = 'AI: entry rules not met';
-              notes.push(steps[4].reason);
-            }
-          } else {
+        marketsScanned = result.diagnostics.marketsScanned;
+        marketsPassed = result.eventClusters.length;
+        setExchangeOpportunities(result.allOpportunities);
+        setLastExchangeDiagnostics(result.diagnostics);
+
+        if (result.bestOpportunity) {
+          const opp = result.bestOpportunity;
+          const runner = s.runners.find(r =>
+            String(r.betfairSelectionId || r.selectionId) === opp.selectionId &&
+            (r.marketId === opp.marketId || r.marketId === opp.betfairMarketId)
+          );
+          const market = s.markets.find(m => m.id === opp.marketId || m.betfairMarketId === opp.betfairMarketId);
+
+          if (runner && market) {
+            const strategyName = 'Featherless AI Value Decision Engine';
+            const signal = opportunityToSignal(opp, s.settings);
+            signal.runnerId = runner.id;
             signalCreated = signal;
             signalsCreated = 1;
             steps[4].status = 'passed';
+            steps[4].reason = `${opp.marketType} ${opp.side} ${opp.runnerName} — EV $${opp.ev.toFixed(2)}, ROI ${(opp.roi * 100).toFixed(1)}%`;
 
             setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
             base44.entities.StrategySignal.create(signal).catch(() => {});
 
-            // Step 6: Run Pre-Order Validation
-            const connectionState = {
-              apiConnected: s.apiConnected,
-              betfairSessionToken: s.betfairSessionToken,
-              dataFresh: s.betfairConnection?.dataFresh ?? true,
-            };
-
+            const connectionState = { apiConnected: s.apiConnected, betfairSessionToken: s.betfairSessionToken, dataFresh: s.betfairConnection?.dataFresh ?? true };
+            const strategy = s.strategyLibrary?.find(sl => sl.name === strategyName);
             const preCheck = runPreOrderChecks(
-              { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType, dataSource: signal.dataSource, requireExternalFormData: s.featherlessSettings?.requireExternalFormData ?? false },
+              { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType, dataSource: signal.dataSource, eventId: opp.eventId },
               market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
             );
 
@@ -1179,14 +1047,9 @@ export function AppProvider({ children }) {
               rejectedOrder = preCheck.rejectedOrder;
               notes.push(`Pre-order validation failed: ${preCheck.failures[0].reason}`);
               addAuditLog('Order Rejected', 'order', 'warning', `${strategyName} on ${runner.runnerName}: ${preCheck.failures[0].reason}`, { objectName: runner.runnerName, reason: preCheck.failures[0].reason });
-              if (rejectedOrder) {
-                setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100));
-                setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: preCheck.failures[0].reason }));
-              }
+              if (rejectedOrder) { setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100)); setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: preCheck.failures[0].reason })); }
             } else {
               steps[5].status = 'passed';
-
-              // Step 7: Run Risk Manager
               const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
               if (!risk.passed) {
                 steps[6].status = 'blocked';
@@ -1194,85 +1057,50 @@ export function AppProvider({ children }) {
                 ordersBlocked = 1;
                 riskBlockedReason = risk.reasons[0];
                 notes.push(`Risk blocked: ${risk.reasons[0]}`);
-                addAuditLog('Risk Blocked', 'risk', 'warning', `${strategyName} on ${runner.runnerName}: ${risk.reasons[0]}`);
               } else {
                 steps[6].status = 'passed';
-
-                // Step 8-9: Submit Paper Order + Track
                 if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
                   const order = createPaperOrder(signal, market, runner, s.settings);
+                  order.marketType = opp.marketType;
+                  order.eventId = opp.eventId;
+                  order.liability = opp.liability;
+                  order.commissionRateUsed = opp.commissionRate;
                   orderCreated = order;
                   ordersCreated = 1;
                   steps[7].status = 'passed';
                   steps[8].status = 'passed';
-
                   setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
                   base44.entities.PaperOrder.create(order).catch(() => {});
                   setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
                 } else {
                   steps[7].status = 'blocked';
                   steps[7].reason = 'Bot is paused or auto paper trading is disabled.';
-                  steps[8].status = 'waiting';
-                  notes.push('Bot paused or auto trading disabled');
                 }
               }
             }
           }
+        } else {
+          steps[4].status = 'blocked';
+          steps[4].reason = result.diagnostics.noBetReason || 'No positive-EV opportunities found across WIN/PLACE/H2H markets';
+          notes.push(steps[4].reason);
+          cycleNoBetReason = steps[4].reason;
+        }
+      } catch (err) {
+        const errMsg = err.response?.data?.error || err.message;
+        const isAuthError = err.response?.status === 401 || errMsg.includes('401') || errMsg.toLowerCase().includes('authentication');
+        steps[4].status = 'failed';
+        steps[4].reason = isAuthError ? 'Session expired — redirecting to login...' : `Exchange engine error: ${errMsg}`;
+        notes.push(steps[4].reason);
+        errors = 1;
+        if (isAuthError) {
+          stopBot();
+          addAuditLog('Bot Stopped — Session Expired', 'system', 'critical', 'User session token expired. Redirecting to login for a fresh token.');
+          setTimeout(() => { window.location.href = '/login'; }, 1500);
         }
       }
     }
 
-    // If AI is disabled but candidate scoring found a passing runner,
-    // create a paper signal directly from the local scoring engine.
-    if (!s.featherlessSettings?.enabled && diagnostics?.bestCandidate?.passed && !signalCreated && !s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
-      const bc = diagnostics.bestCandidate;
-      const bcMarket = diagnostics.selectedMarket;
-      const bcRunner = s.runners.find(r => r.id === bc.runnerId || (r.betfairSelectionId && String(r.betfairSelectionId) === String(bc.selectionId)));
-      if (bcMarket && bcRunner) {
-        market = bcMarket;
-        const candidateStrategyName = 'Featherless AI Value Decision Engine';
-        const candidateSignal = {
-          strategyName: candidateStrategyName,
-          marketId: bcMarket.id,
-          betfairMarketId: bcMarket.betfairMarketId || bcMarket.id,
-          selectionId: String(bc.selectionId),
-          runnerId: bcRunner.id,
-          side: 'BACK',
-          odds: bc.odds,
-          stakeSuggestion: s.settings.baseStake || 100,
-          modelProbability: bc.estimatedProbability,
-          impliedProbability: bc.impliedProbability,
-          fairOdds: bc.fairOdds,
-          edgePercent: bc.edge,
-          expectedValue: bc.expectedROI * (s.settings.baseStake || 100),
-          confidence: bc.confidence,
-          signalStatus: 'active',
-          persistenceType: 'LAPSE',
-          spreadTicks: bc.spread,
-          reason: `Candidate scoring: edge ${fmtPct(bc.edge)}, ROI ${fmtPct(bc.expectedROI)}, confidence ${fmtPct(bc.confidence)} (data: ${bc.dataSource})`,
-          dataSource: bc.dataSource,
-        };
-        signalCreated = candidateSignal;
-        signalsCreated = 1;
-        steps[3].status = 'passed';
-        steps[3].reason = 'Candidate scoring (AI disabled)';
-        steps[4].status = 'passed';
-        steps[5].status = 'passed';
-        steps[6].status = 'passed';
-        setStrategySignals(prev => [{ ...candidateSignal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-        base44.entities.StrategySignal.create(candidateSignal).catch(() => {});
-        const order = createPaperOrder(candidateSignal, bcMarket, bcRunner, s.settings);
-        orderCreated = order;
-        ordersCreated = 1;
-        steps[7].status = 'passed';
-        steps[8].status = 'passed';
-        setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
-        base44.entities.PaperOrder.create(order).catch(() => {});
-        setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
-        notes.push(`Candidate scoring: ${bc.runnerName} (score ${bc.overallScore}, ${bc.dataSource})`);
-      }
-    }
-
+    setSyncState(prev => ({ ...prev, marketsScannedToday: prev.marketsScannedToday + marketsScanned, runnersScannedToday: prev.runnersScannedToday + s.runners.length }));
     // Steps 10-12: Always pass
     steps[9].status = 'passed';
     steps[10].status = 'passed';
@@ -1333,7 +1161,8 @@ export function AppProvider({ children }) {
 
     addToBotActivity('Market scanned', `${marketsScanned} markets scanned, ${marketsPassed} passed filters`);
     if (signalCreated) {
-      addToBotActivity('Signal created', `${signalCreated.strategyName} on ${market?.marketName} — edge ${fmtPct(signalCreated.edgePercent)}, spread ${signalCreated.spreadTicks} ticks`);
+      const signalMarket = s.markets.find(m => m.id === signalCreated.marketId || m.betfairMarketId === signalCreated.betfairMarketId);
+      addToBotActivity('Signal created', `${signalCreated.strategyName} on ${signalMarket?.marketName || signalCreated.betfairMarketId} — edge ${fmtPct(signalCreated.edgePercent)}, spread ${signalCreated.spreadTicks} ticks`);
     }
     if (orderCreated) {
       addToBotActivity('Paper order submitted', `${orderCreated.side} ${orderCreated.runnerName} @ ${orderCreated.requestedOdds} × $${orderCreated.requestedStake} (${orderCreated.persistenceType})`);
@@ -1490,27 +1319,19 @@ export function AppProvider({ children }) {
 
           // Unmatched orders lapse at market close
           if (order.status !== 'matched' && order.status !== 'partially_matched') {
-            const lapsed = {
-              ...order,
-              status: 'lapsed',
-              result: 'void',
-              lapse_reason: 'Market closed — order was not matched',
-              settled_date: new Date().toISOString(),
-              remaining_size: 0,
-              netProfit: 0,
-              grossProfit: 0,
-              commission: 0,
-            };
+            const lapsed = lapseUnmatchedOrder(order, `Market closed — order was not matched (${venue || ''} ${marketName || ''})`);
             setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
             base44.entities.PaperOrder.update(order.id, lapsed).catch(() => {});
             addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — unmatched at market close (${venue || ''} ${marketName || ''})`);
             continue;
           }
 
-          // Matched orders settle as won/lost based on stream winner data
-          const orderSelectionId = String(order.selectionId || order.betfairSelectionId);
-          const isWinner = winners.includes(orderSelectionId);
-          const settled = settleOrder(order, { venue, marketName }, s.settings, isWinner ? 'won' : 'lost');
+          // Matched orders settle using real race results via settlement service
+          const settled = settleOrderWithResult(order, { venue, marketName }, s.settings, {
+            winners,
+            resultSource: 'betfair_stream',
+            marketType: order.marketType || null,
+          });
           setPaperOrders(prev => prev.map(o => o.id === order.id ? settled : o));
           base44.entities.PaperOrder.update(order.id, settled).catch(() => {});
           setBankrollStats(prev => ({
@@ -1586,6 +1407,7 @@ export function AppProvider({ children }) {
     // Featherless AI
     featherlessSettings, setFeatherlessSettings, updateFeatherlessSettings, aiDecisions,
     lastScanDiagnostics, calibration,
+    exchangeOpportunities, lastExchangeDiagnostics,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

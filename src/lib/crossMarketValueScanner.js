@@ -1,0 +1,436 @@
+// ============================================================================
+// Cross-Market Value Scanner
+//
+// Given event clusters, AI probabilities, and market data, generates BACK and
+// LAY opportunities for every active runner in every eligible market (WIN,
+// PLACE, H2H).
+//
+// Each opportunity includes full exchange maths: EV, ROI, edge, confidence,
+// data quality, spread, liquidity, delay risk, fill probability, exposure,
+// and the decision (BET / NO_BET) with reasons and blockers.
+// ============================================================================
+
+import { detectMarketType, extractPlaceTerms } from './marketClusterer';
+import { calcBackEV, calcLayEV, calcBackEdge, calcLayEdge, calcOverround, calcKellyStake, calcLayKellyStake, calcDelayRiskScore, calcFillProbability } from './exchangeMath';
+import { buildProbabilityMap, buildH2HMap } from './probabilityNormalizer';
+import { calculateSpreadTicks } from './tickLadder';
+import { countTicksBetween } from './tickLadder';
+
+const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
+
+/**
+ * Market-type-specific safety gate thresholds.
+ */
+export const MARKET_TYPE_THRESHOLDS = {
+  WIN: {
+    minOdds: 1.5,
+    maxOdds: 50,
+    minLiquidity: 20,
+    maxSpreadTicks: 7,
+    minEdge: 3,      // percent
+    minROI: 1,       // percent
+  },
+  PLACE: {
+    minOdds: 1.2,
+    maxOdds: 30,
+    minLiquidity: 10,
+    maxSpreadTicks: 7,
+    minEdge: 2,
+    minROI: 1,
+  },
+  H2H: {
+    minOdds: 1.2,
+    maxOdds: 15,
+    minLiquidity: 10,
+    maxSpreadTicks: 5,
+    minEdge: 3,
+    minROI: 1,
+  },
+};
+
+/**
+ * Resolve thresholds for a market type, merging user settings overrides.
+ */
+export function resolveMarketTypeThresholds(marketType, featherlessSettings) {
+  const defaults = MARKET_TYPE_THRESHOLDS[marketType] || MARKET_TYPE_THRESHOLDS.WIN;
+  const prefix = marketType.toLowerCase();
+
+  return {
+    minOdds: featherlessSettings?.[`${prefix}MinOdds`] ?? defaults.minOdds,
+    maxOdds: featherlessSettings?.[`${prefix}MaxOdds`] ?? defaults.maxOdds,
+    minLiquidity: featherlessSettings?.[`${prefix}MinLiquidity`] ?? defaults.minLiquidity,
+    maxSpreadTicks: featherlessSettings?.[`${prefix}MaxSpreadTicks`] ?? defaults.maxSpreadTicks,
+    minEdge: featherlessSettings?.[`${prefix}MinEdge`] ?? defaults.minEdge,
+    minROI: featherlessSettings?.[`${prefix}MinROI`] ?? defaults.minROI,
+  };
+}
+
+/**
+ * Generate all BACK and LAY opportunities for a single event cluster.
+ *
+ * @param {object} cluster - Event cluster from marketClusterer
+ * @param {Array} allRunners - All runners (will be filtered to this cluster's markets)
+ * @param {object} aiResult - AI probabilities for this event { runnerProbabilities, h2hProbabilities, dataQuality, raceSummary }
+ * @param {object} settings - App settings
+ * @param {object} featherlessSettings - Featherless AI settings
+ * @param {object} bankrollStats - Current bankroll stats
+ * @param {Array} paperOrders - Existing paper orders (for duplicate/exposure checks)
+ * @returns {Array} Array of opportunity objects
+ */
+export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders) {
+  const opportunities = [];
+  const probMap = buildProbabilityMap(aiResult?.runnerProbabilities);
+  const h2hMap = buildH2HMap(aiResult?.h2hProbabilities);
+  const dataQuality = aiResult?.dataQuality ?? 50;
+  const raceSummary = aiResult?.raceSummary || '';
+
+  const allMarkets = [
+    ...cluster.winMarkets,
+    ...cluster.placeMarkets,
+    ...cluster.h2hMarkets,
+  ];
+
+  for (const market of allMarkets) {
+    const marketType = detectMarketType(market);
+    if (marketType === 'OTHER') continue;
+
+    const thresholds = resolveMarketTypeThresholds(marketType, featherlessSettings);
+    const commissionRate = market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
+    const marketRunners = allRunners.filter(r =>
+      (r.marketId === market.id || r.marketId === market.betfairMarketId) && r.status === 'ACTIVE'
+    );
+
+    // Calculate market overround for diagnostics
+    const allBackOdds = marketRunners.map(r => r.bestBackPrice).filter(o => o > 0);
+    const overround = calcOverround(allBackOdds);
+
+    for (const runner of marketRunners) {
+      const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
+      if (!selectionId) continue;
+
+      // Skip if already has an open order for this strategy/market/runner
+      const hasDup = paperOrders.some(o =>
+        (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
+        (o.selectionId === selectionId || o.runnerId === runner.id) &&
+        o.strategyName === 'Featherless AI Value Decision Engine' &&
+        OPEN_ORDER_STATUSES.includes(o.status)
+      );
+      if (hasDup) continue;
+
+      // Get the appropriate probability for this market type
+      let modelProbability = 0;
+      let opponentSelectionId = null;
+      const probData = probMap.get(selectionId);
+
+      if (marketType === 'WIN') {
+        modelProbability = probData?.pWin || 0;
+      } else if (marketType === 'PLACE') {
+        modelProbability = probData?.pPlace || 0;
+        if (!modelProbability) {
+          // If no pPlace from AI, estimate from pWin using place terms
+          const placeTerms = extractPlaceTerms(market);
+          const pWin = probData?.pWin || 0;
+          // Rough: pPlace ≈ min(0.95, pWin * (placeTerms + 1) * 0.6)
+          modelProbability = Math.min(0.95, pWin * (placeTerms + 1) * 0.6);
+        }
+      } else if (marketType === 'H2H') {
+        // Look up H2H probability
+        const h2hKey = `${market.id}:${selectionId}`;
+        const h2hData = h2hMap.get(h2hKey);
+        if (h2hData) {
+          modelProbability = h2hData.pBeatsOpponent;
+          opponentSelectionId = h2hData.opponentSelectionId;
+        } else {
+          // Fallback: if only 2 runners, derive from win probability
+          if (marketRunners.length === 2) {
+            const other = marketRunners.find(r => String(r.betfairSelectionId || r.selectionId) !== selectionId);
+            opponentSelectionId = other ? String(other.betfairSelectionId || other.selectionId) : null;
+            const myPWin = probData?.pWin || 0;
+            const otherProb = probMap.get(String(other?.betfairSelectionId || other?.selectionId));
+            const otherPWin = otherProb?.pWin || 0;
+            const total = myPWin + otherPWin;
+            modelProbability = total > 0 ? myPWin / total : 0.5;
+          } else {
+            continue;
+          }
+        }
+      }
+
+      if (modelProbability <= 0 || modelProbability >= 1) continue;
+
+      // ── BACK opportunity ──
+      if (runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) {
+        const backOpp = buildOpportunity({
+          cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
+          bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
+          side: 'BACK', odds: runner.bestBackPrice, availableSize: runner.bestBackSize || 0,
+          opponentSelectionId,
+        });
+        opportunities.push(backOpp);
+      }
+
+      // ── LAY opportunity ──
+      if (runner.bestLayPrice > 0 && (runner.bestLaySize || 0) >= 2) {
+        const layOpp = buildOpportunity({
+          cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
+          bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
+          side: 'LAY', odds: runner.bestLayPrice, availableSize: runner.bestLaySize || 0,
+          opponentSelectionId,
+        });
+        opportunities.push(layOpp);
+      }
+    }
+  }
+
+  return opportunities;
+}
+
+/**
+ * Build a single opportunity object with full exchange maths and safety gate.
+ */
+function buildOpportunity({
+  cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
+  bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
+  side, odds, availableSize, opponentSelectionId,
+}) {
+  const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
+  const startTime = market.startTime || market.marketStartTime;
+  const timeBeforeJump = startTime ? Math.round((new Date(startTime).getTime() - Date.now()) / 1000) : null;
+  const spreadTicks = calculateSpreadTicks(runner.bestBackPrice, runner.bestLayPrice);
+  const impliedProbability = odds > 0 ? 1 / odds : 0;
+  const fairOdds = modelProbability > 0 ? 1 / modelProbability : 0;
+  const isLiveMode = settings.liveTradingEnabled === true;
+  const delayRiskScore = calcDelayRiskScore(timeBeforeJump, spreadTicks, isLiveMode);
+  const confidence = probData?.confidence || 0;
+
+  // Calculate stake using Kelly
+  const bankroll = bankrollStats?.bankroll || settings.paperBankroll || settings.bankroll || 10000;
+  let stake, liability, ev, roi, edge, breakevenProbability;
+
+  if (side === 'BACK') {
+    const kelly = calcKellyStake(modelProbability, odds, bankroll, confidence / 100);
+    stake = Math.max(settings.baseStake || 50, Math.min(kelly.stake, settings.maxStake || 500));
+    const backMath = calcBackEV(modelProbability, odds, commissionRate, stake);
+    ev = backMath.ev; roi = backMath.roi; liability = backMath.liability;
+    breakevenProbability = backMath.breakevenProbability;
+    edge = calcBackEdge(modelProbability, odds);
+  } else {
+    const kelly = calcLayKellyStake(modelProbability, odds, bankroll, confidence / 100);
+    stake = Math.max(settings.baseStake || 50, Math.min(kelly.stake, settings.maxStake || 500));
+    const layMath = calcLayEV(modelProbability, odds, commissionRate, stake);
+    ev = layMath.ev; roi = layMath.roi; liability = layMath.liability;
+    breakevenProbability = layMath.breakevenProbability;
+    edge = calcLayEdge(modelProbability, odds);
+  }
+
+  const fillProbability = calcFillProbability(availableSize, stake, spreadTicks, timeBeforeJump);
+
+  // ── Safety gate ──
+  const blockers = [];
+  const reasons = [];
+
+  // Edge check (minEdge is in percent, edge is decimal)
+  if (edge * 100 < thresholds.minEdge) {
+    blockers.push(`Edge ${(edge * 100).toFixed(2)}% below ${thresholds.minEdge}% minimum`);
+  }
+
+  // ROI check (minROI is in percent, roi is decimal)
+  if (roi * 100 < thresholds.minROI) {
+    blockers.push(`ROI ${(roi * 100).toFixed(2)}% below ${thresholds.minROI}% minimum`);
+  }
+
+  // Odds range check
+  if (odds < thresholds.minOdds) {
+    blockers.push(`Odds ${odds.toFixed(2)} below ${thresholds.minOdds} minimum`);
+  }
+  if (odds > thresholds.maxOdds) {
+    blockers.push(`Odds ${odds.toFixed(2)} above ${thresholds.maxOdds} maximum`);
+  }
+
+  // Liquidity check
+  if (availableSize < thresholds.minLiquidity) {
+    blockers.push(`Liquidity $${availableSize.toFixed(2)} below $${thresholds.minLiquidity} minimum`);
+  }
+
+  // Spread check
+  if (spreadTicks > thresholds.maxSpreadTicks) {
+    blockers.push(`Spread ${spreadTicks} ticks above ${thresholds.maxSpreadTicks} maximum`);
+  }
+
+  // Time window check
+  const windowStart = featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500;
+  const windowEnd = featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30;
+  if (timeBeforeJump != null) {
+    if (timeBeforeJump > windowStart) {
+      blockers.push(`Race starts in ${timeBeforeJump}s — outside ${windowStart}s window`);
+    }
+    if (timeBeforeJump < windowEnd && timeBeforeJump > 0) {
+      blockers.push(`Race starts in ${timeBeforeJump}s — inside ${windowEnd}s cutoff`);
+    }
+    if (timeBeforeJump <= 0) {
+      blockers.push('Race has already jumped');
+    }
+  }
+
+  // Delay risk — in delayed mode, only allow larger-edge value bets
+  if (!isLiveMode && delayRiskScore > 0.7) {
+    blockers.push(`Delay risk ${delayRiskScore.toFixed(2)} too high for delayed API mode`);
+  }
+  if (!isLiveMode && edge * 100 < 5 && timeBeforeJump != null && timeBeforeJump < 120) {
+    blockers.push('Delayed API: minimum 5% edge required within 2 minutes of jump');
+  }
+
+  // Kelly check
+  if (side === 'BACK' && modelProbability <= breakevenProbability) {
+    blockers.push('Kelly fraction ≤ 0 — no positive stake');
+  }
+  if (side === 'LAY' && modelProbability >= breakevenProbability) {
+    blockers.push('Lay Kelly fraction ≤ 0 — selection too likely to win');
+  }
+
+  // Confidence check
+  const minConfidence = featherlessSettings?.minConfidence || 50;
+  if (confidence < minConfidence) {
+    blockers.push(`Confidence ${confidence.toFixed(0)} below ${minConfidence}`);
+  }
+
+  // Data quality check
+  if (dataQuality < 40) {
+    blockers.push(`Data quality ${dataQuality} below 40`);
+  }
+
+  // Liability check (LAY)
+  if (side === 'LAY') {
+    const maxLiability = settings.maxLayLiability || 1500;
+    if (liability > maxLiability) {
+      blockers.push(`Lay liability $${liability.toFixed(2)} exceeds max $${maxLiability}`);
+    }
+  }
+
+  // Bankroll check
+  const requiredFunds = side === 'BACK' ? stake : liability;
+  if (bankrollStats && bankrollStats.available < requiredFunds) {
+    blockers.push(`Insufficient bankroll ($${bankrollStats.available?.toFixed(2)} available, $${requiredFunds.toFixed(2)} required)`);
+  }
+
+  // Daily loss limit
+  if (bankrollStats?.todayPL < -(settings.dailyLossLimit || 500)) {
+    blockers.push('Daily loss limit reached');
+  }
+
+  // Max open orders
+  const openOrders = paperOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status));
+  if (openOrders.length >= (settings.maxOpenOrders || 10)) {
+    blockers.push('Max open orders reached');
+  }
+
+  // Duplicate opposite-side position check (unless hedging)
+  const oppositeSide = side === 'BACK' ? 'LAY' : 'BACK';
+  const hasOpposite = paperOrders.some(o =>
+    (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
+    (o.selectionId === selectionId || o.runnerId === runner.id) &&
+    o.side === oppositeSide &&
+    OPEN_ORDER_STATUSES.includes(o.status)
+  );
+  if (hasOpposite && !settings.allowHedging) {
+    blockers.push(`Conflicting ${oppositeSide} position exists (hedging not enabled)`);
+  }
+
+  // Event exposure check
+  const eventExposure = paperOrders
+    .filter(o => {
+      const om = o.betfairMarketId || o.marketId;
+      return allClusterMarketIds(cluster).includes(om) && OPEN_ORDER_STATUSES.includes(o.status);
+    })
+    .reduce((sum, o) => sum + (o.matchedStake || o.requestedStake || 0), 0);
+  if (eventExposure + requiredFunds > (settings.maxMarketExposure || 1000) * 2) {
+    blockers.push('Event exposure limit breached');
+  }
+
+  const exposureAfterBet = (bankrollStats?.openPaperExposure || 0) + requiredFunds;
+  const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
+
+  const decision = blockers.length === 0 ? 'BET' : 'NO_BET';
+
+  if (decision === 'BET') {
+    reasons.push(`${marketType} ${side} ${runner.runnerName} @ ${odds.toFixed(2)} — EV $${ev.toFixed(2)}, ROI ${(roi * 100).toFixed(2)}%, edge ${(edge * 100).toFixed(2)}%`);
+  }
+  if (raceSummary) reasons.push(`AI: ${raceSummary}`);
+  if (probData?.reasons?.length) reasons.push(...probData.reasons.slice(0, 2));
+
+  return {
+    opportunityId: `opp_${cluster.eventId}_${market.id}_${selectionId}_${side}`,
+    eventId: cluster.eventId,
+    marketId: market.id,
+    betfairMarketId: market.betfairMarketId || market.id,
+    marketType,
+    marketName: market.venue ? `${market.venue} - ${market.marketName}` : market.marketName,
+    selectionId,
+    runnerName: runner.runnerName || 'Unknown',
+    opponentSelectionId,
+    side,
+    odds,
+    availableSize,
+    stake,
+    liability,
+    modelProbability,
+    impliedProbability,
+    fairOdds,
+    commissionRate,
+    ev,
+    roi,
+    edge,
+    confidence,
+    dataQuality,
+    spreadTicks,
+    liquidityScore,
+    delayRiskScore,
+    fillProbability,
+    exposureAfterBet,
+    overround,
+    breakevenProbability,
+    timeBeforeJump,
+    decision,
+    reasons,
+    blockers,
+  };
+}
+
+function allClusterMarketIds(cluster) {
+  return [
+    ...cluster.winMarkets.map(m => m.betfairMarketId || m.id),
+    ...cluster.placeMarkets.map(m => m.betfairMarketId || m.id),
+    ...cluster.h2hMarkets.map(m => m.betfairMarketId || m.id),
+    ...cluster.otherMarkets.map(m => m.betfairMarketId || m.id),
+  ];
+}
+
+/**
+ * Rank all opportunities by EV (descending).
+ * Only positive-EV opportunities with decision='BET' are candidates.
+ */
+export function rankOpportunities(opportunities) {
+  return opportunities
+    .slice()
+    .sort((a, b) => {
+      // BET opportunities first, sorted by EV
+      if (a.decision === 'BET' && b.decision !== 'BET') return -1;
+      if (a.decision !== 'BET' && b.decision === 'BET') return 1;
+      return b.ev - a.ev;
+    });
+}
+
+/**
+ * Get the best opportunity for each category (BACK/LAY × WIN/PLACE/H2H).
+ */
+export function getBestByCategory(opportunities) {
+  const categories = ['BACK_WIN', 'LAY_WIN', 'BACK_PLACE', 'LAY_PLACE', 'BACK_H2H', 'LAY_H2H'];
+  const result = {};
+  for (const cat of categories) {
+    const [side, type] = cat.split('_');
+    result[cat] = opportunities
+      .filter(o => o.side === side && o.marketType === type && o.decision === 'BET')
+      .sort((a, b) => b.ev - a.ev)[0] || null;
+  }
+  return result;
+}

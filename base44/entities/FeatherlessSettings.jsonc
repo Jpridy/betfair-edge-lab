@@ -24,15 +24,15 @@
     },
     "minConfidence": {
       "type": "number",
-      "default": 75
+      "default": 50
     },
     "minEdge": {
       "type": "number",
-      "default": 5
+      "default": 3
     },
     "minExpectedROI": {
       "type": "number",
-      "default": 3
+      "default": 1
     },
     "paperTradeOnly": {
       "type": "boolean",
@@ -48,19 +48,19 @@
     },
     "minOdds": {
       "type": "number",
-      "default": 2.0
+      "default": 1.5
     },
     "maxOdds": {
       "type": "number",
-      "default": 12.0
+      "default": 50
     },
     "minLiquidity": {
       "type": "number",
-      "default": 500
+      "default": 20
     },
     "maxSpread": {
       "type": "number",
-      "default": 5
+      "default": 7
     },
     "timeWindowStart": {
       "type": "number",
@@ -100,6 +100,82 @@
         "high"
       ],
       "default": "low"
+    },
+    "winMinOdds": {
+      "type": "number",
+      "default": 1.5
+    },
+    "winMaxOdds": {
+      "type": "number",
+      "default": 50
+    },
+    "winMinLiquidity": {
+      "type": "number",
+      "default": 20
+    },
+    "winMaxSpreadTicks": {
+      "type": "number",
+      "default": 7
+    },
+    "winMinEdge": {
+      "type": "number",
+      "default": 3
+    },
+    "winMinROI": {
+      "type": "number",
+      "default": 1
+    },
+    "placeMinOdds": {
+      "type": "number",
+      "default": 1.2
+    },
+    "placeMaxOdds": {
+      "type": "number",
+      "default": 30
+    },
+    "placeMinLiquidity": {
+      "type": "number",
+      "default": 10
+    },
+    "placeMaxSpreadTicks": {
+      "type": "number",
+      "default": 7
+    },
+    "placeMinEdge": {
+      "type": "number",
+      "default": 2
+    },
+    "placeMinROI": {
+      "type": "number",
+      "default": 1
+    },
+    "h2hMinOdds": {
+      "type": "number",
+      "default": 1.2
+    },
+    "h2hMaxOdds": {
+      "type": "number",
+      "default": 15
+    },
+    "h2hMinLiquidity": {
+      "type": "number",
+      "default": 10
+    },
+    "h2hMaxSpreadTicks": {
+      "type": "number",
+      "default": 5
+    },
+    "h2hMinEdge": {
+      "type": "number",
+      "default": 3
+    },
+    "h2hMinROI": {
+      "type": "number",
+      "default": 1
+    },
+    "allowHedging": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [
