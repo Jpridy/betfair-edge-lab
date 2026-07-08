@@ -252,9 +252,21 @@ function buildOpportunity({
     blockers.push(`Liquidity $${availableSize.toFixed(2)} below $${thresholds.minLiquidity} minimum`);
   }
 
-  // Spread check
-  if (spreadTicks > thresholds.maxSpreadTicks) {
-    blockers.push(`Spread ${spreadTicks} ticks above ${thresholds.maxSpreadTicks} maximum`);
+  // Spread/price check — distinguish missing, stale, and wide spread
+  const hasBack = !!(runner.bestBackPrice && runner.bestBackPrice > 0);
+  const hasLay = !!(runner.bestLayPrice && runner.bestLayPrice > 0);
+  if (!hasLay && side === 'BACK') {
+    blockers.push('Missing lay price — cannot assess spread');
+  } else if (!hasBack && side === 'LAY') {
+    blockers.push('Missing back price — cannot assess spread');
+  } else if (hasBack && hasLay && spreadTicks > thresholds.maxSpreadTicks) {
+    const backStr = runner.bestBackPrice.toFixed(2);
+    const layStr = runner.bestLayPrice.toFixed(2);
+    if (spreadTicks > 50 || runner.bestLayPrice > 100 || runner.bestLayPrice > runner.bestBackPrice * 5) {
+      blockers.push(`Stale/wide spread — ${spreadTicks} ticks (back ${backStr}, lay ${layStr}), max ${thresholds.maxSpreadTicks}`);
+    } else {
+      blockers.push(`Spread too wide — ${spreadTicks} ticks (back ${backStr}, lay ${layStr}), max ${thresholds.maxSpreadTicks}`);
+    }
   }
 
   // Time window check
@@ -351,6 +363,16 @@ function buildOpportunity({
   const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
 
   const decision = blockers.length === 0 ? 'BET' : 'NO_BET';
+  const maxProfit = side === 'BACK'
+    ? (odds - 1) * stake * (1 - commissionRate)
+    : stake * (1 - commissionRate);
+  const maxLoss = side === 'BACK' ? stake : liability;
+  const marketNameParts = [];
+  if (market.venue) marketNameParts.push(market.venue);
+  if (market.raceNumber) marketNameParts.push(`R${market.raceNumber}`);
+  if (market.marketName) marketNameParts.push(market.marketName);
+  else if (marketType) marketNameParts.push(marketType);
+  const marketDisplayName = marketNameParts.join(' - ') || 'Unknown Market';
 
   if (decision === 'BET') {
     reasons.push(`${marketType} ${side} ${runner.runnerName} @ ${odds.toFixed(2)} — EV $${ev.toFixed(2)}, ROI ${(roi * 100).toFixed(2)}%, edge ${(edge * 100).toFixed(2)}%`);
@@ -361,20 +383,31 @@ function buildOpportunity({
   return {
     opportunityId: `opp_${cluster.eventId}_${market.id}_${selectionId}_${side}`,
     eventId: cluster.eventId,
+    eventName: cluster.eventName || market.eventName || '',
     marketId: market.id,
     betfairMarketId: market.betfairMarketId || market.id,
     marketType,
-    marketName: market.venue ? `${market.venue} - ${market.marketName}` : market.marketName,
+    marketTypeCode: market.marketTypeCode || market.marketType || '',
+    detectedMarketType: marketType,
+    marketName: marketDisplayName,
+    marketStartTime: market.startTime || market.marketStartTime || null,
     selectionId,
     runnerName: runner.runnerName || 'Unknown',
     opponentSelectionId,
     side,
     odds,
     availableSize,
+    bestBackPrice: runner.bestBackPrice || null,
+    bestLayPrice: runner.bestLayPrice || null,
+    bestBackSize: runner.bestBackSize || null,
+    bestLaySize: runner.bestLaySize || null,
     stake,
     liability,
+    maxProfit,
+    maxLoss,
     modelProbability,
     impliedProbability,
+    breakevenProbability,
     fairOdds,
     commissionRate,
     ev,
@@ -382,15 +415,16 @@ function buildOpportunity({
     edge,
     confidence,
     dataQuality,
+    dataSource: 'BETFAIR_METADATA_PLUS_MARKET',
     spreadTicks,
     liquidityScore,
     delayRiskScore,
     fillProbability,
     exposureAfterBet,
     overround,
-    breakevenProbability,
     timeBeforeJump,
     decision,
+    failedGate: blockers[0] || null,
     reasons,
     blockers,
   };

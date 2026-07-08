@@ -356,7 +356,8 @@ export function AppProvider({ children }) {
               // with the real DB record instead of adding a second entry.
               const dupIdx = prev.findIndex(i =>
                 (i.customerRef && event.data.customerRef && i.customerRef === event.data.customerRef) ||
-                (i.created_date && event.data.created_date && i.created_date === event.data.created_date)
+                (i.created_date && event.data.created_date && i.created_date === event.data.created_date) ||
+                (i.cycleNumber != null && event.data.cycleNumber != null && i.cycleNumber === event.data.cycleNumber)
               );
               if (dupIdx >= 0) {
                 const updated = [...prev];
@@ -966,6 +967,8 @@ export function AppProvider({ children }) {
     let signalCreated = null, orderCreated = null, riskBlockedReason = null, rejectedOrder = null;
     let cycleNoBetReason = diagnostics?.noBetReason || null;
     let exchangeDiag = null;
+    let exchangeBestOpp = null;
+    let exchangeAllOpps = [];
 
     // ── Exchange Opportunity Engine ──
     // Scans ALL eligible markets, groups by event, calls AI per event for
@@ -1013,6 +1016,8 @@ export function AppProvider({ children }) {
         setExchangeOpportunities(result.allOpportunities);
         setLastExchangeDiagnostics(result.diagnostics);
         exchangeDiag = result.diagnostics;
+        exchangeBestOpp = result.bestOpportunity;
+        exchangeAllOpps = result.allOpportunities;
 
         if (result.bestOpportunity) {
           const opp = result.bestOpportunity;
@@ -1121,6 +1126,13 @@ export function AppProvider({ children }) {
       ordersBlockedToday: prev.ordersBlockedToday + ordersBlocked,
     }));
 
+    // ── Build cycle record using exchange engine as primary source ──
+    // When the exchange engine ran, use its diagnostics exclusively.
+    // Only fall back to old scanDiagnostics when AI is disabled.
+    const useExchange = !!exchangeDiag;
+    const bestOppForRecord = useExchange ? exchangeBestOpp : null;
+    const oldBestCandidate = !useExchange ? (diagnostics?.bestCandidate || null) : null;
+
     const cycleRecord = {
       cycleNumber: cycleNum,
       botMode: 'paper',
@@ -1134,37 +1146,96 @@ export function AppProvider({ children }) {
       ordersBlocked,
       errors,
       notes: notes.join('; ') || 'Cycle completed',
-      runnersAssessed: diagnostics?.scanSummary?.runnersAssessed || 0,
-      candidatesPassedLiquidity: diagnostics?.scanSummary?.candidatesPassedLiquidity || 0,
-      candidatesPassedOddsRange: diagnostics?.scanSummary?.candidatesPassedOddsRange || 0,
-      candidatesPassedEdge: diagnostics?.scanSummary?.candidatesPassedEdge || 0,
-      candidatesPassedROI: diagnostics?.scanSummary?.candidatesPassedROI || 0,
-      candidatesPassedConfidence: diagnostics?.scanSummary?.candidatesPassedConfidence || 0,
-      bestCandidate: diagnostics?.bestCandidate || null,
-      noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || diagnostics?.noBetReason || null),
-      scanSummary: exchangeDiag ? {
-        ...diagnostics?.scanSummary,
-        exchangeDiagnostics: {
-          marketsScanned: exchangeDiag.marketsScanned,
-          eventsScanned: exchangeDiag.eventsScanned,
-          eventsWithAI: exchangeDiag.eventsWithAI,
-          cacheHits: exchangeDiag.cacheHits,
-          totalOpportunities: exchangeDiag.totalOpportunities,
-          backOpportunities: exchangeDiag.backOpportunities,
-          layOpportunities: exchangeDiag.layOpportunities,
-          positiveEVOpportunities: exchangeDiag.positiveEVOpportunities,
-          rejectedOpportunities: exchangeDiag.rejectedOpportunities,
-          marketDetectionLog: exchangeDiag.marketDetectionLog?.slice(0, 20),
-          topRejected: exchangeDiag.topRejected,
-          noBetReason: exchangeDiag.noBetReason,
-        },
+      // Use exchange diagnostics for runner/opportunity counts when available
+      runnersAssessed: useExchange ? (exchangeDiag.totalOpportunities || 0) : (diagnostics?.scanSummary?.runnersAssessed || 0),
+      candidatesPassedLiquidity: useExchange ? 0 : (diagnostics?.scanSummary?.candidatesPassedLiquidity || 0),
+      candidatesPassedOddsRange: useExchange ? 0 : (diagnostics?.scanSummary?.candidatesPassedOddsRange || 0),
+      candidatesPassedEdge: useExchange ? exchangeDiag.positiveEVOpportunities : (diagnostics?.scanSummary?.candidatesPassedEdge || 0),
+      candidatesPassedROI: useExchange ? exchangeDiag.positiveEVOpportunities : (diagnostics?.scanSummary?.candidatesPassedROI || 0),
+      candidatesPassedConfidence: useExchange ? exchangeDiag.positiveEVOpportunities : (diagnostics?.scanSummary?.candidatesPassedConfidence || 0),
+      bestCandidate: useExchange
+        ? (bestOppForRecord ? {
+            opportunityId: bestOppForRecord.opportunityId,
+            runnerName: bestOppForRecord.runnerName,
+            selectionId: bestOppForRecord.selectionId,
+            marketId: bestOppForRecord.marketId,
+            betfairMarketId: bestOppForRecord.betfairMarketId,
+            marketName: bestOppForRecord.marketName,
+            marketType: bestOppForRecord.marketType,
+            marketTypeCode: bestOppForRecord.marketTypeCode,
+            detectedMarketType: bestOppForRecord.detectedMarketType,
+            eventName: bestOppForRecord.eventName,
+            marketStartTime: bestOppForRecord.marketStartTime,
+            side: bestOppForRecord.side,
+            odds: bestOppForRecord.odds,
+            edge: bestOppForRecord.edge,
+            ev: bestOppForRecord.ev,
+            expectedROI: bestOppForRecord.roi,
+            confidence: bestOppForRecord.confidence,
+            dataQuality: bestOppForRecord.dataQuality,
+            dataSource: bestOppForRecord.dataSource || 'BETFAIR_METADATA_PLUS_MARKET',
+            liquidity: bestOppForRecord.availableSize,
+            availableSize: bestOppForRecord.availableSize,
+            spread: bestOppForRecord.spreadTicks,
+            spreadTicks: bestOppForRecord.spreadTicks,
+            bestBackPrice: bestOppForRecord.bestBackPrice,
+            bestLayPrice: bestOppForRecord.bestLayPrice,
+            bestBackSize: bestOppForRecord.bestBackSize,
+            bestLaySize: bestOppForRecord.bestLaySize,
+            stake: bestOppForRecord.stake,
+            liability: bestOppForRecord.liability,
+            maxProfit: bestOppForRecord.maxProfit,
+            maxLoss: bestOppForRecord.maxLoss,
+            commissionRate: bestOppForRecord.commissionRate,
+            estimatedProbability: bestOppForRecord.modelProbability,
+            modelProbability: bestOppForRecord.modelProbability,
+            impliedProbability: bestOppForRecord.impliedProbability,
+            breakevenProbability: bestOppForRecord.breakevenProbability,
+            fairOdds: bestOppForRecord.fairOdds,
+            opponentSelectionId: bestOppForRecord.opponentSelectionId,
+            delayRiskScore: bestOppForRecord.delayRiskScore,
+            fillProbability: bestOppForRecord.fillProbability,
+            failedGate: bestOppForRecord.failedGate || bestOppForRecord.blockers?.[0] || null,
+            mainBlocker: bestOppForRecord.failedGate || bestOppForRecord.blockers?.[0] || null,
+            blockers: bestOppForRecord.blockers,
+            passed: bestOppForRecord.decision === 'BET',
+            decision: bestOppForRecord.decision,
+            overallScore: bestOppForRecord.ev,
+          } : null)
+        : oldBestCandidate,
+      noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || (useExchange ? exchangeDiag.noBetReason : diagnostics?.noBetReason) || null),
+      scanSummary: useExchange ? {
+        marketsScanned: exchangeDiag.marketsScanned,
+        eventsScanned: exchangeDiag.eventsScanned,
+        eventsWithAI: exchangeDiag.eventsWithAI,
+        cacheHits: exchangeDiag.cacheHits,
+        totalOpportunities: exchangeDiag.totalOpportunities,
+        backOpportunities: exchangeDiag.backOpportunities,
+        layOpportunities: exchangeDiag.layOpportunities,
+        positiveEVOpportunities: exchangeDiag.positiveEVOpportunities,
+        rejectedOpportunities: exchangeDiag.rejectedOpportunities,
+        winMarketsFound: exchangeDiag.winMarketsFound,
+        placeMarketsFound: exchangeDiag.placeMarketsFound,
+        h2hMarketsFound: exchangeDiag.h2hMarketsFound,
+        unknownMarketsFound: exchangeDiag.unknownMarketsFound,
+        raceClustersCreated: exchangeDiag.raceClustersCreated,
+        aiCallsMade: exchangeDiag.aiCallsMade,
+        aiCacheHits: exchangeDiag.aiCacheHits,
+        aiDisabled: exchangeDiag.aiDisabled,
+        aiStatusLog: exchangeDiag.aiStatusLog,
+        marketDetectionLog: exchangeDiag.marketDetectionLog?.slice(0, 20),
+        topOpportunities: exchangeDiag.topOpportunities,
+        topRejected: exchangeDiag.topRejected,
+        noBetReason: exchangeDiag.noBetReason,
       } : (diagnostics?.scanSummary || null),
-      assessedRunners: diagnostics?.assessedRunners || [],
-      selectedMarketName: diagnostics?.selectedMarket
-        ? (diagnostics.selectedMarket.venue
-          ? `${diagnostics.selectedMarket.venue} - ${diagnostics.selectedMarket.marketName}`
-          : diagnostics.selectedMarket.marketName)
-        : null,
+      assessedRunners: useExchange ? (exchangeDiag.topOpportunities || []) : (diagnostics?.assessedRunners || []),
+      selectedMarketName: useExchange
+        ? (bestOppForRecord ? bestOppForRecord.marketName : null)
+        : (diagnostics?.selectedMarket
+          ? (diagnostics.selectedMarket.venue
+            ? `${diagnostics.selectedMarket.venue} - ${diagnostics.selectedMarket.marketName}`
+            : diagnostics.selectedMarket.marketName)
+          : null),
     };
     setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
     base44.entities.BotCycle.create(cycleRecord).catch(() => {});

@@ -112,9 +112,20 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   // 3-4. For each event, call AI for probabilities and generate opportunities
   const allOpportunities = [];
   const aiDecisions = [];
+  const aiStatusLog = [];
   let eventsScanned = 0;
   let eventsWithAI = 0;
   let cacheHits = 0;
+
+  // Count market types detected
+  const marketTypeCounts = eligibleMarkets.reduce((acc, m) => {
+    const type = detectMarketType(m);
+    if (type === 'WIN') acc.winMarketsFound++;
+    else if (type === 'PLACE') acc.placeMarketsFound++;
+    else if (type === 'H2H') acc.h2hMarketsFound++;
+    else acc.unknownMarketsFound++;
+    return acc;
+  }, { winMarketsFound: 0, placeMarketsFound: 0, h2hMarketsFound: 0, unknownMarketsFound: 0 });
 
   for (const cluster of eventClusters) {
     eventsScanned++;
@@ -132,18 +143,25 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     let aiResult = getCachedAIResult(cluster, marketRunners);
     if (aiResult) {
       cacheHits++;
+      aiStatusLog.push({ eventId: cluster.eventId, status: 'cache_hit' });
     } else if (callAI) {
       try {
         aiResult = await callAI(cluster, primaryMarket, marketRunners);
         if (aiResult) {
           setCachedAIResult(cluster, marketRunners, aiResult);
           eventsWithAI++;
+          aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: true, returnedProbabilities: true });
           aiDecisions.push({ eventId: cluster.eventId, aiResult });
+        } else {
+          aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: false, reason: 'AI returned null' });
         }
       } catch (err) {
-        // AI failed — skip this event, fall back to market-only estimates
+        const isTimeout = err.message?.toLowerCase().includes('timeout') || err.code === 'ETIMEDOUT';
+        aiStatusLog.push({ eventId: cluster.eventId, status: isTimeout ? 'ai_timeout' : 'ai_error', reason: err.message });
         continue;
       }
+    } else {
+      aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
     }
 
     if (!aiResult) continue;
@@ -161,21 +179,95 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   // 9. Choose best positive-EV opportunity
   const bestOpportunity = ranked.find(o => o.decision === 'BET') || null;
 
+  // ── Top 20 opportunities by EV (for export and diagnostics) ──
+  const topOpportunities = ranked.slice(0, 20).map(o => ({
+    opportunityId: o.opportunityId,
+    eventId: o.eventId,
+    eventName: o.eventName || '',
+    marketId: o.marketId,
+    betfairMarketId: o.betfairMarketId,
+    marketType: o.marketType,
+    marketTypeCode: o.marketTypeCode || '',
+    detectedMarketType: o.detectedMarketType || o.marketType,
+    marketName: o.marketName,
+    marketStartTime: o.marketStartTime || null,
+    side: o.side,
+    runnerName: o.runnerName,
+    selectionId: o.selectionId,
+    opponentSelectionId: o.opponentSelectionId || null,
+    odds: o.odds,
+    availableSize: o.availableSize,
+    bestBackPrice: o.bestBackPrice ?? null,
+    bestLayPrice: o.bestLayPrice ?? null,
+    bestBackSize: o.bestBackSize ?? null,
+    bestLaySize: o.bestLaySize ?? null,
+    modelProbability: o.modelProbability,
+    impliedProbability: o.impliedProbability,
+    breakevenProbability: o.breakevenProbability,
+    fairOdds: o.fairOdds,
+    edge: o.edge,
+    ev: o.ev,
+    roi: o.roi,
+    commissionRate: o.commissionRate,
+    confidence: o.confidence,
+    dataQuality: o.dataQuality,
+    dataSource: o.dataSource || 'BETFAIR_METADATA_PLUS_MARKET',
+    spreadTicks: o.spreadTicks,
+    delayRiskScore: o.delayRiskScore,
+    fillProbability: o.fillProbability,
+    stake: o.stake,
+    liability: o.liability,
+    maxProfit: o.maxProfit ?? null,
+    maxLoss: o.maxLoss ?? null,
+    failedGate: o.failedGate || o.blockers?.[0] || null,
+    blocker: o.blockers?.[0] || null,
+    blockers: o.blockers,
+    decision: o.decision,
+  }));
+
   // ── Top 10 rejected opportunities (for no-bet logs) ──
   const rejectedOpps = ranked
     .filter(o => o.decision === 'NO_BET')
     .slice(0, 10)
     .map(o => ({
+      opportunityId: o.opportunityId,
+      eventName: o.eventName || '',
+      marketName: o.marketName,
       marketType: o.marketType,
+      marketTypeCode: o.marketTypeCode || '',
+      detectedMarketType: o.detectedMarketType || o.marketType,
+      marketStartTime: o.marketStartTime || null,
       side: o.side,
       runner: o.runnerName,
       runnerName: o.runnerName,
+      selectionId: o.selectionId,
+      opponentSelectionId: o.opponentSelectionId || null,
       odds: o.odds,
+      availableSize: o.availableSize,
+      bestBackPrice: o.bestBackPrice ?? null,
+      bestLayPrice: o.bestLayPrice ?? null,
+      bestBackSize: o.bestBackSize ?? null,
+      bestLaySize: o.bestLaySize ?? null,
+      spreadTicks: o.spreadTicks,
       modelProbability: o.modelProbability,
+      impliedProbability: o.impliedProbability,
+      breakevenProbability: o.breakevenProbability,
+      fairOdds: o.fairOdds,
+      edge: o.edge,
       ev: o.ev,
       roi: o.roi,
+      commissionRate: o.commissionRate,
       confidence: o.confidence,
-      failedGate: o.blockers?.[0] || 'Unknown',
+      dataQuality: o.dataQuality,
+      dataSource: o.dataSource || 'BETFAIR_METADATA_PLUS_MARKET',
+      delayRiskScore: o.delayRiskScore,
+      fillProbability: o.fillProbability,
+      stake: o.stake,
+      liability: o.liability,
+      maxProfit: o.maxProfit ?? null,
+      maxLoss: o.maxLoss ?? null,
+      failedGate: o.failedGate || o.blockers?.[0] || 'Unknown',
+      blocker: o.blockers?.[0] || 'Unknown',
       blockers: o.blockers,
     }));
 
@@ -185,13 +277,24 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     eventsScanned,
     eventsWithAI,
     cacheHits,
+    aiCallsMade: eventsWithAI,
+    aiCacheHits: cacheHits,
+    aiCacheMisses: eventsWithAI,
+    aiStatusLog,
+    aiDisabled: !callAI,
     cacheStats: getCacheStats(),
     marketDetectionLog,
+    winMarketsFound: marketTypeCounts.winMarketsFound,
+    placeMarketsFound: marketTypeCounts.placeMarketsFound,
+    h2hMarketsFound: marketTypeCounts.h2hMarketsFound,
+    unknownMarketsFound: marketTypeCounts.unknownMarketsFound,
+    raceClustersCreated: eventClusters.length,
     totalOpportunities: allOpportunities.length,
     backOpportunities: allOpportunities.filter(o => o.side === 'BACK').length,
     layOpportunities: allOpportunities.filter(o => o.side === 'LAY').length,
     positiveEVOpportunities: allOpportunities.filter(o => o.decision === 'BET').length,
     rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET').length,
+    topOpportunities,
     topRejected: rejectedOpps,
     bestOpportunity: bestOpportunity,
     noBetReason: bestOpportunity ? null : (allOpportunities.length === 0
