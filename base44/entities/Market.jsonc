@@ -81,6 +81,9 @@
     "marketType": {
       "type": "string"
     },
+    "marketTypeCode": {
+      "type": "string"
+    },
     "startTime": {
       "type": "string"
     },

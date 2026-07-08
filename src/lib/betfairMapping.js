@@ -229,6 +229,7 @@ export function mapBetfairMarket(catalogue, book) {
     eventType: 'Horse Racing',
     eventName: event.name || '',
     marketType: description.marketType || 'WIN',
+    marketTypeCode: description.marketType || description.marketTypeCode || catalogue.marketTypeCode || null,
     startTime: catalogue.marketStartTime || description.marketTime || null,
     watched: false,
     eligibleStrategies: [],
