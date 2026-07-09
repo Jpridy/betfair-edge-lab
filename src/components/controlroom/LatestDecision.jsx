@@ -18,7 +18,7 @@ export default function LatestDecision() {
       message = 'Markets loaded but no runner prices received. Check stream/price feed connection.';
     }
     return (
-      <Panel title="Latest Bot Decision" action={<StatusBadge status="neutral">NO_CYCLE</StatusBadge>}>
+      <Panel title="Latest Bot Decision" action={<StatusBadge status="neutral">No cycle yet</StatusBadge>}>
         <div className="p-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-3">
           <WifiOff className="h-8 w-8 text-muted-foreground/40" />
           <span className="font-body">{message}</span>
@@ -54,7 +54,7 @@ export default function LatestDecision() {
       title="Latest Bot Decision"
       action={
         <StatusBadge status={decision === 'BET' ? 'ok' : 'warning'}>
-          {decision}
+          {decision === 'BET' ? 'Bet' : 'No bet'}
         </StatusBadge>
       }
     >

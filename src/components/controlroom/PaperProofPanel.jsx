@@ -119,19 +119,16 @@ export default function PaperProofPanel() {
   return (
     <Panel title="Paper Proof Mode" action={
       <StatusBadge status={proofActive ? 'ok' : 'neutral'}>
-        {proofActive ? 'PROOF MODE ACTIVE' : 'NOT ACTIVE'}
+        {proofActive ? 'Active' : 'Not active'}
       </StatusBadge>
     }>
-      {/* Warning banner */}
+      {/* Compact warning */}
       <div className={cn(
-        'px-4 py-2.5 border-b border-border text-xs flex items-start gap-2',
-        proofActive ? 'bg-warning/10 text-warning' : 'bg-muted/20 text-muted-foreground'
+        'px-4 py-1.5 border-b border-border text-[11px] flex items-center gap-2',
+        proofActive ? 'bg-warning/5 text-warning/80' : 'bg-muted/10 text-muted-foreground'
       )}>
-        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-        <span>
-          Paper Proof Mode relaxes value, confidence, spread, liquidity and AI filters to test the app pipeline.
-          It may create bad theoretical bets. Do not use these settings for live betting.
-        </span>
+        <AlertTriangle className="h-3 w-3 shrink-0" />
+        <span>Filters relaxed for pipeline testing — not for live betting.</span>
       </div>
 
       {/* Status grid */}

@@ -30,7 +30,7 @@ const debugNav = [
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const location = useLocation();
-  const { emergencyStop, triggerEmergencyStop, bankrollStats, apiConnected, botState } = useApp();
+  const { emergencyStop, triggerEmergencyStop, clearEmergencyStop, bankrollStats, apiConnected, botState } = useApp();
   const [showDebug, setShowDebug] = useState(false);
 
   const isActive = (path) => location.pathname === path;
@@ -144,17 +144,37 @@ export default function Sidebar({ mobileOpen, onClose }) {
                 {botState.running ? (botState.paused ? 'PAUSED' : 'RUNNING') : 'STOPPED'}
               </span>
             </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Mode</span>
+              <span className="font-mono tabular-nums font-semibold text-info">PAPER ONLY</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">Emergency</span>
+              <span className={cn('font-mono tabular-nums font-semibold', emergencyStop ? 'text-danger' : 'text-success')}>
+                {emergencyStop ? 'STOPPED' : 'READY'}
+              </span>
+            </div>
           </div>
 
-          <Button
-            onClick={triggerEmergencyStop}
-            disabled={emergencyStop}
-            variant="destructive"
-            className="w-full font-body font-semibold py-2.5 text-sm gap-2 border border-danger/40 hover:glow-red"
-          >
-            <AlertOctagon className="h-4 w-4" />
-            EMERGENCY STOP
-          </Button>
+          {botRunning ? (
+            <Button
+              onClick={triggerEmergencyStop}
+              variant="destructive"
+              className="w-full font-body font-semibold py-2.5 text-sm gap-2 border border-danger/40 hover:glow-red"
+            >
+              <AlertOctagon className="h-4 w-4" />
+              EMERGENCY STOP
+            </Button>
+          ) : emergencyStop ? (
+            <Button
+              onClick={clearEmergencyStop}
+              variant="outline"
+              className="w-full font-body font-semibold py-2 text-xs gap-2 border-danger/40 text-danger hover:bg-danger/10"
+            >
+              <AlertOctagon className="h-3.5 w-3.5" />
+              CLEAR EMERGENCY STOP
+            </Button>
+          ) : null}
         </div>
       </aside>
     </>

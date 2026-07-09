@@ -20,7 +20,7 @@ export default function ControlBar() {
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
   const lastCycle = botCycles[0];
-  const lastDecision = lastCycle?.ordersCreated > 0 ? 'BET' : lastCycle?.noBetReason ? 'NO_BET' : lastCycle ? 'NO_BET' : '—';
+  const lastDecision = lastCycle?.ordersCreated > 0 ? 'Bet' : lastCycle ? 'No bet' : 'No cycle yet';
 
   const handleDebugScan = async () => {
     setDebugRunning(true);
@@ -175,7 +175,7 @@ export default function ControlBar() {
           <span className="text-muted-foreground">Decision:</span>
           <span className={cn(
             'px-2 py-0.5 rounded-md text-[10px] font-body font-semibold border',
-            lastDecision === 'BET' ? 'bg-success/10 text-success border-success/25' : lastDecision === 'NO_BET' ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border'
+            lastDecision === 'Bet' ? 'bg-success/10 text-success border-success/25' : lastDecision === 'No bet' ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border'
           )}>
             {lastDecision}
           </span>

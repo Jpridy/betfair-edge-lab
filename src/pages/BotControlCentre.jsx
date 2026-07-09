@@ -14,11 +14,9 @@ import RiskOrdersPanel from '@/components/controlroom/RiskOrdersPanel';
 import SettlementPanel from '@/components/controlroom/SettlementPanel';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
-import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
-import { FlaskConical } from 'lucide-react';
 
 export default function BotControlCentre() {
-  const { dataLoading, settings, botSettings, featherlessSettings, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
+  const { dataLoading, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
 
   if (dataLoading) {
     return (
@@ -28,7 +26,6 @@ export default function BotControlCentre() {
     );
   }
 
-  const proofActive = isPaperProofModeActive(settings, botSettings, featherlessSettings);
   const lastCycle = botCycles[0];
   const openOrders = paperOrders.filter(o => ['pending', 'matched', 'partially_matched', 'executable'].includes(o.status)).length;
   const awaitingSettlement = paperOrders.filter(o => o.status === 'awaiting_result').length;
@@ -44,14 +41,6 @@ export default function BotControlCentre() {
       {/* Critical safety banners only */}
       <SafetyBanners />
 
-      {/* Paper Proof Mode pill */}
-      {proofActive && (
-        <div className="inline-flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-md text-[11px] font-body font-semibold border border-warning/25 tracking-label">
-          <FlaskConical className="h-3.5 w-3.5" />
-          PAPER PROOF MODE — filters relaxed for pipeline testing
-        </div>
-      )}
-
       {/* Sticky control bar */}
       <ControlBar />
 
@@ -59,8 +48,8 @@ export default function BotControlCentre() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <SummaryMetric label="Markets" value={markets.length || 0} />
         <SummaryMetric label="Opportunities" value={exchangeOpportunities?.length || lastCycle?.scanSummary?.totalOpportunities || 0} />
-        <SummaryMetric label="Best EV" value={`$${(bestEV || 0).toFixed(2)}`} accent="text-success" />
-        <SummaryMetric label="Best ROI" value={`${(bestROI || 0).toFixed(1)}%`} accent="text-success" />
+        <SummaryMetric label="Best EV" value={bestEV ? `$${bestEV.toFixed(2)}` : '—'} accent={bestEV ? 'text-success' : ''} />
+        <SummaryMetric label="Best ROI" value={bestROI ? `${bestROI.toFixed(1)}%` : '—'} accent={bestROI ? 'text-success' : ''} />
         <SummaryMetric label="Open Orders" value={openOrders} accent={openOrders > 0 ? 'text-info' : ''} />
         <SummaryMetric label="Awaiting" value={awaitingSettlement} accent={awaitingSettlement > 0 ? 'text-warning' : ''} />
       </div>
@@ -78,9 +67,9 @@ export default function BotControlCentre() {
         </TabsList>
 
         <TabsContent value="control" className="space-y-5">
-          <SystemHealthRow />
           <LatestDecision />
           <DecisionTimeline />
+          <SystemHealthRow />
         </TabsContent>
 
         <TabsContent value="markets" className="space-y-5">

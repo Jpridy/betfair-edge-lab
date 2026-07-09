@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, FileDown, FlaskConical } from 'lucide-react';
+import { Download, Save, CheckCircle2, AlertTriangle, RefreshCw, Trash2, FileDown, FlaskConical } from 'lucide-react';
 import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
+import InfoHint from '@/components/InfoHint';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
@@ -78,28 +79,26 @@ export default function Settings() {
 
   return (
     <div className="space-y-5">
-      {/* Paper Proof Mode banner */}
-      <div className={cn(
-        'border rounded-lg p-3 text-xs flex items-start gap-2',
-        proofActive ? 'bg-warning/10 border-warning/30 text-warning' : 'bg-muted/20 border-border text-muted-foreground'
-      )}>
-        <FlaskConical className="h-4 w-4 shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <span className="font-bold">Paper Proof Mode {proofActive ? 'is ACTIVE' : ''}</span>
-          {!proofActive && ' — apply proof defaults to test the full pipeline end-to-end with relaxed filters.'}
-          {proofActive && ' — filters relaxed to prove paper order creation and settlement. Not suitable for live betting.'}
-          <div className="mt-1 text-[10px] opacity-80">
-            Paper Proof Mode relaxes value, confidence, spread, liquidity and AI filters. It may create bad theoretical bets. Do not use these settings for live betting.
-          </div>
+      {/* Paper Proof Mode — compact status strip */}
+      <div className="flex items-center gap-3 px-3 py-2 rounded-md border border-border-subtle bg-muted/20">
+        <div className={cn(
+          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border tracking-label shrink-0',
+          proofActive ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border'
+        )}>
+          <FlaskConical className="h-3 w-3" />
+          {proofActive ? 'Paper Proof Mode Active' : 'Paper Proof Mode'}
         </div>
+        <span className="text-[11px] text-muted-foreground flex-1">
+          {proofActive ? 'Filters relaxed for paper testing only.' : 'Apply defaults to test the full pipeline.'}
+        </span>
         <Button
           size="sm"
           variant={proofActive ? 'outline' : 'default'}
           onClick={() => applyPaperProofDefaults()}
-          className="gap-1.5 shrink-0"
+          className="gap-1.5 shrink-0 h-7 text-xs"
         >
-          <FlaskConical className="h-3.5 w-3.5" />
-          {proofActive ? 'Re-apply' : 'Apply'} Paper Proof Defaults
+          <FlaskConical className="h-3 w-3" />
+          {proofActive ? 'Re-apply Defaults' : 'Apply Defaults'}
         </Button>
       </div>
 
@@ -143,9 +142,9 @@ export default function Settings() {
                 <ToggleRow label="Debug Scan Mode — scan all markets regardless of time window (for testing)" checked={featherlessSettings?.debugScanMode || false} onChange={v => updateFeatherlessSettings({ debugScanMode: v })} />
                 <ToggleRow label="Live Trading — DISABLED (forced off)" checked={false} onChange={() => {}} />
               </div>
-              <div className="bg-success/10 border border-success/30 rounded-lg p-3 text-xs text-muted-foreground">
-                <span className="text-success font-bold">Paper Mode:</span> The bot only creates simulated paper orders. No real bets are placed. Live trading is disabled and locked.
-              </div>
+              <InfoHint tone="info" className="text-[11px]">
+                Paper Mode — the bot only creates simulated paper orders. No real bets are placed. Live trading is disabled and locked.
+              </InfoHint>
               <div className="flex justify-end pt-4 border-t border-border">
                 <Button size="sm" onClick={() => handleSave('bot')}>
                   {savedSection === 'bot' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save Bot Settings</>}
@@ -200,10 +199,9 @@ export default function Settings() {
         <TabsContent value="risk">
           <Panel title="Risk Management">
             <div className="p-4 space-y-4">
-              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
-                <ShieldAlert className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                <span>These settings control financial safety limits. Changing them affects how much the bot can stake and lose in paper trading.</span>
-              </div>
+              <InfoHint tone="warning" className="text-[11px]">
+                These settings control financial safety limits. Changing them affects how much the bot can stake and lose in paper trading.
+              </InfoHint>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Field label="Paper Bankroll ($)"><Input type="number" value={local.paperBankroll || local.bankroll} onChange={e => update('paperBankroll', +e.target.value)} /></Field>
                 <Field label="Base Stake ($)"><Input type="number" value={local.baseStake} onChange={e => update('baseStake', +e.target.value)} /></Field>
@@ -301,9 +299,9 @@ export default function Settings() {
         <TabsContent value="settlement">
           <Panel title="Settlement Configuration">
             <div className="p-4 space-y-4">
-              <div className="bg-success/10 border border-success/30 rounded-lg p-3 text-xs text-muted-foreground">
-                <span className="text-success font-bold">Real Settlement Only:</span> Settlement uses real Betfair stream results. No random or simulated settlement. When a market closes, the stream provides winner and placed runner data, which is used to settle paper orders.
-              </div>
+              <InfoHint tone="info" className="text-[11px]">
+                Real Settlement Only — settlement uses real Betfair stream results. No random or simulated settlement.
+              </InfoHint>
               <div className="space-y-2">
                 <div className="flex items-center justify-between py-1.5 border-b border-border">
                   <span className="text-sm">Result Unknown Handling</span>

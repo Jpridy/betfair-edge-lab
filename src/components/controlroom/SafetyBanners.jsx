@@ -1,8 +1,9 @@
 import React from 'react';
-import { Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2 } from 'lucide-react';
+import { Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2, FlaskConical } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildSettingsWiringCheck } from '@/lib/wiringAudit';
+import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
 
 const toneStyles = {
   danger: 'bg-danger/8 border-danger/25 text-danger',
@@ -11,69 +12,83 @@ const toneStyles = {
   success: 'bg-success/8 border-success/25 text-success',
 };
 
-function Banner({ icon: Icon, text, tone }) {
+function Pill({ icon: Icon, text, tone }) {
   return (
-    <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-md border text-[11px] font-body font-semibold tracking-label', toneStyles[tone])}>
-      <Icon className="h-3.5 w-3.5 shrink-0" />
+    <div className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-body font-semibold tracking-label', toneStyles[tone])}>
+      <Icon className="h-3 w-3 shrink-0" />
       <span>{text}</span>
     </div>
   );
 }
 
 export default function SafetyBanners() {
-  const { apiConnected, betfairConnection, featherlessSettings, lastExchangeDiagnostics, paperOrders, settings, botSettings } = useApp();
+  const { apiConnected, betfairConnection, featherlessSettings, lastExchangeDiagnostics, paperOrders, settings, botSettings, botState } = useApp();
 
-  const banners = [];
+  const proofActive = isPaperProofModeActive(settings, botSettings, featherlessSettings);
+  const botRunning = botState.running && !botState.paused;
+  const pills = [];
 
-  // Only show critical/actionable warnings here — paper mode and live-disabled are in TopBar/StatusStrip
-  if (!apiConnected || betfairConnection.dataFresh === false) {
-    banners.push(<Banner key="stale" icon={WifiOff} text="PRICE FEED STALE — Connect Betfair for live data" tone="warning" />);
+  // Paper Proof Mode — compact pill
+  if (proofActive) {
+    pills.push(<Pill key="proof" icon={FlaskConical} text="Paper Proof Mode — filters relaxed" tone="warning" />);
   }
 
+  // Risk limits relaxed — compact pill (only when proof mode active)
+  if (settings.riskLimitsDisabled && proofActive) {
+    pills.push(<Pill key="risk-off" icon={AlertTriangle} text="Risk limits relaxed for proof mode" tone="warning" />);
+  }
+
+  // Price feed stale — only when bot is running
+  if (botRunning && (!apiConnected || betfairConnection.dataFresh === false)) {
+    pills.push(<Pill key="stale" icon={WifiOff} text="Price feed stale — bot running without live data" tone="danger" />);
+  }
+
+  // Delayed API mode
   if (apiConnected && betfairConnection.streamConnectionStatus !== 'connected' && betfairConnection.streamConnectionStatus !== 'polling') {
-    banners.push(<Banner key="delayed" icon={Clock} text={`DELAYED API MODE — Stream: ${betfairConnection.streamConnectionStatus}`} tone="warning" />);
+    pills.push(<Pill key="delayed" icon={Clock} text="Delayed API mode" tone="warning" />);
   }
 
+  // OpenAI search errors
   if (featherlessSettings?.externalSearchEnabled) {
     const searchDiag = lastExchangeDiagnostics?.externalSearchDiagnostics;
     if (searchDiag && searchDiag.errors > 0) {
-      banners.push(<Banner key="openai-err" icon={Globe} text={`OPENAI SEARCH ERRORS (${searchDiag.errors} this cycle)`} tone="danger" />);
+      pills.push(<Pill key="openai-err" icon={Globe} text={`OpenAI search errors (${searchDiag.errors} this cycle)`} tone="danger" />);
     }
   }
 
+  // AI errors
   if (featherlessSettings?.enabled) {
     const aiError = lastExchangeDiagnostics?.aiStatusLog?.find(s => s.status === 'ai_error');
     if (aiError) {
-      banners.push(<Banner key="ai-err" icon={Brain} text={`FEATHERLESS AI ERROR: ${aiError.reason || 'Unknown'}`} tone="danger" />);
+      pills.push(<Pill key="ai-err" icon={Brain} text={`AI error: ${aiError.reason || 'Unknown'}`} tone="danger" />);
     }
   }
 
-  const awaitingResult = paperOrders.filter(o => o.status === 'awaiting_result').length;
-  if (awaitingResult > 0) {
-    banners.push(<Banner key="result-unknown" icon={HelpCircle} text={`${awaitingResult} ORDER(S) AWAITING RESULT`} tone="warning" />);
+  // Settlement result unknown for matched orders
+  const matchedAwaiting = paperOrders.filter(o => o.status === 'awaiting_result');
+  if (matchedAwaiting.length > 0) {
+    pills.push(<Pill key="result-unknown" icon={HelpCircle} text={`${matchedAwaiting.length} order(s) awaiting result`} tone="warning" />);
   }
 
+  // LAY liability active
   const layOrders = paperOrders.filter(o => o.side === 'LAY' && ['matched', 'partially_matched', 'pending', 'executable'].includes(o.status));
   if (layOrders.length > 0) {
     const totalLiability = layOrders.reduce((s, o) => s + (o.liability || 0), 0);
-    banners.push(<Banner key="lay-liab" icon={DollarSign} text={`LAY LIABILITY ACTIVE: $${totalLiability.toFixed(2)} at risk`} tone="danger" />);
+    pills.push(<Pill key="lay-liab" icon={DollarSign} text={`LAY liability: $${totalLiability.toFixed(2)} at risk`} tone="danger" />);
   }
 
+  // Settings mismatch
   const wiringRows = buildSettingsWiringCheck(settings, featherlessSettings, botSettings);
   const mismatchCount = wiringRows.filter(r => r.status === 'mismatch' || r.status === 'missing').length;
   if (mismatchCount > 0) {
-    banners.push(<Banner key="mismatch" icon={Settings2} text={`SETTINGS MISMATCH — ${mismatchCount} setting(s) differ between saved and bot-used values`} tone="danger" />);
+    pills.push(<Pill key="mismatch" icon={Settings2} text={`Settings mismatch — ${mismatchCount} setting(s) differ`} tone="warning" />);
   }
 
-  if (settings.riskLimitsDisabled) {
-    banners.push(<Banner key="risk-off" icon={AlertTriangle} text="RISK LIMITS DISABLED — Testing mode active" tone="danger" />);
-  }
-
-  if (banners.length === 0) return null;
+  if (pills.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {banners}
+    <div className="flex flex-wrap gap-1.5">
+      {pills}
     </div>
   );
 }

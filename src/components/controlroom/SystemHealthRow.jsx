@@ -1,26 +1,77 @@
-import React from 'react';
-import { Wifi, Activity, Database, Globe, Brain, FileCheck, CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Wifi, Activity, Database, Globe, Brain, FileCheck, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildLiveWiringStatus } from '@/lib/wiringAudit';
 
 const statusConfig = {
-  healthy: { color: 'text-success', bg: 'bg-success/8', border: 'border-success/20', dot: 'bg-success', icon: CheckCircle2 },
-  warning: { color: 'text-warning', bg: 'bg-warning/8', border: 'border-warning/20', dot: 'bg-warning', icon: AlertTriangle },
-  error: { color: 'text-danger', bg: 'bg-danger/8', border: 'border-danger/20', dot: 'bg-danger', icon: XCircle },
-  disabled: { color: 'text-muted-foreground', bg: 'bg-muted/40', border: 'border-border', dot: 'bg-muted-foreground', icon: Clock },
-  stale: { color: 'text-warning', bg: 'bg-warning/8', border: 'border-warning/20', dot: 'bg-warning', icon: Clock },
-  not_tested: { color: 'text-muted-foreground', bg: 'bg-muted/30', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
-  not_configured: { color: 'text-muted-foreground', bg: 'bg-muted/30', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
-  unknown: { color: 'text-muted-foreground', bg: 'bg-muted/30', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+  healthy: { label: 'Healthy', color: 'text-success', border: 'border-success/15', dot: 'bg-success', icon: CheckCircle2 },
+  warning: { label: 'Warning', color: 'text-warning', border: 'border-warning/15', dot: 'bg-warning', icon: AlertTriangle },
+  error: { label: 'Error', color: 'text-danger', border: 'border-danger/15', dot: 'bg-danger', icon: XCircle },
+  disabled: { label: 'Disabled', color: 'text-muted-foreground', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+  stale: { label: 'Stale', color: 'text-warning', border: 'border-warning/15', dot: 'bg-warning', icon: Clock },
+  not_tested: { label: 'Not tested', color: 'text-muted-foreground', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+  not_configured: { label: 'Not configured', color: 'text-muted-foreground', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+  unknown: { label: 'Unknown', color: 'text-muted-foreground', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
 };
 
-function HealthCard({ name, status, lastCall, lastAttempt, error, records, usedByBot, icon: Icon }) {
-  const c = statusConfig[status] || statusConfig.unknown;
+const nextActionHints = {
+  'Betfair Login/Session': {
+    not_configured: 'Open Setup to connect',
+    error: 'Check credentials in Setup',
+    disabled: 'Open Setup to connect',
+    healthy: 'Session active',
+  },
+  'Betfair Stream/Price Feed': {
+    error: 'Fetch markets or connect stream',
+    stale: 'Data may be outdated',
+    healthy: 'Live prices flowing',
+    not_configured: 'Connect Betfair session first',
+    disabled: 'Connect Betfair session first',
+  },
+  'Betfair Market Catalogue': {
+    not_configured: 'Fetch markets to load',
+    error: 'Fetch markets to load',
+    disabled: 'Fetch markets to load',
+    healthy: 'Markets loaded',
+  },
+  'Featherless AI API': {
+    disabled: 'Enable in AI & Research settings',
+    not_tested: 'Run AI test in Setup',
+    error: 'Check API key in settings',
+    healthy: 'AI responding',
+  },
+  'OpenAI External Web Search': {
+    disabled: 'Enable in AI & Research settings',
+    not_tested: 'Run search test in Setup',
+    error: 'Check OpenAI API key',
+    healthy: 'Search ready',
+  },
+  'Database/Entity Writes': {
+    healthy: 'Writing normally',
+    error: 'Check database connection',
+  },
+  'Paper Order Creation': {
+    healthy: 'Ready',
+    disabled: 'Enable auto paper trading',
+  },
+  'Settlement Service': {
+    healthy: 'Monitoring markets',
+    not_tested: 'Will settle on market close',
+  },
+  'Decision Log Export': {
+    healthy: 'Ready',
+  },
+};
+
+function HealthCard({ name, statusKey, lastCall, lastAttempt, error, records, usedByBot, icon: Icon }) {
+  const [expanded, setExpanded] = useState(false);
+  const c = statusConfig[statusKey] || statusConfig.unknown;
   const StatusIcon = c.icon;
+  const hint = nextActionHints[name]?.[statusKey] || '';
 
   return (
-    <div className={cn('rounded-lg border p-3 transition-colors hover:border-border', c.border, c.bg)}>
+    <div className={cn('rounded-lg border p-2.5 transition-colors hover:border-border', c.border)}>
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
           <Icon className={cn('h-3.5 w-3.5 shrink-0', c.color)} />
@@ -28,17 +79,32 @@ function HealthCard({ name, status, lastCall, lastAttempt, error, records, usedB
         </div>
         <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', c.color)} />
       </div>
-      <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="flex items-center gap-1.5 mb-1">
         <div className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
-        <div className={cn('text-[9px] font-body font-semibold uppercase tracking-label', c.color)}>{status}</div>
+        <span className={cn('text-[10px] font-body font-semibold', c.color)}>{c.label}</span>
       </div>
-      <div className="space-y-0.5 text-[9px] text-muted-foreground font-body">
-        {lastCall && <div>Last OK: <span className="font-mono">{new Date(lastCall).toLocaleTimeString('en-AU')}</span></div>}
-        {lastAttempt && !lastCall && <div>Last attempt: <span className="font-mono">{new Date(lastAttempt).toLocaleTimeString('en-AU')}</span></div>}
-        {records != null && <div>Records: <span className="font-mono">{records}</span></div>}
-        {error && <div className="text-danger truncate" title={error}>Err: {error}</div>}
-        <div className={cn('font-medium', usedByBot ? 'text-success' : 'text-muted-foreground')}>{usedByBot ? '✓ Used by bot' : 'Not used'}</div>
-      </div>
+      {hint && (
+        <div className="text-[9px] text-muted-foreground font-body mb-0.5">{hint}</div>
+      )}
+      {(lastCall || lastAttempt) && (
+        <div className="text-[9px] text-muted-foreground/60 font-body">
+          {lastCall ? `Checked ${new Date(lastCall).toLocaleTimeString('en-AU')}` : lastAttempt ? `Tried ${new Date(lastAttempt).toLocaleTimeString('en-AU')}` : ''}
+        </div>
+      )}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-0.5 text-[9px] text-muted-foreground/50 hover:text-muted-foreground mt-1 transition-colors"
+      >
+        {expanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+        Details
+      </button>
+      {expanded && (
+        <div className="mt-1.5 space-y-0.5 text-[9px] text-muted-foreground font-body border-t border-border-subtle pt-1.5">
+          {records != null && <div>Records: <span className="font-mono">{records}</span></div>}
+          <div>{usedByBot ? '✓ Used by bot' : 'Not used by bot'}</div>
+          {error && <div className="text-danger break-all">Error: {error}</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -77,7 +143,7 @@ export default function SystemHealthRow() {
         <HealthCard
           key={svc.serviceName}
           name={svc.serviceName}
-          status={mapStatus(svc)}
+          statusKey={mapStatus(svc)}
           lastCall={svc.lastSuccessfulCallAt}
           lastAttempt={svc.lastAttemptedCallAt}
           error={svc.lastError}
