@@ -1,16 +1,27 @@
 import React from 'react';
 import { useApp } from '@/lib/AppContext';
-import { Bot, Wifi, WifiOff, Shield, ShieldAlert, ShieldX, AlertOctagon } from 'lucide-react';
+import { Bot, Wifi, WifiOff, Shield, ShieldAlert, ShieldX, AlertOctagon, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function StatusStrip() {
-  const { botState, emergencyStop, apiConnected, botCycles } = useApp();
+  const { botState, emergencyStop, apiConnected, betfairConnection, botCycles, markets, runners } = useApp();
 
   const botRunning = botState.running && !botState.paused && !emergencyStop;
   const botPaused = botState.paused && !emergencyStop;
   const lastCycle = botCycles[0];
+
+  // Truthful risk status — only show OK if a cycle actually ran and wasn't blocked
   const riskBlocked = emergencyStop;
   const riskWarning = !emergencyStop && lastCycle?.status === 'blocked';
+  const riskOK = !emergencyStop && lastCycle?.status === 'completed' && !riskWarning;
+  const riskNotTested = !emergencyStop && !lastCycle;
+
+  // Truthful data status — only show connected if we actually have markets
+  const hasMarketData = markets.length > 0;
+  const hasPriceData = runners.some(r => r.bestBackPrice || r.bestLayPrice || r.lastPriceTraded);
+  const dataConnected = apiConnected && hasMarketData;
+  const dataStale = apiConnected && !hasMarketData;
+  const dataDisconnected = !apiConnected;
 
   const items = [
     {
@@ -22,17 +33,17 @@ export default function StatusStrip() {
     },
     {
       label: 'Data',
-      value: apiConnected ? 'API Connected' : 'Disconnected',
-      icon: apiConnected ? Wifi : WifiOff,
-      color: apiConnected ? 'text-chart-1' : 'text-chart-4',
-      dot: apiConnected ? 'bg-chart-1' : 'bg-chart-4',
+      value: dataDisconnected ? 'Disconnected' : dataStale ? 'No Markets' : dataConnected ? (hasPriceData ? 'Live Prices' : 'Markets Loaded') : 'Disconnected',
+      icon: dataConnected ? Wifi : WifiOff,
+      color: dataConnected && hasPriceData ? 'text-chart-1' : dataConnected ? 'text-chart-3' : dataStale ? 'text-chart-4' : 'text-muted-foreground',
+      dot: dataConnected && hasPriceData ? 'bg-chart-1' : dataConnected ? 'bg-chart-3' : dataStale ? 'bg-chart-4' : 'bg-muted-foreground',
     },
     {
       label: 'Risk',
-      value: riskBlocked ? 'Blocked' : riskWarning ? 'Warning' : 'OK',
-      icon: riskBlocked ? ShieldX : riskWarning ? ShieldAlert : Shield,
-      color: riskBlocked ? 'text-chart-5' : riskWarning ? 'text-chart-4' : 'text-chart-1',
-      dot: riskBlocked ? 'bg-chart-5' : riskWarning ? 'bg-chart-4' : 'bg-chart-1',
+      value: riskBlocked ? 'Blocked' : riskWarning ? 'Warning' : riskNotTested ? 'Not Tested' : riskOK ? 'OK' : 'Unknown',
+      icon: riskBlocked ? ShieldX : riskWarning ? ShieldAlert : riskNotTested ? HelpCircle : Shield,
+      color: riskBlocked ? 'text-chart-5' : riskWarning ? 'text-chart-4' : riskNotTested ? 'text-muted-foreground' : riskOK ? 'text-chart-1' : 'text-muted-foreground',
+      dot: riskBlocked ? 'bg-chart-5' : riskWarning ? 'bg-chart-4' : riskNotTested ? 'bg-muted-foreground' : riskOK ? 'bg-chart-1' : 'bg-muted-foreground',
     },
     {
       label: 'Emergency',

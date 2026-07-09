@@ -2,7 +2,9 @@
 
 export function exportToCSV(filename, rows, columns) {
   if (!rows || rows.length === 0) {
-    rows = [{}];
+    // Don't create blank rows — return early with a notification
+    console.warn(`CSV export skipped for "${filename}" — no data rows`);
+    return false;
   }
 
   const cols = columns || Object.keys(rows[0]).filter(k => !k.startsWith('_'));
@@ -31,4 +33,5 @@ export function exportToCSV(filename, rows, columns) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+  return true;
 }

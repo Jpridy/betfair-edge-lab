@@ -2,17 +2,27 @@ import React from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { Target, Ban, TrendingUp, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Target, Ban, TrendingUp, ShieldAlert, CheckCircle2, WifiOff } from 'lucide-react';
 
 export default function LatestDecision() {
-  const { botCycles, lastExchangeDiagnostics } = useApp();
+  const { botCycles, lastExchangeDiagnostics, apiConnected, markets, runners } = useApp();
   const lastCycle = botCycles[0];
 
+  // No market data — show clear message about what's missing
   if (!lastCycle) {
+    let message = 'No bot cycles yet. Start the bot or click "Force Debug Scan" to run a diagnostic cycle.';
+    if (!apiConnected) {
+      message = 'No markets loaded. Betfair session is not connected. Paste a session token or complete login to load live market data.';
+    } else if (markets.length === 0) {
+      message = 'Markets loaded but no market data received. Check stream/price feed connection.';
+    } else if (!runners.some(r => r.bestBackPrice || r.bestLayPrice)) {
+      message = 'Markets loaded but no runner prices received. Check stream/price feed connection.';
+    }
     return (
-      <Panel title="Latest Bot Decision">
-        <div className="p-6 text-center text-sm text-muted-foreground">
-          No bot cycles yet. Start the bot or click "Force Scan" to run a cycle.
+      <Panel title="Latest Bot Decision" action={<StatusBadge status="neutral">NO_CYCLE</StatusBadge>}>
+        <div className="p-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+          <WifiOff className="h-6 w-6 text-muted-foreground/50" />
+          <span>{message}</span>
         </div>
       </Panel>
     );

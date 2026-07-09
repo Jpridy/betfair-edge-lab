@@ -59,11 +59,17 @@ export default function Orders() {
       { key: 'side', label: 'Side' },
       { key: 'persistenceType', label: 'Persistence' },
       { key: 'customerRef', label: 'Customer Ref' },
+      { key: 'proofMode', label: 'Proof Mode' },
+      { key: 'dataSource', label: 'Data Source' },
       { key: 'requestedOdds', label: 'Req Odds' },
       { key: 'matchedOdds', label: 'Match Odds' },
       { key: 'matchedStake', label: 'Stake' },
+      { key: 'liability', label: 'Liability' },
       { key: 'status', label: 'Status' },
+      { key: 'settlementStatus', label: 'Settlement Status' },
       { key: 'result', label: 'Result' },
+      { key: 'resultSource', label: 'Result Source' },
+      { key: 'resultConfidence', label: 'Result Confidence' },
       { key: 'grossProfit', label: 'Gross' },
       { key: 'commission', label: 'Commission' },
       { key: 'commissionSource', label: 'Comm Source' },
@@ -202,6 +208,7 @@ export default function Orders() {
               <TableHead className="text-xs">Side</TableHead>
               <TableHead className="text-xs">Persist</TableHead>
               <TableHead className="text-xs">Mode</TableHead>
+              <TableHead className="text-xs">Proof</TableHead>
               <TableHead className="text-xs text-right">Req Odds</TableHead>
               <TableHead className="text-xs text-right">Match Odds</TableHead>
               <TableHead className="text-xs text-right">Req Stake</TableHead>
@@ -209,7 +216,9 @@ export default function Orders() {
               <TableHead className="text-xs text-right">Unmatched</TableHead>
               <TableHead className="text-xs text-right">Liability</TableHead>
               <TableHead className="text-xs">Status</TableHead>
+              <TableHead className="text-xs">Settlement</TableHead>
               <TableHead className="text-xs">Result</TableHead>
+              <TableHead className="text-xs">Result Source</TableHead>
               <TableHead className="text-xs text-right">CLV</TableHead>
               <TableHead className="text-xs text-right">Gross</TableHead>
               <TableHead className="text-xs text-right">Comm</TableHead>
@@ -220,7 +229,7 @@ export default function Orders() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={21} className="py-0">
+                <TableCell colSpan={23} className="py-0">
                   {paperOrders.length === 0 && !dataLoading ? (
                     <EmptyState
                       icon={Inbox}
@@ -249,6 +258,9 @@ export default function Orders() {
                 <TableCell className="text-xs">
                   <StatusBadge status={o.liveMode ? 'danger' : 'info'}>{o.liveMode ? 'LIVE' : 'PAPER'}</StatusBadge>
                 </TableCell>
+                <TableCell className="text-xs">
+                  {o.proofMode ? <StatusBadge status="info">PROOF</StatusBadge> : <span className="text-muted-foreground text-[10px]">—</span>}
+                </TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${(o.requestedStake || 0).toFixed(2)}</TableCell>
@@ -265,8 +277,17 @@ export default function Orders() {
                   }>{o.status}</StatusBadge>
                 </TableCell>
                 <TableCell>
+                  <StatusBadge status={
+                    o.settlementStatus === 'settled' ? 'ok' :
+                    o.settlementStatus === 'result_unknown' ? 'warning' :
+                    o.settlementStatus === 'voided' || o.settlementStatus === 'lapsed' ? 'neutral' :
+                    o.settlementStatus === 'awaiting_result' ? 'warning' : 'neutral'
+                  }>{o.settlementStatus || '—'}</StatusBadge>
+                </TableCell>
+                <TableCell>
                   <StatusBadge status={o.result === 'won' ? 'ok' : o.result === 'lost' ? 'danger' : 'neutral'}>{o.result}</StatusBadge>
                 </TableCell>
+                <TableCell className="text-[10px] text-muted-foreground">{o.resultSource || '—'}</TableCell>
                 <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{o.clv != null ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${o.grossProfit?.toFixed(2) || '0.00'}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">${o.commission?.toFixed(2) || '0.00'}</TableCell>

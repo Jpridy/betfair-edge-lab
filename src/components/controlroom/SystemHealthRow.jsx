@@ -12,6 +12,7 @@ function HealthCard({ name, status, lastCall, lastAttempt, error, records, usedB
     disabled: { color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: Clock },
     stale: { color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', icon: Clock },
     not_tested: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
+    not_configured: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
     unknown: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
   };
   const c = config[status] || config.unknown;
@@ -46,6 +47,7 @@ function mapStatus(svc) {
   if (s === 'disabled') return 'disabled';
   if (s === 'stale') return 'stale';
   if (s === 'not_tested') return 'not_tested';
+  if (s === 'not_configured') return 'not_configured';
   return 'warning';
 }
 

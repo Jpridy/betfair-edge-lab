@@ -1,0 +1,95 @@
+{
+  "name": "AppCleanUpAudit",
+  "type": "object",
+  "description": "Audit of every function, button, panel, and page in Betfair Edge Lab. Each item classifies what it does, whether it's wired to real data, and what action was taken.",
+  "properties": {
+    "auditDate": {
+      "type": "string"
+    },
+    "totalItems": {
+      "type": "number"
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "ACTIVE_USEFUL": {
+          "type": "number"
+        },
+        "ACTIVE_DEBUG": {
+          "type": "number"
+        },
+        "DISABLED_NOT_CONFIGURED": {
+          "type": "number"
+        },
+        "DUPLICATE": {
+          "type": "number"
+        },
+        "STALE_OR_FAKE": {
+          "type": "number"
+        },
+        "BROKEN": {
+          "type": "number"
+        },
+        "REMOVE": {
+          "type": "number"
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "button",
+              "input",
+              "panel",
+              "page",
+              "backend function",
+              "status card",
+              "export"
+            ]
+          },
+          "currentPurpose": {
+            "type": "string"
+          },
+          "actualDataSource": {
+            "type": "string"
+          },
+          "isWiredToRealData": {
+            "type": "boolean"
+          },
+          "lastTested": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "actionTaken": {
+            "type": "string"
+          },
+          "finalStatus": {
+            "type": "string",
+            "enum": [
+              "ACTIVE_USEFUL",
+              "ACTIVE_DEBUG",
+              "DISABLED_NOT_CONFIGURED",
+              "DUPLICATE",
+              "STALE_OR_FAKE",
+              "BROKEN",
+              "REMOVE"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

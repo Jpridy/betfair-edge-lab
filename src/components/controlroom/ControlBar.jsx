@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, Square, RefreshCw, Download, AlertOctagon, Zap, Clock, FileDown } from 'lucide-react';
+import { Play, Pause, Square, RefreshCw, Download, AlertOctagon, Zap, Clock, FileDown, CheckCircle2, XCircle } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -10,13 +10,43 @@ export default function ControlBar() {
     botState, startBot, pauseBot, stopBot, runDebugScanCycle,
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     refreshBetfairData, refreshMarketState, botCycles, exchangeOpportunities, lastExchangeDiagnostics, paperOrders, markets,
+    apiConnected,
   } = useApp();
 
   const [exporting, setExporting] = useState(false);
+  const [debugRunning, setDebugRunning] = useState(false);
+  const [refreshRunning, setRefreshRunning] = useState(false);
+  const [lastAction, setLastAction] = useState(null);
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
   const lastCycle = botCycles[0];
   const lastDecision = lastCycle?.ordersCreated > 0 ? 'BET' : lastCycle?.noBetReason ? 'NO_BET' : lastCycle ? 'NO_BET' : '—';
+
+  const handleDebugScan = async () => {
+    setDebugRunning(true);
+    setLastAction(null);
+    try {
+      await runDebugScanCycle();
+      setLastAction({ type: 'debug', success: true, message: 'Debug scan completed — no orders placed', time: new Date().toISOString() });
+    } catch (err) {
+      setLastAction({ type: 'debug', success: false, message: err.message, time: new Date().toISOString() });
+    } finally {
+      setDebugRunning(false);
+    }
+  };
+
+  const handleRefreshBetfair = async () => {
+    setRefreshRunning(true);
+    setLastAction(null);
+    try {
+      await refreshBetfairData();
+      setLastAction({ type: 'refresh', success: true, message: 'Betfair catalogue refreshed', time: new Date().toISOString() });
+    } catch (err) {
+      setLastAction({ type: 'refresh', success: false, message: err.message, time: new Date().toISOString() });
+    } finally {
+      setRefreshRunning(false);
+    }
+  };
 
   const handleExportDebugBundle = () => {
     setExporting(true);
@@ -64,10 +94,23 @@ export default function ControlBar() {
       if (paperOrders.length > 0) {
         exportToCSV('latest-paper-orders.csv', paperOrders.slice(0, 50).map(o => ({
           created_date: o.created_date || '', runnerName: o.runnerName || '', side: o.side || '',
-          status: o.status || '', requestedOdds: o.requestedOdds || '', requestedStake: o.requestedStake || '',
+          status: o.status || '', settlementStatus: o.settlementStatus || '', requestedOdds: o.requestedOdds || '', requestedStake: o.requestedStake || '',
           liability: o.liability || '', marketType: o.marketType || '', result: o.result || '',
           netProfit: o.netProfit || '', rejection_reason: o.rejection_reason || '',
           persistenceType: o.persistenceType || '', strategyName: o.strategyName || '',
+          proofMode: o.proofMode || false, dataSource: o.dataSource || '',
+          resultSource: o.resultSource || '', resultConfidence: o.resultConfidence || '',
+        })));
+      }
+      // 6. Latest settlement status
+      const settledOrAwaiting = paperOrders.filter(o => o.status === 'settled' || o.status === 'awaiting_result' || o.settlementStatus);
+      if (settledOrAwaiting.length > 0) {
+        exportToCSV('latest-settlement.csv', settledOrAwaiting.slice(0, 50).map(o => ({
+          orderId: o.id || o.customerRef || '', runnerName: o.runnerName || '', marketName: o.marketName || '',
+          side: o.side || '', status: o.status || '', settlementStatus: o.settlementStatus || '',
+          result: o.result || '', resultSource: o.resultSource || '', resultConfidence: o.resultConfidence || '',
+          netProfit: o.netProfit ?? '', commission: o.commission ?? '',
+          settledDate: o.settled_date || o.settledAt || '', placedDate: o.placed_date || o.created_date || '',
         })));
       }
     } finally {
@@ -101,17 +144,20 @@ export default function ControlBar() {
 
       {/* Action buttons */}
       <div className="flex items-center gap-1.5">
-        <Button size="sm" variant="outline" onClick={runDebugScanCycle} disabled={emergencyStop} className="gap-1.5">
-          <Zap className="h-4 w-4" /> Force Debug Scan
+        <Button size="sm" variant="outline" onClick={handleDebugScan} disabled={emergencyStop || debugRunning} className="gap-1.5" title="Read-only diagnostic — does NOT create orders">
+          {debugRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+          {debugRunning ? 'Scanning...' : 'Force Debug Scan'}
         </Button>
-        <Button size="sm" variant="outline" onClick={refreshBetfairData} className="gap-1.5">
-          <RefreshCw className="h-4 w-4" /> Refresh Betfair
+        <Button size="sm" variant="outline" onClick={handleRefreshBetfair} disabled={!apiConnected || refreshRunning} className="gap-1.5" title={apiConnected ? 'Fetch latest market catalogue from Betfair' : 'Betfair not connected'}>
+          {refreshRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {refreshRunning ? 'Refreshing...' : 'Refresh Betfair'}
         </Button>
-        <Button size="sm" variant="outline" onClick={refreshMarketState} className="gap-1.5">
+        <Button size="sm" variant="outline" onClick={refreshMarketState} className="gap-1.5" title="Refresh local state timestamps only — does not call Betfair API">
           <RefreshCw className="h-4 w-4" /> Refresh Local State
         </Button>
         <Button size="sm" variant="outline" onClick={handleExportDebugBundle} disabled={!lastCycle || exporting} className="gap-1.5">
-          <FileDown className="h-4 w-4" /> Export Debug Bundle
+          {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          Export Debug Bundle
         </Button>
       </div>
 
@@ -151,6 +197,17 @@ export default function ControlBar() {
           <div className="flex items-center gap-1.5 ml-auto">
             <span className="text-muted-foreground">Next scan in:</span>
             <span className="font-mono font-bold text-primary">{botState.nextScanCountdown}s</span>
+          </div>
+        )}
+        {/* Last action result */}
+        {lastAction && (
+          <div className={cn(
+            'flex items-center gap-1.5 ml-auto',
+            lastAction.success ? 'text-chart-1' : 'text-chart-5'
+          )}>
+            {lastAction.success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+            <span className="text-[10px]">{lastAction.message}</span>
+            <span className="text-[10px] text-muted-foreground">{new Date(lastAction.time).toLocaleTimeString('en-AU')}</span>
           </div>
         )}
       </div>

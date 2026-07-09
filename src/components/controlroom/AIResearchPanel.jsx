@@ -119,9 +119,14 @@ export default function AIResearchPanel() {
         >
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <Stat label="API Key" value="Set" icon={CheckCircle2} iconColor="text-chart-1" />
-              <Stat label="Web Search" value={extEnabled ? 'On' : 'Off'} icon={extEnabled ? CheckCircle2 : XCircle} iconColor={extEnabled ? 'text-chart-1' : 'text-chart-5'} />
+              <Stat label="API Key" value="Configured" icon={CheckCircle2} iconColor="text-chart-1" />
+              <Stat label="Web Search" value={extEnabled ? 'On' : 'Off'} icon={extEnabled ? CheckCircle2 : XCircle} iconColor={extEnabled ? 'text-chart-1' : 'text-muted-foreground'} />
             </div>
+            {!extEnabled && (
+              <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2">
+                OpenAI Web Search is disabled. Enable in Settings → AI & Research to use external search for probability adjustments.
+              </div>
+            )}
             <ExternalSearchTestButton />
           </div>
         </Panel>
