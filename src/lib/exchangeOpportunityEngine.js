@@ -62,11 +62,30 @@ export function scanEligibleMarkets(markets, runners, settings, debugScanMode = 
  * Build pre-filter market feed diagnostics from ALL loaded markets.
  * Runs before any eligibility filtering to show the raw state of the market feed.
  */
-function buildMarketFeedDiagnostics(markets, runners) {
+function buildMarketFeedDiagnostics(markets, runners, connectionState) {
   const nowMs = Date.now();
   let open = 0, closed = 0, suspended = 0, inPlay = 0, notInPlay = 0;
   let withStartTime = 0, withoutStartTime = 0;
   let withRunners = 0, withPriceData = 0, missingPriceData = 0;
+  let streamCount = 0, catalogueCount = 0, mergedCount = 0;
+  let runnersWithBackPrice = 0, runnersWithLayPrice = 0, runnersWithBackOrLay = 0;
+
+  // Count markets by source
+  for (const m of markets) {
+    const src = m.source || 'cached';
+    if (src === 'stream') streamCount++;
+    else if (src === 'catalogue') catalogueCount++;
+    else if (src === 'merged') { mergedCount++; streamCount++; catalogueCount++; }
+  }
+
+  // Count runners with price data
+  for (const r of runners) {
+    const hasBack = r.bestBackPrice && r.bestBackPrice > 0;
+    const hasLay = r.bestLayPrice && r.bestLayPrice > 0;
+    if (hasBack) runnersWithBackPrice++;
+    if (hasLay) runnersWithLayPrice++;
+    if (hasBack || hasLay) runnersWithBackOrLay++;
+  }
 
   for (const m of markets) {
     if (m.status === 'OPEN') open++;
@@ -87,10 +106,43 @@ function buildMarketFeedDiagnostics(markets, runners) {
     if (hasPriceData) withPriceData++; else missingPriceData++;
   }
 
+  // Determine price feed staleness
+  const lastStreamUpdateAt = connectionState?.lastStreamUpdateAt ?? null;
+  const lastCatalogueRefreshAt = connectionState?.lastCatalogueRefreshAt ?? null;
+  const streamConnected = connectionState?.streamConnected ?? false;
+  const apiConnected = connectionState?.apiConnected ?? false;
+
+  let priceFeedStale = false;
+  let marketDataSource = 'none';
+
+  if (markets.length === 0) {
+    marketDataSource = 'none';
+  } else if (streamConnected && mergedCount > 0) {
+    marketDataSource = 'merged';
+  } else if (streamCount > 0 && !catalogueCount) {
+    marketDataSource = 'stream_live';
+  } else if (catalogueCount > 0 && !streamCount) {
+    marketDataSource = 'rest_catalogue';
+  } else if (mergedCount > 0) {
+    marketDataSource = 'merged';
+  } else {
+    marketDataSource = 'cached_stale';
+  }
+
+  // Stale if: connected but no price updates in 60s (stream) or 5min (catalogue only)
+  if (apiConnected && withPriceData === 0) {
+    priceFeedStale = true;
+  }
+  if (lastStreamUpdateAt && streamConnected) {
+    const ageMs = nowMs - new Date(lastStreamUpdateAt).getTime();
+    if (ageMs > 60000) priceFeedStale = true;
+  }
+
   return {
     marketsInMemory: markets.length,
-    streamMarketsCount: markets.length,
-    catalogueMarketsCount: markets.length,
+    streamMarketsCount: streamCount,
+    catalogueMarketsCount: catalogueCount,
+    mergedMarketsCount: mergedCount,
     marketsWithStartTime: withStartTime,
     marketsWithoutStartTime: withoutStartTime,
     marketsOpen: open,
@@ -101,6 +153,14 @@ function buildMarketFeedDiagnostics(markets, runners) {
     marketsWithRunners: withRunners,
     marketsWithPriceData: withPriceData,
     marketsMissingPriceData: missingPriceData,
+    runnersInMemory: runners.length,
+    runnersWithBackPrice,
+    runnersWithLayPrice,
+    runnersWithBackOrLay,
+    lastStreamUpdateAt,
+    lastCatalogueRefreshAt,
+    priceFeedStale,
+    marketDataSource,
   };
 }
 
@@ -261,7 +321,7 @@ function buildMarketOnlyAIResult(cluster, marketRunners) {
  */
 export async function runExchangeCycle({ markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, callExternalSearch, connectionState }) {
   // ── Build pre-filter diagnostics from ALL loaded markets ──
-  const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners);
+  const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners, connectionState);
 
   // ── Build time-window funnel ──
   const debugScanMode = featherlessSettings?.debugScanMode === true;

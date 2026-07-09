@@ -14,13 +14,40 @@ Deno.serve(async (req) => {
     try { body = await req.json(); } catch { body = {}; }
 
     const sessionToken = body?.sessionToken;
+    const requestedMarketTypes = body?.requestedMarketTypes || ['WIN', 'PLACE', 'MATCH_BET'];
+
+    const errors = [];
+
+    if (!appKey) {
+      errors.push('BETFAIR_APP_KEY missing. Configure BETFAIR_APP_KEY secret.');
+    }
+    if (!sessionToken) {
+      errors.push('Betfair session token missing. Open Setup and connect with session token.');
+    }
+    if (!proxyUrl) {
+      errors.push('BETFAIR_PROXY_URL missing. Configure Cloudflare Worker proxy.');
+    }
 
     if (!appKey || !sessionToken) {
-      return Response.json({ error: 'Betfair session token or App Key not configured' }, { status: 400 });
+      return Response.json({
+        status: 'error',
+        error: errors.join(' '),
+        errors,
+        requestedMarketTypes,
+        markets: [],
+        runners: [],
+      }, { status: 200 });
     }
 
     if (!proxyUrl) {
-      return Response.json({ error: 'BETFAIR_PROXY_URL not configured. Market data requires the Cloudflare Worker proxy.' }, { status: 500 });
+      return Response.json({
+        status: 'error',
+        error: errors.join(' '),
+        errors,
+        requestedMarketTypes,
+        markets: [],
+        runners: [],
+      }, { status: 200 });
     }
 
     const apiBase = jurisdiction === 'AU'
@@ -51,14 +78,14 @@ Deno.serve(async (req) => {
     const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
 
-    // 1. List Market Catalogue — Horse Racing (eventType 7), WIN markets
+    // 1. List Market Catalogue — Horse Racing (eventType 7), WIN + PLACE + MATCH_BET
     const catalogueBody = {
       filter: {
         eventTypeIds: ['7'],
-        marketTypeCodes: ['WIN'],
+        marketTypeCodes: requestedMarketTypes,
         marketStartTime: { from: fromTime, to: toTime },
       },
-      maxResults: '50',
+      maxResults: '200',
       sort: 'FIRST_TO_START',
       marketProjection: [
         'EVENT',
@@ -75,42 +102,88 @@ Deno.serve(async (req) => {
 
     // Session expired?
     if (catalogueText.includes('UNAUTHORIZED') || catalogueText.includes('INVALID_SESSION') || catalogueText.includes('NO_SESSION')) {
-      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired' }, { status: 401 });
+      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired', errors: ['Betfair session expired'], requestedMarketTypes, markets: [], runners: [] }, { status: 200 });
     }
 
     if (!catalogueRes.ok) {
-      return Response.json({ error: `Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 200)}` }, { status: 200 });
+      return Response.json({
+        status: 'error',
+        error: `Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 300)}`,
+        errors: [`Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 300)}`],
+        requestedMarketTypes,
+        markets: [],
+        runners: [],
+      }, { status: 200 });
     }
 
     let catalogues;
     try { catalogues = JSON.parse(catalogueText); } catch {
-      return Response.json({ error: 'Betfair returned non-JSON response for catalogue' }, { status: 200 });
+      return Response.json({
+        status: 'error',
+        error: 'Betfair returned non-JSON response for catalogue',
+        errors: ['Betfair returned non-JSON response for catalogue'],
+        requestedMarketTypes,
+        markets: [],
+        runners: [],
+      }, { status: 200 });
     }
 
-    if (!Array.isArray(catalogues) || catalogues.length === 0) {
-      return Response.json({ status: 'success', markets: [], runners: [], sessionToken, fetchedAt: new Date().toISOString() });
+    const rawMarketCount = Array.isArray(catalogues) ? catalogues.length : 0;
+
+    if (!Array.isArray(catalogues) || rawMarketCount === 0) {
+      return Response.json({
+        status: 'success',
+        markets: [],
+        runners: [],
+        sessionToken,
+        fetchedAt: new Date().toISOString(),
+        isDelayed: false,
+        requestedMarketTypes,
+        receivedMarketTypes: [],
+        winMarketsReturned: 0,
+        placeMarketsReturned: 0,
+        h2hMarketsReturned: 0,
+        unknownMarketsReturned: 0,
+        rawMarketCount: 0,
+        rawBookCount: 0,
+        errors: [],
+      });
     }
 
     // 2. List Market Book — get live prices for all markets
+    // Betfair listMarketBook supports max 100 marketIds per call; batch if needed
     const marketIds = catalogues.map(c => c.marketId);
-    const bookBody = {
-      marketIds,
-      priceProjection: {
-        priceData: ['EX_BEST_OFFERS', 'EX_TRADED'],
-        virtualise: 'true',
-      },
-    };
-
-    const bookRes = await callBetfair(`${bettingBase}/listMarketBook/`, authHeaders, JSON.stringify(bookBody));
-    const bookText = await bookRes.text();
     let books = [];
-    if (bookRes.ok) {
-      try { books = JSON.parse(bookText); } catch { books = []; }
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < marketIds.length; i += BATCH_SIZE) {
+      const batchIds = marketIds.slice(i, i + BATCH_SIZE);
+      const bookBody = {
+        marketIds: batchIds,
+        priceProjection: {
+          priceData: ['EX_BEST_OFFERS', 'EX_TRADED'],
+          virtualise: 'true',
+        },
+      };
+      try {
+        const bookRes = await callBetfair(`${bettingBase}/listMarketBook/`, authHeaders, JSON.stringify(bookBody));
+        if (bookRes.ok) {
+          const batchBooks = await bookRes.json();
+          if (Array.isArray(batchBooks)) books = books.concat(batchBooks);
+        } else {
+          errors.push(`listMarketBook batch ${i / BATCH_SIZE + 1} failed (HTTP ${bookRes.status})`);
+        }
+      } catch (e) {
+        errors.push(`listMarketBook batch error: ${e.message}`);
+      }
     }
+
+    const rawBookCount = books.length;
 
     // 3. Transform into app format
     const markets = [];
     const runners = [];
+    const receivedMarketTypesSet = new Set();
+    let winCount = 0, placeCount = 0, h2hCount = 0, unknownCount = 0;
 
     for (const cat of catalogues) {
       const book = books.find(b => b.marketId === cat.marketId);
@@ -122,6 +195,16 @@ Deno.serve(async (req) => {
       const venue = cat.event?.venue || '';
       const eventName = cat.event?.name || '';
       const marketName = cat.marketName || eventName || cat.marketId;
+      const marketTypeCode = cat.description?.marketType || cat.marketName || 'UNKNOWN';
+
+      receivedMarketTypesSet.add(marketTypeCode);
+
+      // Classify market type
+      const mtUpper = marketTypeCode.toUpperCase();
+      if (mtUpper === 'WIN') winCount++;
+      else if (mtUpper === 'PLACE' || mtUpper.includes('TO_BE_PLACED')) placeCount++;
+      else if (mtUpper === 'MATCH_BET' || mtUpper.includes('HEAD') || mtUpper.includes('H2H') || mtUpper.includes('MATCH')) h2hCount++;
+      else unknownCount++;
 
       markets.push({
         id: cat.marketId,
@@ -132,7 +215,9 @@ Deno.serve(async (req) => {
         eventName,
         marketName,
         marketType: cat.description?.marketType || 'WIN',
+        marketTypeCode,
         startTime: cat.marketStartTime || cat.description?.marketTime || null,
+        marketStartTime: cat.marketStartTime || cat.description?.marketTime || null,
         status: book.status || 'OPEN',
         inPlay: book.inplay || false,
         totalMatched: book.totalMatched || 0,
@@ -142,6 +227,7 @@ Deno.serve(async (req) => {
         bspMarket: cat.description?.bspMarket || false,
         marketBaseRate: cat.description?.marketBaseRate ?? null,
         watched: false,
+        source: 'catalogue',
       });
 
       // Sort runners by best back price to determine favourite rank
@@ -216,6 +302,7 @@ Deno.serve(async (req) => {
           marketId: cat.marketId,
           betfairSelectionId: String(runner.selectionId),
           runnerName: runner.runnerName || `Selection ${runner.selectionId}`,
+          horseNumber: runner.sortPriority || 0,
           status: runnerBook?.status || runner.status || 'ACTIVE',
           bestBackPrice,
           bestBackSize: bestBack?.size || 0,
@@ -230,6 +317,7 @@ Deno.serve(async (req) => {
           formDataStatus,
           formDataCompleteness,
           raceFormProfile,
+          source: 'catalogue',
         });
       }
     }
@@ -241,8 +329,17 @@ Deno.serve(async (req) => {
       sessionToken,
       fetchedAt: new Date().toISOString(),
       isDelayed: books[0]?.isMarketDataDelayed || false,
+      requestedMarketTypes,
+      receivedMarketTypes: [...receivedMarketTypesSet],
+      winMarketsReturned: winCount,
+      placeMarketsReturned: placeCount,
+      h2hMarketsReturned: h2hCount,
+      unknownMarketsReturned: unknownCount,
+      rawMarketCount,
+      rawBookCount,
+      errors,
     });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error.message, errors: [error.message], status: 'error', markets: [], runners: [] }, { status: 200 });
   }
 });

@@ -2,16 +2,16 @@ import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2, RefreshCw, ArrowRight, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, ArrowRight, ShieldCheck, Database, Radio } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 const STEPS = [
-  { id: 'betfair_login', name: 'Betfair Login / Session' },
-  { id: 'betfair_catalogue', name: 'Betfair Market Catalogue' },
+  { id: 'betfair_session', name: 'Test Betfair Session' },
+  { id: 'fetch_markets', name: 'Fetch Betfair Markets Now' },
+  { id: 'check_prices', name: 'Check Betfair Prices Now' },
   { id: 'betfair_stream', name: 'Betfair Stream / Price Feed' },
-  { id: 'price_data', name: 'Price Data Available' },
   { id: 'openai_api', name: 'OpenAI API Key (Status Check)' },
   { id: 'openai_search', name: 'OpenAI Web Search (Live Test)' },
   { id: 'featherless_api', name: 'Featherless AI API' },
@@ -22,7 +22,7 @@ const STEPS = [
 ];
 
 export default function SetupWizard() {
-  const { apiConnected, betfairConnection, featherlessSettings, settings, markets, runners, paperOrders, addAuditLog } = useApp();
+  const { apiConnected, betfairConnection, featherlessSettings, settings, markets, runners, paperOrders, addAuditLog, refreshBetfairData, betfairSessionToken } = useApp();
   const [results, setResults] = useState({});
   const [testing, setTesting] = useState(null);
   const [runningAll, setRunningAll] = useState(false);
@@ -33,47 +33,98 @@ export default function SetupWizard() {
 
     try {
       switch (stepId) {
-        case 'betfair_login':
-          if (apiConnected) {
-            result = { status: 'passed', message: 'Betfair session active', timestamp: new Date().toISOString() };
-          } else {
-            result = { status: 'failed', message: 'Not connected. Go to Settings → Betfair to connect.', timestamp: new Date().toISOString() };
+        // ── A. Test Betfair Session ──
+        case 'betfair_session': {
+          try {
+            const resp = await base44.functions.invoke('betfairLogin', { sessionToken: betfairSessionToken });
+            const data = resp.data;
+            const sessionTokenPresent = !!betfairSessionToken;
+            const appKeyPresent = !!data?.appKey;
+            const proxyUrlPresent = !!data?.proxyUrl;
+            const betfairSessionValid = data?.status === 'success' && sessionTokenPresent;
+
+            result = {
+              status: betfairSessionValid ? 'passed' : 'failed',
+              message: betfairSessionValid
+                ? `Session valid. App Key: ${appKeyPresent ? '✓' : '✗'}, Proxy: ${proxyUrlPresent ? '✓' : '✗'}, Jurisdiction: ${data?.jurisdiction || '—'}`
+                : `Session check failed. ${!sessionTokenPresent ? 'No session token. ' : ''}${!appKeyPresent ? 'App key missing. ' : ''}${!proxyUrlPresent ? 'Proxy URL missing. ' : ''}${data?.error || ''}`,
+              timestamp: new Date().toISOString(),
+              detail: { sessionTokenPresent, appKeyPresent, proxyUrlPresent, betfairSessionValid, jurisdiction: data?.jurisdiction, error: data?.error },
+            };
+          } catch (err) {
+            result = { status: 'failed', message: `Session test failed: ${err.message}`, timestamp: new Date().toISOString() };
           }
           break;
+        }
 
-        case 'betfair_catalogue':
-          if (apiConnected && markets.length > 0) {
-            result = { status: 'passed', message: `${markets.length} markets loaded`, timestamp: new Date().toISOString() };
+        // ── B. Fetch Betfair Markets Now ──
+        case 'fetch_markets': {
+          if (!betfairSessionToken) {
+            result = { status: 'failed', message: 'Betfair session missing. Open Setup and connect with session token.', timestamp: new Date().toISOString() };
+            break;
+          }
+          try {
+            const fetchResult = await refreshBetfairData();
+            if (fetchResult?.error) {
+              result = { status: 'failed', message: fetchResult.error, timestamp: new Date().toISOString(), detail: fetchResult };
+            } else {
+              const d = fetchResult;
+              result = {
+                status: d.marketsReturned > 0 ? 'passed' : 'warning',
+                message: `${d.marketsReturned} markets, ${d.runnersReturned} runners, ${d.pricedRunnersReturned} priced. WIN: ${d.winMarketsReturned}, PLACE: ${d.placeMarketsReturned}, H2H: ${d.h2hMarketsReturned}. First: ${d.firstMarketName || '—'}`,
+                timestamp: new Date().toISOString(),
+                detail: d,
+              };
+            }
+          } catch (err) {
+            result = { status: 'failed', message: `Fetch failed: ${err.message}`, timestamp: new Date().toISOString() };
+          }
+          break;
+        }
+
+        // ── C. Check Betfair Prices Now ──
+        case 'check_prices': {
+          const marketsInMemory = markets.length;
+          const runnersInMemory = runners.length;
+          const runnersWithBack = runners.filter(r => r.bestBackPrice && r.bestBackPrice > 0).length;
+          const runnersWithLay = runners.filter(r => r.bestLayPrice && r.bestLayPrice > 0).length;
+          const runnersWithBackOrLay = runners.filter(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)).length;
+          const marketsWithPriceData = new Set();
+          for (const r of runners) {
+            if ((r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)) {
+              marketsWithPriceData.add(r.marketId);
+            }
+          }
+          const firstPricedRunner = runners.find(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
+          const lastPriceUpdateAt = betfairConnection?.lastMarketSyncTime || betfairConnection?.lastPriceFetchAt || null;
+          const priceFeedStale = betfairConnection?.priceFeedStale ?? (runnersWithBackOrLay === 0);
+
+          if (runnersWithBackOrLay > 0) {
+            result = {
+              status: 'passed',
+              message: `${marketsInMemory} markets, ${runnersInMemory} runners in memory. ${runnersWithBackOrLay} runners with prices. First: ${firstPricedRunner?.runnerName || '—'} @ ${firstPricedRunner?.bestBackPrice || '—'}/${firstPricedRunner?.bestLayPrice || '—'}`,
+              timestamp: new Date().toISOString(),
+              detail: { marketsInMemory, runnersInMemory, marketsWithPriceData: marketsWithPriceData.size, runnersWithBackPrice: runnersWithBack, runnersWithLayPrice: runnersWithLay, runnersWithBackOrLayPrice: runnersWithBackOrLay, firstPricedRunner: firstPricedRunner?.runnerName, firstBackPrice: firstPricedRunner?.bestBackPrice, firstLayPrice: firstPricedRunner?.bestLayPrice, lastPriceUpdateAt, priceFeedStale },
+            };
+          } else if (marketsInMemory > 0) {
+            result = { status: 'warning', message: `${marketsInMemory} markets in memory but 0 runners with price data. Stream may not have connected or prices not yet populated.`, timestamp: new Date().toISOString(), detail: { marketsInMemory, runnersInMemory, marketsWithPriceData: 0, runnersWithBackPrice: 0, runnersWithLayPrice: 0, runnersWithBackOrLayPrice: 0, lastPriceUpdateAt, priceFeedStale: true } };
+          } else {
+            result = { status: 'failed', message: 'No markets loaded. Fetch Betfair Markets first.', timestamp: new Date().toISOString(), detail: { marketsInMemory: 0, runnersInMemory: 0, priceFeedStale: true } };
+          }
+          break;
+        }
+
+        case 'betfair_stream':
+          if (betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling') {
+            result = { status: 'passed', message: `Stream: ${betfairConnection.streamConnectionStatus}, ${markets.length} markets live`, timestamp: new Date().toISOString() };
           } else if (apiConnected) {
-            result = { status: 'warning', message: 'Connected but no markets loaded. Wait for stream to populate.', timestamp: new Date().toISOString() };
+            result = { status: 'warning', message: `Connected but stream status: ${betfairConnection.streamConnectionStatus}. REST catalogue data still works.`, timestamp: new Date().toISOString() };
           } else {
             result = { status: 'failed', message: 'Betfair not connected', timestamp: new Date().toISOString() };
           }
           break;
 
-        case 'betfair_stream':
-          if (betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling') {
-            result = { status: 'passed', message: `Stream: ${betfairConnection.streamConnectionStatus}`, timestamp: new Date().toISOString() };
-          } else {
-            result = { status: 'failed', message: `Stream status: ${betfairConnection.streamConnectionStatus}`, timestamp: new Date().toISOString() };
-          }
-          break;
-
-        case 'price_data': {
-          // Real check: at least one runner with bestBackPrice or bestLayPrice > 0
-          const runnersWithPrices = runners.filter(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
-          if (runnersWithPrices.length > 0) {
-            result = { status: 'passed', message: `${runnersWithPrices.length} runners with live price data`, timestamp: new Date().toISOString() };
-          } else if (markets.length > 0) {
-            result = { status: 'warning', message: 'Markets loaded but no runners with price data yet. Wait for stream to populate.', timestamp: new Date().toISOString() };
-          } else {
-            result = { status: 'failed', message: 'No markets loaded — cannot check price data.', timestamp: new Date().toISOString() };
-          }
-          break;
-        }
-
         case 'openai_api': {
-          // Real check: call openAIWebSearch with action: "status_check"
           try {
             const resp = await base44.functions.invoke('openAIWebSearch', { action: 'status_check' });
             const check = resp.data?.statusCheck;
@@ -89,7 +140,6 @@ export default function SetupWizard() {
         }
 
         case 'openai_search': {
-          // Real check: call openAIWebSearch with a small test market
           if (!featherlessSettings?.externalSearchEnabled) {
             result = { status: 'skipped', message: 'External search disabled. Enable in Settings Hub → AI & Research to test.', timestamp: new Date().toISOString() };
             break;
@@ -137,7 +187,6 @@ export default function SetupWizard() {
           break;
 
         case 'database': {
-          // Real check: write a test AuditLog and confirm
           try {
             const testLog = {
               action: 'Setup Wizard Database Test',
@@ -247,35 +296,43 @@ export default function SetupWizard() {
           const isTesting = testing === step.id;
           return (
             <Panel key={step.id}>
-              <div className="flex items-center gap-3 p-3">
-                <div className="text-[10px] font-mono text-muted-foreground w-5">{idx + 1}</div>
-                <div className="flex-1">
-                  <div className="text-sm font-bold text-foreground">{step.name}</div>
+              <div className="p-3">
+                <div className="flex items-center gap-3">
+                  <div className="text-[10px] font-mono text-muted-foreground w-5">{idx + 1}</div>
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-foreground">{step.name}</div>
+                    {result && (
+                      <div className={cn(
+                        'text-xs mt-0.5',
+                        result.status === 'passed' && 'text-success',
+                        result.status === 'failed' && 'text-danger',
+                        result.status === 'warning' && 'text-warning',
+                        result.status === 'skipped' && 'text-muted-foreground'
+                      )}>
+                        {result.message}
+                      </div>
+                    )}
+                  </div>
                   {result && (
-                    <div className={cn(
-                      'text-xs mt-0.5',
-                      result.status === 'passed' && 'text-success',
-                      result.status === 'failed' && 'text-danger',
-                      result.status === 'warning' && 'text-warning',
-                      result.status === 'skipped' && 'text-muted-foreground'
-                    )}>
-                      {result.message}
-                    </div>
+                    <StatusBadge status={
+                      result.status === 'passed' ? 'ok' :
+                      result.status === 'failed' ? 'danger' :
+                      result.status === 'warning' ? 'warning' : 'neutral'
+                    }>
+                      {result.status.toUpperCase()}
+                    </StatusBadge>
                   )}
+                  <Button size="sm" variant="outline" onClick={() => runTest(step.id)} disabled={isTesting} className="gap-1.5">
+                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Test
+                  </Button>
                 </div>
-                {result && (
-                  <StatusBadge status={
-                    result.status === 'passed' ? 'ok' :
-                    result.status === 'failed' ? 'danger' :
-                    result.status === 'warning' ? 'warning' : 'neutral'
-                  }>
-                    {result.status.toUpperCase()}
-                  </StatusBadge>
+                {result?.detail && (
+                  <details className="mt-2">
+                    <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">Details</summary>
+                    <pre className="mt-1 text-[10px] font-mono text-muted-foreground bg-muted/20 rounded p-2 overflow-auto max-h-48">{JSON.stringify(result.detail, null, 2)}</pre>
+                  </details>
                 )}
-                <Button size="sm" variant="outline" onClick={() => runTest(step.id)} disabled={isTesting} className="gap-1.5">
-                  {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  Test
-                </Button>
               </div>
             </Panel>
           );

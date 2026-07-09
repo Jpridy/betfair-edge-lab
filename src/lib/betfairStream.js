@@ -160,16 +160,16 @@ export class BetfairStreamClient {
     // Filters go broad → narrow so we get the most data possible while
     // staying under Betfair's 200-market-per-subscription limit.
     const filters = [
-      // Level 0 — global horse racing (broadest)
-      { eventTypeIds: ['7'], marketTypes: ['WIN'] },
+      // Level 0 — global horse racing WIN + PLACE + MATCH_BET (broadest)
+      { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE', 'MATCH_BET'] },
       // Level 1 — AU + GB + IE horse racing
-      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB', 'IE'] },
+      { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE', 'MATCH_BET'], countryCodes: ['AU', 'GB', 'IE'] },
       // Level 2 — AU + GB horse racing
-      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU', 'GB'] },
-      // Level 3 — AU only horse racing
+      { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE', 'MATCH_BET'], countryCodes: ['AU', 'GB'] },
+      // Level 3 — AU only horse racing (drop MATCH_BET — may not exist for AU)
+      { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE'], countryCodes: ['AU'] },
+      // Level 4 — AU WIN only (narrowest fallback)
       { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU'] },
-      // Level 4 — AU BSP markets only (narrowest)
-      { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU'], bspMarket: true },
     ];
     const filter = filters[Math.min(filterLevel, filters.length - 1)];
     this._subscriptionFilterLevel = filterLevel;

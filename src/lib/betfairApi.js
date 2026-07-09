@@ -149,10 +149,10 @@ export async function fetchBetfairMarkets(ssoid) {
   const catalogueBody = {
     filter: {
       eventTypeIds: ['7'],
-      marketTypeCodes: ['WIN'],
+      marketTypeCodes: ['WIN', 'PLACE', 'MATCH_BET'],
       marketStartTime: { from: fromTime, to: toTime },
     },
-    maxResults: '50',
+    maxResults: '200',
     sort: 'FIRST_TO_START',
     marketProjection: ['EVENT', 'MARKET_DESCRIPTION', 'RUNNER_METADATA', 'RUNNER_DESCRIPTION', 'MARKET_START_TIME'],
   };
@@ -222,6 +222,7 @@ export async function fetchBetfairMarkets(ssoid) {
       eventName,
       marketName,
       marketType: cat.description?.marketType || 'WIN',
+      marketTypeCode: cat.description?.marketType || cat.marketName || 'UNKNOWN',
       startTime: cat.marketStartTime || cat.description?.marketTime || null,
       marketStartTime: cat.marketStartTime || cat.description?.marketTime || null,
       raceNumber: parseRaceNumber(marketName, eventName),
@@ -230,6 +231,7 @@ export async function fetchBetfairMarkets(ssoid) {
       totalMatched: book.totalMatched || 0,
       numberOfRunners: (cat.runners || []).length,
       watched: false,
+      source: 'catalogue',
     });
 
     const sortedRunners = [...(cat.runners || [])].sort((a, b) => {
@@ -268,6 +270,7 @@ export async function fetchBetfairMarkets(ssoid) {
         favouriteRank: idx + 1,
         isFavourite: idx === 0,
         isOutsider: idx === sortedRunners.length - 1,
+        source: 'catalogue',
       });
     }
   }

@@ -15,6 +15,7 @@ import { settleOrderWithResult, lapseUnmatchedOrder } from '@/lib/settlementServ
 import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { runSettlementCheck } from '@/lib/settlementWatcher';
+import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 
 // ── Metadata fields to strip when loading settings from DB ──
 const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
@@ -104,6 +105,13 @@ export function AppProvider({ children }) {
     lastMarketSyncTime: null,
     lastOrderSyncTime: null,
     lastClearedOrderSyncTime: null,
+    lastCatalogueRefreshAt: null,
+    lastPriceFetchAt: null,
+    catalogueMarketsCount: 0,
+    catalogueRunnersCount: 0,
+    marketsWithPriceData: 0,
+    marketCatalogueError: null,
+    priceFeedStale: false,
     dataFreshnessLimit: 30,
     dataFresh: true,
     accountFundsAvailable: false,
@@ -711,6 +719,13 @@ export function AppProvider({ children }) {
       lastMarketSyncTime: null,
       lastOrderSyncTime: null,
       lastClearedOrderSyncTime: null,
+      lastCatalogueRefreshAt: null,
+      lastPriceFetchAt: null,
+      catalogueMarketsCount: 0,
+      catalogueRunnersCount: 0,
+      marketsWithPriceData: 0,
+      marketCatalogueError: null,
+      priceFeedStale: false,
     }));
     if (streamClientRef.current) {
       try { streamClientRef.current.disconnect(); } catch (_) {}
@@ -1068,47 +1083,122 @@ export function AppProvider({ children }) {
     }
   };
 
-  // ── Refresh Betfair Data — calls backend to refresh market catalogue ──
+  // ── Refresh Betfair Data — calls backend to fetch REST catalogue + book data ──
+  // This populates markets/runners even when the stream is disconnected.
+  // Returns a result object for the UI to display.
   const refreshBetfairData = async () => {
     const s = stateRef.current;
-    if (!s.apiConnected || !s.betfairSessionToken) {
-      addAuditLog('Refresh Failed', 'api', 'warning', 'Betfair not connected — cannot refresh catalogue');
-      return;
+
+    // Pre-flight checks
+    if (!s.betfairSessionToken) {
+      const msg = 'Betfair session missing. Open Setup and connect with session token.';
+      addAuditLog('Refresh Failed', 'api', 'warning', msg);
+      setBetfairConnection(prev => ({ ...prev, marketCatalogueError: msg }));
+      return { error: msg, sessionTokenPresent: false };
     }
-    addAuditLog('Betfair Catalogue Refresh', 'api', 'info', 'Fetching latest market catalogue from Betfair');
+
+    addAuditLog('Betfair Catalogue Refresh', 'api', 'info', 'Fetching market catalogue + book data from Betfair REST API');
     try {
-      const resp = await base44.functions.invoke('betfairMarkets', { sessionToken: s.betfairSessionToken });
+      const resp = await base44.functions.invoke('betfairMarkets', {
+        sessionToken: s.betfairSessionToken,
+        requestedMarketTypes: ['WIN', 'PLACE', 'MATCH_BET'],
+      });
+
       if (resp.data?.error) throw new Error(resp.data.error);
+
+      const catMarkets = resp.data?.markets || [];
       const catRunners = resp.data?.runners || [];
-      if (catRunners.length > 0) {
-        const nameMap = new Map();
-        const metaMap = new Map();
-        for (const r of catRunners) {
-          if (r.betfairSelectionId) {
-            nameMap.set(String(r.betfairSelectionId), r.runnerName || '');
-            if (r.raceFormProfile) metaMap.set(String(r.betfairSelectionId), r.raceFormProfile);
-          }
-        }
-        catalogueRef.current = { nameMap, metaMap, fetchedAt: Date.now() };
-        // Merge names into existing runners
-        setRunners(prev => prev.map(r => {
-          const selId = String(r.betfairSelectionId || r.selectionId || '');
-          const properName = nameMap.get(selId);
-          const meta = metaMap.get(selId);
-          return {
-            ...r,
-            runnerName: (properName && (!r.runnerName || r.runnerName.startsWith('Selection '))) ? properName : r.runnerName,
-            raceFormProfile: meta || r.raceFormProfile,
-          };
-        }));
-      }
       const now = new Date().toISOString();
-      setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: now, dataFresh: true, lastCatalogueRefreshAt: now }));
+      const fetchedAt = resp.data?.fetchedAt || now;
+
+      // Build catalogue name/meta maps for stream enrichment
+      const nameMap = new Map();
+      const metaMap = new Map();
+      for (const r of catRunners) {
+        const selId = String(r.betfairSelectionId || r.selectionId || '');
+        if (selId) {
+          nameMap.set(selId, r.runnerName || '');
+          if (r.raceFormProfile) metaMap.set(selId, r.raceFormProfile);
+        }
+      }
+      catalogueRef.current = { nameMap, metaMap, fetchedAt: Date.now() };
+
+      // Merge catalogue data with existing (stream or cached) data
+      const streamMarkets = s.markets.filter(m => m.source === 'stream' || m.source === 'merged');
+      const streamRunners = s.runners.filter(r => r.source === 'stream' || r.source === 'merged');
+
+      const merged = mergeBetfairMarkets({
+        existingMarkets: s.markets,
+        existingRunners: s.runners,
+        catalogueMarkets: catMarkets,
+        catalogueRunners: catRunners,
+        streamMarkets,
+        streamRunners,
+      });
+
+      // Count priced runners
+      const pricedRunners = merged.runners.filter(r =>
+        (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)
+      ).length;
+      const marketsWithPriceData = merged.markets.filter(m => m.hasPriceData).length;
+
+      setMarkets(merged.markets);
+      setRunners(merged.runners);
+
+      setBetfairConnection(prev => ({
+        ...prev,
+        lastMarketSyncTime: now,
+        dataFresh: true,
+        lastCatalogueRefreshAt: now,
+        lastPriceFetchAt: now,
+        catalogueMarketsCount: catMarkets.length,
+        catalogueRunnersCount: catRunners.length,
+        marketsWithPriceData,
+        marketCatalogueError: null,
+        priceFeedStale: pricedRunners === 0,
+      }));
+
       setSyncState(prev => ({ ...prev, lastCatalogueSync: now }));
-      addAuditLog('Betfair Catalogue Refreshed', 'api', 'info', `${catRunners.length} runners updated from catalogue`);
+
+      const winCount = resp.data?.winMarketsReturned ?? catMarkets.filter(m => (m.marketTypeCode || m.marketType || '').toUpperCase() === 'WIN').length;
+      const placeCount = resp.data?.placeMarketsReturned ?? catMarkets.filter(m => {
+        const t = (m.marketTypeCode || m.marketType || '').toUpperCase();
+        return t === 'PLACE' || t.includes('TO_BE_PLACED');
+      }).length;
+      const h2hCount = resp.data?.h2hMarketsReturned ?? catMarkets.filter(m => {
+        const t = (m.marketTypeCode || m.marketType || '').toUpperCase();
+        return t === 'MATCH_BET' || t.includes('HEAD') || t.includes('H2H') || t.includes('MATCH');
+      }).length;
+
+      addAuditLog('Betfair Catalogue Refreshed', 'api', 'info',
+        `${catMarkets.length} markets, ${catRunners.length} runners, ${pricedRunners} priced. WIN: ${winCount}, PLACE: ${placeCount}, H2H: ${h2hCount}`);
+
+      return {
+        error: null,
+        sessionTokenPresent: true,
+        appKeyPresent: !!s.betfairConnection?.appKey,
+        proxyUrlPresent: true, // backend would have errored if missing
+        marketsReturned: catMarkets.length,
+        runnersReturned: catRunners.length,
+        pricedRunnersReturned: pricedRunners,
+        winMarketsReturned: winCount,
+        placeMarketsReturned: placeCount,
+        h2hMarketsReturned: h2hCount,
+        receivedMarketTypes: resp.data?.receivedMarketTypes || [],
+        isDelayed: resp.data?.isDelayed || false,
+        rawMarketCount: resp.data?.rawMarketCount || 0,
+        rawBookCount: resp.data?.rawBookCount || 0,
+        firstMarketName: catMarkets[0]?.marketName || null,
+        firstMarketStartTime: catMarkets[0]?.startTime || catMarkets[0]?.marketStartTime || null,
+        firstMarketId: catMarkets[0]?.betfairMarketId || null,
+        marketsInMemory: merged.markets.length,
+        marketsWithPriceData,
+        errors: resp.data?.errors || [],
+      };
     } catch (err) {
       setBetfairConnection(prev => ({ ...prev, marketCatalogueError: err.message }));
       addAuditLog('Betfair Catalogue Refresh Failed', 'api', 'error', err.message);
+      return { error: err.message, sessionTokenPresent: true };
     }
   };
 
@@ -1620,6 +1710,19 @@ export function AppProvider({ children }) {
         return { error: 'Paper Proof Mode is not active. Apply proof defaults first.' };
       }
 
+      // Require real market data — do not silently use mock data
+      const marketsInMemory = s.markets.length;
+      const runnersInMemory = s.runners.length;
+      const runnersWithPrices = s.runners.filter(r =>
+        (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)
+      ).length;
+
+      if (marketsInMemory === 0 || runnersInMemory === 0 || runnersWithPrices === 0) {
+        const msg = `Cannot run real proof scan — no Betfair markets/prices are loaded. Markets: ${marketsInMemory}, Runners: ${runnersInMemory}, Priced: ${runnersWithPrices}. Fetch Betfair Markets first.`;
+        addAuditLog('Proof Scan Blocked', 'system', 'warning', msg);
+        return { error: msg, marketsInMemory, runnersInMemory, runnersWithPrices };
+      }
+
       addAuditLog('Proof Scan Started', 'system', 'info', 'Paper Proof scan initiated — relaxed filters, creating at most one paper order.');
 
       const conn = s.betfairConnection || {};
@@ -1895,15 +1998,15 @@ export function AppProvider({ children }) {
     }
 
     if (!apiConnected) {
-      setBetfairConnection(prev => ({ ...prev, dataFresh: false, streamConnectionStatus: 'disconnected' }));
-      setMarkets([]);
-      setRunners([]);
+      // Don't wipe markets — mark as stale/cached so UI still shows last known data
+      setBetfairConnection(prev => ({ ...prev, dataFresh: false, streamConnectionStatus: 'disconnected', priceFeedStale: true }));
+      setMarkets(prev => prev.map(m => ({ ...m, source: 'cached' })));
+      setRunners(prev => prev.map(r => ({ ...r, source: 'cached' })));
       return;
     }
 
-    // Connected — clear demo data immediately so live mode shows ONLY stream data
-    setMarkets([]);
-    setRunners([]);
+    // Connected — do NOT wipe catalogue data. Mark stream as connecting.
+    // Catalogue data (from REST) stays visible; stream will merge on top when it connects.
     setBetfairConnection(prev => ({
       ...prev,
       dataFresh: true,
@@ -1917,22 +2020,59 @@ export function AppProvider({ children }) {
 
     let cancelled = false;
 
-    // Fetch market catalogue to get proper runner names (stream omits them for AU racing)
+    // Fetch market catalogue to get proper runner names + REST price data.
+    // Uses merge helper so catalogue data populates markets even before stream connects.
     const fetchCatalogue = async () => {
       try {
-        const resp = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
+        const resp = await base44.functions.invoke('betfairMarkets', {
+          sessionToken: betfairSessionToken,
+          requestedMarketTypes: ['WIN', 'PLACE', 'MATCH_BET'],
+        });
         if (cancelled) return;
         if (resp.data?.error) throw new Error(resp.data.error);
+        const catMarkets = resp.data?.markets || [];
         const catRunners = resp.data?.runners || [];
         const nameMap = new Map();
         const metaMap = new Map();
         for (const r of catRunners) {
-          if (r.betfairSelectionId) {
-            nameMap.set(String(r.betfairSelectionId), r.runnerName || '');
-            if (r.raceFormProfile) metaMap.set(String(r.betfairSelectionId), r.raceFormProfile);
+          const selId = String(r.betfairSelectionId || r.selectionId || '');
+          if (selId) {
+            nameMap.set(selId, r.runnerName || '');
+            if (r.raceFormProfile) metaMap.set(selId, r.raceFormProfile);
           }
         }
         catalogueRef.current = { nameMap, metaMap, fetchedAt: Date.now() };
+
+        // Merge catalogue data with current state (stream data takes priority for prices)
+        const s = stateRef.current;
+        const streamMarkets = s.markets.filter(m => m.source === 'stream' || m.source === 'merged');
+        const streamRunners = s.runners.filter(r => r.source === 'stream' || r.source === 'merged');
+        const merged = mergeBetfairMarkets({
+          existingMarkets: s.markets,
+          existingRunners: s.runners,
+          catalogueMarkets: catMarkets,
+          catalogueRunners: catRunners,
+          streamMarkets,
+          streamRunners,
+        });
+        const pricedRunners = merged.runners.filter(r =>
+          (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)
+        ).length;
+        const marketsWithPriceData = merged.markets.filter(m => m.hasPriceData).length;
+
+        setMarkets(merged.markets);
+        setRunners(merged.runners);
+        const now = new Date().toISOString();
+        setBetfairConnection(prev => ({
+          ...prev,
+          lastCatalogueRefreshAt: now,
+          lastPriceFetchAt: now,
+          catalogueMarketsCount: catMarkets.length,
+          catalogueRunnersCount: catRunners.length,
+          marketsWithPriceData,
+          marketCatalogueError: null,
+          priceFeedStale: pricedRunners === 0,
+        }));
       } catch (_) {}
     };
     fetchCatalogue();
@@ -1941,31 +2081,24 @@ export function AppProvider({ children }) {
     createBetfairStream(betfairSessionToken, {
       onMarketsUpdate: (updatedMarkets, updatedRunners) => {
         if (cancelled) return;
-        // Enrich runners with proper names from catalogue (stream returns "Selection XXXXX")
-        const cat = catalogueRef.current;
-        if (cat && cat.nameMap) {
-          for (const r of updatedRunners) {
-            const selId = String(r.betfairSelectionId || r.selectionId || '');
-            const properName = cat.nameMap.get(selId);
-            if (properName && (!r.runnerName || r.runnerName.startsWith('Selection '))) {
-              r.runnerName = properName;
-            }
-            if (cat.metaMap?.has(selId) && !r.raceFormProfile) {
-              r.raceFormProfile = cat.metaMap.get(selId);
-              r.formDataStatus = r.raceFormProfile.externalFormData ? 'FULL_EXTERNAL_FORM' : 'PARTIAL_BETFAIR_METADATA';
-              r.formDataCompleteness = r.formDataStatus === 'FULL_EXTERNAL_FORM' ? 100 : 50;
-            }
-          }
-          // Also enrich market venue/name from catalogue
-          for (const m of updatedMarkets) {
-            if (!m.venue || m.venue === '') {
-              const catRunner = updatedRunners.find(r => r.marketId === m.id);
-              // Venue is on market level in catalogue, not runner — skip if not available
-            }
-          }
-        }
-        setMarkets(updatedMarkets);
-        setRunners(updatedRunners);
+        // Tag stream data with source
+        const taggedMarkets = updatedMarkets.map(m => ({ ...m, source: 'stream' }));
+        const taggedRunners = updatedRunners.map(r => ({ ...r, source: 'stream' }));
+
+        // Merge with existing (catalogue) data — stream prices take priority,
+        // catalogue names/metadata are preserved where stream doesn't have them
+        const s = stateRef.current;
+        const merged = mergeBetfairMarkets({
+          existingMarkets: s.markets,
+          existingRunners: s.runners,
+          streamMarkets: taggedMarkets,
+          streamRunners: taggedRunners,
+        });
+
+        const marketsWithPriceData = merged.markets.filter(m => m.hasPriceData).length;
+
+        setMarkets(merged.markets);
+        setRunners(merged.runners);
         setBetfairConnection(prev => ({
           ...prev,
           lastMarketSyncTime: new Date().toISOString(),
@@ -1973,6 +2106,8 @@ export function AppProvider({ children }) {
           streamConnectionStatus: 'connected',
           loginStatus: 'connected',
           sessionTokenStatus: 'connected',
+          marketsWithPriceData,
+          priceFeedStale: marketsWithPriceData === 0,
         }));
       },
       onHeartbeat: () => {

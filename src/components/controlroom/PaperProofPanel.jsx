@@ -13,6 +13,7 @@ export default function PaperProofPanel() {
     paperOrders, botCycles,
     applyPaperProofDefaults, runProofScan, runSettlementCheckNow,
     addAuditLog,
+    markets, runners, refreshBetfairData,
   } = useApp();
 
   const [scanRunning, setScanRunning] = useState(false);
@@ -43,6 +44,13 @@ export default function PaperProofPanel() {
       setScanRunning(false);
     }
   };
+
+  // Check if market data is available for real proof scan
+  const marketsInMemory = markets.length;
+  const runnersWithPrices = runners.filter(r =>
+    (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)
+  ).length;
+  const canRunRealProof = marketsInMemory > 0 && runnersWithPrices > 0;
 
   const handleSettlementCheck = async () => {
     setSettlementRunning(true);
@@ -196,6 +204,38 @@ export default function PaperProofPanel() {
             <div>Still Awaiting: <span className="font-mono font-bold">{settlementResult.stillAwaiting}</span></div>
             {settlementResult.latestResultSource && <div>Source: <span className="font-bold">{settlementResult.latestResultSource}</span></div>}
           </div>
+        </div>
+      )}
+
+      {/* Market data availability check */}
+      {proofActive && !canRunRealProof && (
+        <div className="px-4 py-2 border-b border-border text-xs bg-danger/5">
+          <div className="text-[10px] font-bold text-danger uppercase mb-1">Cannot Run Real Proof Scan</div>
+          <div className="text-danger">
+            No Betfair markets/prices are loaded. Markets: {marketsInMemory}, Priced runners: {runnersWithPrices}.
+            Fetch markets first to run a real proof scan.
+          </div>
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => { await refreshBetfairData(); }}
+              className="gap-1.5"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Fetch Betfair Markets Now
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Scan result with market data check error */}
+      {scanResult?.error && !canRunRealProof && (
+        <div className="px-4 py-2 border-b border-border text-xs bg-danger/5">
+          <div className="text-[10px] font-bold text-danger uppercase mb-1">Proof Scan Blocked</div>
+          <div className="text-danger">{scanResult.error}</div>
+          {scanResult.marketsInMemory != null && (
+            <div className="text-muted-foreground mt-1">Markets: {scanResult.marketsInMemory}, Runners: {scanResult.runnersInMemory}, Priced: {scanResult.runnersWithPrices}</div>
+          )}
         </div>
       )}
 
