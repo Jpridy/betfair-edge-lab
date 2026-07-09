@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { exportToCSV } from '@/lib/csvExport';
 
 export default function MarketFeedPanel() {
-  const { lastExchangeDiagnostics, botCycles, markets, apiConnected, betfairConnection } = useApp();
+  const { lastExchangeDiagnostics, botCycles, markets, runners, apiConnected, betfairConnection } = useApp();
   const [showAll, setShowAll] = useState(false);
 
   const diag = lastExchangeDiagnostics;
@@ -23,33 +23,52 @@ export default function MarketFeedPanel() {
   const streamConnected = streamStatus === 'connected' || streamStatus === 'polling';
   const notConnected = !apiConnected;
 
-  const totalLoaded = feedDiag?.totalMarketsLoaded ?? diag?.totalMarketsLoaded ?? scanSummary?.totalMarketsLoaded ?? markets.length ?? 0;
-  const openPreRace = feedDiag?.openPreRaceMarkets ?? diag?.openPreRaceMarkets ?? scanSummary?.openPreRaceMarkets ?? 0;
-  const insideWindow = feedDiag?.marketsInsideTimeWindow ?? diag?.marketsInsideTimeWindow ?? scanSummary?.marketsInsideTimeWindow ?? 0;
+  // Live market count is the source of truth — diagnostics may be stale
+  // (captured during a scan before the stream connected)
+  const totalLoaded = markets.length;
+  const openPreRace = markets.filter(m => m.status === 'OPEN' && !m.inPlay).length;
+  const insideWindow = funnel?.insideWindowMarkets ?? scanSummary?.marketsInsideTimeWindow ?? 0;
 
-  const winMarkets = diag?.winMarketsFound ?? scanSummary?.winMarketsFound ?? 0;
-  const placeMarkets = diag?.placeMarketsFound ?? scanSummary?.placeMarketsFound ?? 0;
-  const h2hMarkets = diag?.h2hMarketsFound ?? scanSummary?.h2hMarketsFound ?? 0;
-  const unknownMarkets = diag?.unknownMarketsFound ?? scanSummary?.unknownMarketsFound ?? 0;
+  // Live market type counts from current markets
+  const getMarketType = (m) => (m.marketType || m.marketTypeCode || m.marketName || '').toUpperCase();
+  const winMarkets = markets.filter(m => getMarketType(m).includes('WIN')).length;
+  const placeMarkets = markets.filter(m => {
+    const t = getMarketType(m);
+    return t.includes('PLACE') || t.includes('TO BE PLACED');
+  }).length;
+  const h2hMarkets = markets.filter(m => {
+    const t = getMarketType(m);
+    return t.includes('HEAD') || t.includes('H2H') || t.includes('MATCH');
+  }).length;
+  const unknownMarkets = Math.max(0, markets.length - winMarkets - placeMarkets - h2hMarkets);
 
-  const withPriceData = feedDiag?.marketsWithPriceData ?? 0;
-  const missingPriceData = feedDiag?.marketsMissingPriceData ?? 0;
+  // Live price data counts — runners are stored separately from markets
+  const marketsWithPrices = new Set();
+  for (const r of runners) {
+    if (r.bestBackPrice > 0 || r.bestLayPrice > 0) {
+      marketsWithPrices.add(r.marketId);
+    }
+  }
+  const withPriceData = marketsWithPrices.size;
+  const missingPriceData = Math.max(0, totalLoaded - withPriceData);
 
-  // Nearest markets table from loaded table or from markets array
-  const nearestMarkets = (loadedTable || []).slice(0, showAll ? 50 : 20);
-  const displayMarkets = nearestMarkets.length > 0 ? nearestMarkets : markets.slice(0, showAll ? 50 : 20).map(m => ({
-    eventName: m.eventName || '',
-    marketName: m.marketName || '',
-    marketTypeCode: m.marketTypeCode || '',
-    detectedMarketType: m.marketType || '',
-    status: m.status || '',
-    inPlay: m.inPlay,
-    startTime: m.startTime || m.marketStartTime || '',
-    secondsToJump: m.startTime ? Math.round((new Date(m.startTime).getTime() - Date.now()) / 1000) : null,
-    runnerCount: m.numberOfRunners || 0,
-    hasPriceData: !!(m.runners?.some(r => r.bestBackPrice)),
-    totalMatched: m.totalMatched || 0,
-  }));
+  // Live markets table — always use current markets in memory
+  const displayMarkets = markets.slice(0, showAll ? 50 : 20).map(m => {
+    const marketRunners = runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
+    return {
+      eventName: m.eventName || '',
+      marketName: m.marketName || '',
+      marketTypeCode: m.marketTypeCode || m.marketType || '',
+      detectedMarketType: m.marketType || '',
+      status: m.status || '',
+      inPlay: m.inPlay,
+      startTime: m.startTime || m.marketStartTime || '',
+      secondsToJump: m.startTime ? Math.round((new Date(m.startTime).getTime() - Date.now()) / 1000) : null,
+      runnerCount: Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length),
+      hasPriceData: marketRunners.some(r => r.bestBackPrice > 0 || r.bestLayPrice > 0),
+      totalMatched: m.totalMatched || 0,
+    };
+  });
 
   const handleExport = () => {
     if (displayMarkets.length === 0) return;
