@@ -41,6 +41,13 @@ Deno.serve(async (req) => {
       }, { status: 200 });
     }
 
+    // ── Result lookup action — searches the web for official race results ──
+    // Used by the settlement watcher to backfill results for awaiting_result orders.
+    // Does NOT create bets. Only returns result data for settlement.
+    if (action === 'result_lookup') {
+      return await handleResultLookup(body, req);
+    }
+
     if (!market) return Response.json({ error: 'market is required' }, { status: 400 });
 
     const apiKey = Deno.env.get('OPENAI_API_KEY');
@@ -369,3 +376,246 @@ Return ONLY this JSON structure:
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+
+// ============================================================================
+// Result Lookup Handler
+//
+// Searches the web for official race results to settle paper orders.
+// Returns structured result data — never guesses, never uses random.
+// ============================================================================
+async function handleResultLookup(body, req) {
+  const { eventName, marketName, marketStartTime, runnerName, selectionId, marketType, opponentSelectionId } = body;
+
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) {
+    return Response.json({
+      resultLookup: {
+        resultLookupStatus: 'error',
+        resultSource: 'openai_result_lookup',
+        sourceUrls: [],
+        winnerSelectionIds: [],
+        placedSelectionIds: [],
+        selectedRunnerFinishPosition: null,
+        opponentFinishPosition: null,
+        resultConfidence: 'unknown',
+        voided: false,
+        voidReason: null,
+        errorMessage: 'OPENAI_API_KEY not set',
+      }
+    }, { status: 200 });
+  }
+
+  const dateStr = marketStartTime
+    ? new Date(marketStartTime).toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+
+  const searchQuery = `Australian horse racing result ${eventName} ${marketName} ${dateStr} ${runnerName} winner placed finishing position`.trim();
+
+  const systemPrompt = `You are a horse racing results researcher. Search the web for official race results and return ONLY valid JSON. Never guess — if you cannot find results, say so explicitly.`;
+
+  const userPrompt = `Search the web for the official result of this Australian horse race:
+
+Event: ${eventName}
+Market: ${marketName}
+Race date/time: ${marketStartTime}
+Date: ${dateStr}
+Runner of interest: ${runnerName} (selectionId: ${selectionId})
+Market type: ${marketType}
+${opponentSelectionId ? `Opponent selectionId: ${opponentSelectionId}` : ''}
+
+Find the official race result. I need:
+1. Which horse WON the race
+2. Finishing positions (1st, 2nd, 3rd etc.)
+3. Whether ${runnerName} won/placed/lost
+
+Return ONLY this JSON:
+{
+  "found": true/false,
+  "winnerName": "name of winning horse or empty string",
+  "winnerSelectionId": "selectionId of winner if known, or empty string",
+  "placedRunners": [{"selectionId": "", "runnerName": "", "finishPosition": 1}],
+  "selectedRunnerFinishPosition": number or null,
+  "opponentFinishPosition": number or null,
+  "confidence": "confirmed" | "probable" | "unknown",
+  "sourceUrls": ["https://..."],
+  "raceNotes": "brief summary of what was found"
+}`;
+
+  try {
+    const resp = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        instructions: systemPrompt,
+        input: userPrompt,
+        tools: [{
+          type: 'web_search',
+          search_context_size: 'medium',
+          user_location: { type: 'approximate', country: 'AU' },
+        }],
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      let errMsg = `OpenAI API error ${resp.status}`;
+      try { const errJson = JSON.parse(errText); errMsg = errJson.error?.message || errMsg; } catch (_) {}
+      return Response.json({
+        resultLookup: {
+          resultLookupStatus: 'error',
+          resultSource: 'openai_result_lookup',
+          sourceUrls: [],
+          winnerSelectionIds: [],
+          placedSelectionIds: [],
+          selectedRunnerFinishPosition: null,
+          opponentFinishPosition: null,
+          resultConfidence: 'unknown',
+          voided: false,
+          voidReason: null,
+          errorMessage: errMsg,
+        }
+      }, { status: 200 });
+    }
+
+    const data = await resp.json();
+    let outputText = data.output_text || '';
+    const extractedUrls = [];
+
+    for (const item of data.output || []) {
+      if (item.type === 'message') {
+        for (const content of item.content || []) {
+          if (content.type === 'output_text') {
+            outputText += content.text;
+            for (const ann of content.annotations || []) {
+              if (ann.type === 'url_citation' && ann.url) {
+                extractedUrls.push(ann.url);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Parse JSON from output
+    let parsed;
+    try {
+      const cleaned = outputText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch (_) {
+      const match = outputText.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { parsed = JSON.parse(match[0]); } catch (__) {
+          return Response.json({
+            resultLookup: {
+              resultLookupStatus: 'no_results',
+              resultSource: 'openai_result_lookup',
+              sourceUrls: extractedUrls,
+              winnerSelectionIds: [],
+              placedSelectionIds: [],
+              selectedRunnerFinishPosition: null,
+              opponentFinishPosition: null,
+              resultConfidence: 'unknown',
+              voided: false,
+              voidReason: null,
+              errorMessage: 'Failed to parse result lookup response',
+            }
+          }, { status: 200 });
+        }
+      }
+    }
+
+    if (!parsed) {
+      return Response.json({
+        resultLookup: {
+          resultLookupStatus: 'no_results',
+          resultSource: 'openai_result_lookup',
+          sourceUrls: extractedUrls,
+          winnerSelectionIds: [],
+          placedSelectionIds: [],
+          selectedRunnerFinishPosition: null,
+          opponentFinishPosition: null,
+          resultConfidence: 'unknown',
+          voided: false,
+          voidReason: null,
+        }
+      }, { status: 200 });
+    }
+
+    // Build winner/placed arrays from parsed data
+    const winnerSelectionIds = [];
+    const placedSelectionIds = [];
+
+    if (parsed.found) {
+      if (parsed.winnerSelectionId) {
+        winnerSelectionIds.push(String(parsed.winnerSelectionId));
+      }
+      // If we know the winner's name but not selectionId, try to match by runnerName
+      if (parsed.winnerName && !parsed.winnerSelectionId) {
+        // The caller will need to resolve winner name to selectionId
+        // For now, include the runnerName in the response
+      }
+
+      if (Array.isArray(parsed.placedRunners)) {
+        for (const pr of parsed.placedRunners) {
+          if (pr.selectionId) {
+            placedSelectionIds.push(String(pr.selectionId));
+          }
+        }
+      }
+
+      // If the selected runner's finish position is known, derive winner/placed status
+      if (parsed.selectedRunnerFinishPosition != null) {
+        if (parsed.selectedRunnerFinishPosition === 1 && !winnerSelectionIds.includes(String(selectionId))) {
+          winnerSelectionIds.push(String(selectionId));
+        }
+        // For PLACE markets, placed = finished within place terms (usually top 3)
+        const placeCount = marketType === 'PLACE' ? 3 : 1;
+        if (parsed.selectedRunnerFinishPosition <= placeCount && !placedSelectionIds.includes(String(selectionId))) {
+          placedSelectionIds.push(String(selectionId));
+        }
+      }
+    }
+
+    const status = parsed.found === true ? 'success' : 'no_results';
+    const confidence = parsed.confidence || 'unknown';
+
+    return Response.json({
+      resultLookup: {
+        resultLookupStatus: status,
+        resultSource: 'openai_result_lookup',
+        sourceUrls: extractedUrls,
+        winnerSelectionIds,
+        placedSelectionIds,
+        selectedRunnerFinishPosition: parsed.selectedRunnerFinishPosition ?? null,
+        opponentFinishPosition: parsed.opponentFinishPosition ?? null,
+        resultConfidence: confidence,
+        voided: false,
+        voidReason: null,
+        winnerName: parsed.winnerName || '',
+        raceNotes: parsed.raceNotes || '',
+      }
+    }, { status: 200 });
+  } catch (fetchErr) {
+    const isTimeout = fetchErr.name === 'TimeoutError' || fetchErr.message?.includes('timeout');
+    return Response.json({
+      resultLookup: {
+        resultLookupStatus: isTimeout ? 'timeout' : 'error',
+        resultSource: 'openai_result_lookup',
+        sourceUrls: [],
+        winnerSelectionIds: [],
+        placedSelectionIds: [],
+        selectedRunnerFinishPosition: null,
+        opponentFinishPosition: null,
+        resultConfidence: 'unknown',
+        voided: false,
+        voidReason: null,
+        errorMessage: isTimeout ? 'Result lookup timed out after 60s' : fetchErr.message,
+      }
+    }, { status: 200 });
+  }
+}

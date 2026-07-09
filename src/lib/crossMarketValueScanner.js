@@ -16,6 +16,7 @@ import { buildProbabilityMap, buildH2HMap } from './probabilityNormalizer';
 import { calculateSpreadTicks } from './tickLadder';
 import { countTicksBetween } from './tickLadder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact, getMarketOnlyFallbackReason } from './externalSearchIntegration';
+import { isPaperProofModeActive, isSoftBlocker, calcProofStake } from './paperProofDefaults';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -300,11 +301,28 @@ function buildOpportunity({
   const delayRiskScore = calcDelayRiskScore(timeBeforeJump, spreadTicks, isLiveMode);
   const confidence = probData?.confidence || 0;
 
-  // Calculate stake using Kelly
+  // ── Paper Proof Mode detection ──
+  const paperProofMode = isPaperProofModeActive(settings, {}, featherlessSettings);
+
+  // Calculate stake using Kelly (or flat proof stake in proof mode)
   const bankroll = bankrollStats?.bankroll || settings.paperBankroll || settings.bankroll || 10000;
   let stake, liability, ev, roi, edge, breakevenProbability;
 
-  if (side === 'BACK') {
+  if (paperProofMode) {
+    // Flat proof stake: $2, capped at $5. No Kelly.
+    stake = calcProofStake(side, odds, settings);
+    if (side === 'BACK') {
+      const backMath = calcBackEV(modelProbability, odds, commissionRate, stake);
+      ev = backMath.ev; roi = backMath.roi; liability = backMath.liability;
+      breakevenProbability = backMath.breakevenProbability;
+      edge = calcBackEdge(modelProbability, odds);
+    } else {
+      const layMath = calcLayEV(modelProbability, odds, commissionRate, stake);
+      ev = layMath.ev; roi = layMath.roi; liability = layMath.liability;
+      breakevenProbability = layMath.breakevenProbability;
+      edge = calcLayEdge(modelProbability, odds);
+    }
+  } else if (side === 'BACK') {
     const kelly = calcKellyStake(modelProbability, odds, bankroll, confidence / 100);
     stake = Math.max(settings.baseStake || 50, Math.min(kelly.stake, settings.maxStake || 500));
     const backMath = calcBackEV(modelProbability, odds, commissionRate, stake);
@@ -326,17 +344,19 @@ function buildOpportunity({
   const blockers = [];
   const reasons = [];
 
-  // Edge check (minEdge is in percent, edge is decimal)
+  // Edge check (minEdge is in percent, edge is decimal) — soft in proof mode
   if (edge * 100 < thresholds.minEdge) {
-    blockers.push(`Edge ${(edge * 100).toFixed(2)}% below ${thresholds.minEdge}% minimum`);
+    const msg = `Edge ${(edge * 100).toFixed(2)}% below ${thresholds.minEdge}% minimum`;
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // ROI check (minROI is in percent, roi is decimal)
+  // ROI check (minROI is in percent, roi is decimal) — soft in proof mode
   if (roi * 100 < thresholds.minROI) {
-    blockers.push(`ROI ${(roi * 100).toFixed(2)}% below ${thresholds.minROI}% minimum`);
+    const msg = `ROI ${(roi * 100).toFixed(2)}% below ${thresholds.minROI}% minimum`;
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // Odds range check
+  // Odds range check — still enforced but with relaxed thresholds in proof mode
   if (odds < thresholds.minOdds) {
     blockers.push(`Odds ${odds.toFixed(2)} below ${thresholds.minOdds} minimum`);
   }
@@ -344,12 +364,13 @@ function buildOpportunity({
     blockers.push(`Odds ${odds.toFixed(2)} above ${thresholds.maxOdds} maximum`);
   }
 
-  // Liquidity check
+  // Liquidity check — soft in proof mode (only require available size >= 2)
   if (availableSize < thresholds.minLiquidity) {
-    blockers.push(`Liquidity $${availableSize.toFixed(2)} below $${thresholds.minLiquidity} minimum`);
+    const msg = `Liquidity $${availableSize.toFixed(2)} below $${thresholds.minLiquidity} minimum`;
+    if (!paperProofMode || availableSize < 2) blockers.push(msg);
   }
 
-  // Spread/price check — distinguish missing, stale, and wide spread
+  // Spread/price check — soft in proof mode
   const hasBack = !!(runner.bestBackPrice && runner.bestBackPrice > 0);
   const hasLay = !!(runner.bestLayPrice && runner.bestLayPrice > 0);
   if (!hasLay && side === 'BACK') {
@@ -360,55 +381,69 @@ function buildOpportunity({
     const backStr = runner.bestBackPrice.toFixed(2);
     const layStr = runner.bestLayPrice.toFixed(2);
     if (spreadTicks > 50 || runner.bestLayPrice > 100 || runner.bestLayPrice > runner.bestBackPrice * 5) {
-      blockers.push(`Stale/wide spread — ${spreadTicks} ticks (back ${backStr}, lay ${layStr}), max ${thresholds.maxSpreadTicks}`);
+      const msg = `Stale/wide spread — ${spreadTicks} ticks (back ${backStr}, lay ${layStr}), max ${thresholds.maxSpreadTicks}`;
+      if (!paperProofMode) blockers.push(msg);
     } else {
-      blockers.push(`Spread too wide — ${spreadTicks} ticks (back ${backStr}, lay ${layStr}), max ${thresholds.maxSpreadTicks}`);
+      const msg = `Spread too wide — ${spreadTicks} ticks (back ${backStr}, lay ${layStr}), max ${thresholds.maxSpreadTicks}`;
+      if (!paperProofMode) blockers.push(msg);
     }
   }
 
-  // Time window check
+  // Time window check — relaxed in proof mode (allow 1s to 86400s)
   const windowStart = featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500;
   const windowEnd = featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30;
   if (timeBeforeJump != null) {
-    if (timeBeforeJump > windowStart) {
-      blockers.push(`Race starts in ${timeBeforeJump}s — outside ${windowStart}s window`);
-    }
-    if (timeBeforeJump < windowEnd && timeBeforeJump > 0) {
-      blockers.push(`Race starts in ${timeBeforeJump}s — inside ${windowEnd}s cutoff`);
-    }
     if (timeBeforeJump <= 0) {
       blockers.push('Race has already jumped');
+    } else if (paperProofMode) {
+      // In proof mode, only block if race is outside 24h window
+      if (timeBeforeJump > 86400) {
+        blockers.push(`Race starts in ${timeBeforeJump}s — outside 24h proof window`);
+      }
+    } else {
+      if (timeBeforeJump > windowStart) {
+        blockers.push(`Race starts in ${timeBeforeJump}s — outside ${windowStart}s window`);
+      }
+      if (timeBeforeJump < windowEnd && timeBeforeJump > 0) {
+        blockers.push(`Race starts in ${timeBeforeJump}s — inside ${windowEnd}s cutoff`);
+      }
     }
   }
 
-  // Delay risk — in delayed mode, only allow larger-edge value bets
+  // Delay risk — soft in proof mode
   if (!isLiveMode && delayRiskScore > 0.7) {
-    blockers.push(`Delay risk ${delayRiskScore.toFixed(2)} too high for delayed API mode`);
+    const msg = `Delay risk ${delayRiskScore.toFixed(2)} too high for delayed API mode`;
+    if (!paperProofMode) blockers.push(msg);
   }
   if (!isLiveMode && edge * 100 < 5 && timeBeforeJump != null && timeBeforeJump < 120) {
-    blockers.push('Delayed API: minimum 5% edge required within 2 minutes of jump');
+    const msg = 'Delayed API: minimum 5% edge required within 2 minutes of jump';
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // Kelly check
+  // Kelly check — soft in proof mode
   if (side === 'BACK' && modelProbability <= breakevenProbability) {
-    blockers.push('Kelly fraction ≤ 0 — no positive stake');
+    const msg = 'Kelly fraction ≤ 0 — no positive stake';
+    if (!paperProofMode) blockers.push(msg);
   }
   if (side === 'LAY' && modelProbability >= breakevenProbability) {
-    blockers.push('Lay Kelly fraction ≤ 0 — selection too likely to win');
+    const msg = 'Lay Kelly fraction ≤ 0 — selection too likely to win';
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // Confidence check
-  const minConfidence = featherlessSettings?.minConfidence || 50;
+  // Confidence check — soft in proof mode
+  const minConfidence = featherlessSettings?.minConfidence ?? 50;
   if (confidence < minConfidence) {
-    blockers.push(`Confidence ${confidence.toFixed(0)} below ${minConfidence}`);
+    const msg = `Confidence ${confidence.toFixed(0)} below ${minConfidence}`;
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // Data quality check
+  // Data quality check — soft in proof mode
   if (dataQuality < 40) {
-    blockers.push(`Data quality ${dataQuality} below 40`);
+    const msg = `Data quality ${dataQuality} below 40`;
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // Liability check (LAY)
+  // Liability check (LAY) — ALWAYS enforced
   if (side === 'LAY') {
     const maxLiability = settings.maxLayLiability || 1500;
     if (liability > maxLiability) {
@@ -416,24 +451,25 @@ function buildOpportunity({
     }
   }
 
-  // Bankroll check
+  // Bankroll check — ALWAYS enforced
   const requiredFunds = side === 'BACK' ? stake : liability;
   if (bankrollStats && bankrollStats.available < requiredFunds) {
     blockers.push(`Insufficient bankroll ($${bankrollStats.available?.toFixed(2)} available, $${requiredFunds.toFixed(2)} required)`);
   }
 
-  // Daily loss limit
+  // Daily loss limit — soft in proof mode (limits are 999999 anyway)
   if (bankrollStats?.todayPL < -(settings.dailyLossLimit || 500)) {
-    blockers.push('Daily loss limit reached');
+    const msg = 'Daily loss limit reached';
+    if (!paperProofMode) blockers.push(msg);
   }
 
-  // Max open orders
+  // Max open orders — ALWAYS enforced (but limit is 50 in proof mode)
   const openOrders = paperOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status));
   if (openOrders.length >= (settings.maxOpenOrders || 10)) {
     blockers.push('Max open orders reached');
   }
 
-  // Duplicate opposite-side position check (unless hedging)
+  // Duplicate opposite-side position check (unless hedging) — ALWAYS enforced
   const oppositeSide = side === 'BACK' ? 'LAY' : 'BACK';
   const hasOpposite = paperOrders.some(o =>
     (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
@@ -445,7 +481,7 @@ function buildOpportunity({
     blockers.push(`Conflicting ${oppositeSide} position exists (hedging not enabled)`);
   }
 
-  // Event exposure check
+  // Event exposure check — ALWAYS enforced (but limit is 500 in proof mode)
   const eventExposure = paperOrders
     .filter(o => {
       const om = o.betfairMarketId || o.marketId;

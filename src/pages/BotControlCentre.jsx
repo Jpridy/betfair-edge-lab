@@ -13,9 +13,11 @@ import SettingsImpactPanel from '@/components/controlroom/SettingsImpactPanel';
 import RiskOrdersPanel from '@/components/controlroom/RiskOrdersPanel';
 import SettlementPanel from '@/components/controlroom/SettlementPanel';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
+import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
+import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
 
 export default function BotControlCentre() {
-  const { dataLoading } = useApp();
+  const { dataLoading, settings, botSettings, featherlessSettings } = useApp();
 
   if (dataLoading) {
     return (
@@ -25,13 +27,26 @@ export default function BotControlCentre() {
     );
   }
 
+  const proofActive = isPaperProofModeActive(settings, botSettings, featherlessSettings);
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Safety banners — always at top */}
       <SafetyBanners />
 
+      {/* Paper Proof Mode badge */}
+      {proofActive && (
+        <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg px-4 py-2 text-xs text-chart-4 font-bold flex items-center gap-2">
+          <span className="bg-chart-4 text-background px-2 py-0.5 rounded text-[10px]">PAPER PROOF MODE ACTIVE</span>
+          Filters relaxed to prove paper order creation and settlement. Not suitable for live betting.
+        </div>
+      )}
+
       {/* Sticky control bar */}
       <ControlBar />
+
+      {/* Paper Proof Panel — shown when proof mode is active */}
+      {proofActive && <PaperProofPanel />}
 
       {/* Tabbed sections */}
       <Tabs defaultValue="control">
@@ -41,6 +56,7 @@ export default function BotControlCentre() {
           <TabsTrigger value="ai" className="text-xs">AI Research</TabsTrigger>
           <TabsTrigger value="settings" className="text-xs">Settings Impact</TabsTrigger>
           <TabsTrigger value="risk" className="text-xs">Risk & Orders</TabsTrigger>
+          <TabsTrigger value="proof" className="text-xs">Paper Proof</TabsTrigger>
           <TabsTrigger value="debug" className="text-xs">Debug & Logs</TabsTrigger>
         </TabsList>
 
@@ -73,7 +89,12 @@ export default function BotControlCentre() {
           <SettlementPanel />
         </TabsContent>
 
-        {/* Tab 6: Debug & Logs */}
+        {/* Tab 6: Paper Proof Mode */}
+        <TabsContent value="proof" className="space-y-4 mt-4">
+          <PaperProofPanel />
+        </TabsContent>
+
+        {/* Tab 7: Debug & Logs */}
         <TabsContent value="debug" className="space-y-4 mt-4">
           <DecisionLogPanel />
         </TabsContent>

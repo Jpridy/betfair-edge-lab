@@ -124,6 +124,15 @@
       "type": "boolean",
       "default": false
     },
+    "defaultPersistenceType": {
+      "type": "string",
+      "enum": [
+        "LAPSE",
+        "PERSIST",
+        "MARKET_ON_CLOSE"
+      ],
+      "default": "LAPSE"
+    },
     "selectedJurisdiction": {
       "type": "string",
       "default": "AU"
@@ -190,6 +199,10 @@
     },
     "dailyResetAt": {
       "type": "string"
+    },
+    "paperProofMode": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

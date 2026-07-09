@@ -83,7 +83,8 @@
       "enum": [
         "strict",
         "balanced_paper",
-        "active_paper_discovery"
+        "active_paper_discovery",
+        "paper_proof"
       ],
       "default": "strict"
     },
@@ -204,6 +205,10 @@
     "externalSearchCacheTtlMinutes": {
       "type": "number",
       "default": 5
+    },
+    "paperProofMode": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

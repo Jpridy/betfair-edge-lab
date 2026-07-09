@@ -7,12 +7,14 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, FileDown, Network, FlaskConical } from 'lucide-react';
+import { isPaperProofModeActive, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS } from '@/lib/paperProofDefaults';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
 import { getCommissionWarnings } from '@/lib/betfairMapping';
 import { exportToCSV } from '@/lib/csvExport';
 import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 export default function Settings() {
   const {
@@ -22,6 +24,7 @@ export default function Settings() {
     apiConnected, resetAllPaperTrading, resetDailyStats, clearBotCycles, clearLogs,
     featherlessSettings, updateFeatherlessSettings,
     botCycles, paperOrders,
+    applyPaperProofDefaults,
   } = useApp();
 
   const [local, setLocal] = useState(settings);
@@ -72,9 +75,35 @@ export default function Settings() {
   };
 
   const commWarnings = getCommissionWarnings({ marketBaseRate: 0.05 }, local);
+  const proofActive = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   return (
     <div className="space-y-5">
+      {/* Paper Proof Mode banner */}
+      <div className={cn(
+        'border rounded-lg p-3 text-xs flex items-start gap-2',
+        proofActive ? 'bg-chart-4/10 border-chart-4/30 text-chart-4' : 'bg-muted/20 border-border text-muted-foreground'
+      )}>
+        <FlaskConical className="h-4 w-4 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <span className="font-bold">Paper Proof Mode {proofActive ? 'is ACTIVE' : ''}</span>
+          {!proofActive && ' — apply proof defaults to test the full pipeline end-to-end with relaxed filters.'}
+          {proofActive && ' — filters relaxed to prove paper order creation and settlement. Not suitable for live betting.'}
+          <div className="mt-1 text-[10px] opacity-80">
+            Paper Proof Mode relaxes value, confidence, spread, liquidity and AI filters. It may create bad theoretical bets. Do not use these settings for live betting.
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant={proofActive ? 'outline' : 'default'}
+          onClick={() => applyPaperProofDefaults()}
+          className="gap-1.5 shrink-0"
+        >
+          <FlaskConical className="h-3.5 w-3.5" />
+          {proofActive ? 'Re-apply' : 'Apply'} Paper Proof Defaults
+        </Button>
+      </div>
+
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">Configure bot mode, market filters, opportunity rules, risk management, AI, Betfair, and settlement.</div>

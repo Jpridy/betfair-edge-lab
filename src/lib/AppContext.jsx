@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { createBetfairStream } from '@/lib/betfairApi';
-import { BOT_STEPS, getEnabledStrategies, runRiskCheck, createPaperOrder, settleOrder } from '@/lib/botEngine';
+import { BOT_STEPS, getEnabledStrategies, runRiskCheck, createPaperOrder, settleOrder, createSignal } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
 import { runPreOrderChecks } from '@/lib/orderValidation';
 import { countTicksBetween } from '@/lib/tickLadder';
@@ -12,6 +12,9 @@ import { fmtPct } from './candidateScoring';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
 import { runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
 import { settleOrderWithResult, lapseUnmatchedOrder } from '@/lib/settlementService';
+import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
+import { buildProofOpportunity } from '@/lib/paperProofScanner';
+import { runSettlementCheck } from '@/lib/settlementWatcher';
 
 // ── Metadata fields to strip when loading settings from DB ──
 const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
@@ -1336,6 +1339,13 @@ export function AppProvider({ children }) {
                   order.eventId = opp.eventId;
                   order.liability = opp.liability;
                   order.commissionRateUsed = opp.commissionRate;
+                  // Force LAPSE in all bot-created orders
+                  order.persistenceType = 'LAPSE';
+                  // Pass through proof mode fields
+                  if (opp.proofMode) {
+                    order.proofMode = true;
+                    order.dataSource = 'MARKET_ONLY_PROOF';
+                  }
                   orderCreated = order;
                   ordersCreated = 1;
                   steps[7].status = 'passed';
@@ -1553,6 +1563,301 @@ export function AppProvider({ children }) {
       cycleInProgressRef.current = false;
     }
   };
+
+  // ── Paper Proof Mode: Apply Defaults ──
+  const applyPaperProofDefaults = async () => {
+    // Merge proof defaults into all three settings entities
+    const newSettings = { ...settings, ...PAPER_PROOF_APP_SETTINGS };
+    const newBotSettings = { ...botSettings, ...PAPER_PROOF_BOT_SETTINGS };
+    const newFeatherlessSettings = { ...featherlessSettings, ...PAPER_PROOF_FEATHERLESS_SETTINGS };
+
+    // Safety: force live trading off
+    newSettings.liveTradingEnabled = false;
+    newBotSettings.liveTradingEnabled = false;
+    newBotSettings.liveTradingLocked = true;
+    newFeatherlessSettings.allowLiveHandoff = false;
+
+    setSettings(newSettings);
+    setBotSettings(newBotSettings);
+    setFeatherlessSettings(newFeatherlessSettings);
+
+    // Persist to DB
+    const settingsPayload = { ...newSettings, mode: 'demo' };
+    if (settingsRecordId.current) {
+      base44.entities.AppSettings.update(settingsRecordId.current, settingsPayload).catch(() => {});
+    } else {
+      base44.entities.AppSettings.create(settingsPayload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+    }
+    const botPayload = { ...newBotSettings, botMode: 'paper_proof' };
+    if (botSettingsRecordId.current) {
+      base44.entities.BotSettings.update(botSettingsRecordId.current, botPayload).catch(() => {});
+    } else {
+      base44.entities.BotSettings.create(botPayload).then(rec => { if (rec) botSettingsRecordId.current = rec.id; }).catch(() => {});
+    }
+    if (featherlessSettingsRecordId.current) {
+      base44.entities.FeatherlessSettings.update(featherlessSettingsRecordId.current, newFeatherlessSettings).catch(() => {});
+    } else {
+      base44.entities.FeatherlessSettings.create(newFeatherlessSettings).then(rec => { if (rec) featherlessSettingsRecordId.current = rec.id; }).catch(() => {});
+    }
+
+    addAuditLog('Paper Proof Mode Applied', 'mode', 'info',
+      'Paper Proof Mode defaults applied. All filters relaxed. Live trading disabled and locked. Tiny paper stakes ($2). LAPSE only.');
+    addToBotActivity('Paper Proof Mode activated', 'All settings set to proof defaults. Pipeline testing mode.');
+  };
+
+  // ── Paper Proof Mode: Run Proof Scan ──
+  const runProofScan = async () => {
+    if (cycleInProgressRef.current) return { error: 'A scan is already in progress' };
+    cycleInProgressRef.current = true;
+    try {
+      const s = stateRef.current;
+      if (s.emergencyStop) return { error: 'Emergency stop is active' };
+
+      const proofMode = isPaperProofModeActive(s.settings, s.botSettings, s.featherlessSettings);
+      if (!proofMode) {
+        addAuditLog('Proof Scan Skipped', 'system', 'warning', 'Paper Proof Mode is not active. Apply proof defaults first.');
+        return { error: 'Paper Proof Mode is not active. Apply proof defaults first.' };
+      }
+
+      addAuditLog('Proof Scan Started', 'system', 'info', 'Paper Proof scan initiated — relaxed filters, creating at most one paper order.');
+
+      const conn = s.betfairConnection || {};
+      const connectionState = {
+        apiConnected: s.apiConnected,
+        streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
+        lastStreamUpdateAt: conn.lastMarketSyncTime || null,
+        lastCatalogueRefreshAt: conn.lastMarketSyncTime || null,
+        marketCatalogueError: null,
+        streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
+        priceFeedStale: conn.dataFresh === false,
+      };
+
+      const aiEnabled = s.featherlessSettings?.enabled !== false;
+      const result = await runExchangeCycle({
+        markets: s.markets,
+        runners: s.runners,
+        settings: s.settings,
+        featherlessSettings: s.featherlessSettings,
+        bankrollStats: s.bankrollStats,
+        paperOrders: s.paperOrders,
+        emergencyStop: s.emergencyStop,
+        connectionState,
+        callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners) => {
+          let webResearch = null;
+          if (s.featherlessSettings?.webResearchEnabled) {
+            try {
+              const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
+              if (researchResp.data?.research) webResearch = researchResp.data.research;
+            } catch (err) { /* skip */ }
+          }
+          const resp = await base44.functions.invoke('featherlessAI', {
+            market: primaryMarket, runners: marketRunners, settings: s.settings,
+            strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
+            raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
+            webResearch,
+            allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+          });
+          if (resp.data?.error) throw new Error(resp.data.error);
+          return resp.data?.aiResult || null;
+        } : null,
+        callExternalSearch: null, // Proof mode never uses external search
+      });
+
+      setExchangeOpportunities(result.allOpportunities);
+      setLastExchangeDiagnostics(result.diagnostics);
+
+      const positiveEV = result.diagnostics.positiveEVOpportunities || 0;
+      const proofFallbackUsed = result.bestOpportunity?.proofMode === true;
+
+      let paperOrderCreated = false;
+      let orderStatus = null;
+      let settlementStatus = null;
+
+      if (result.bestOpportunity) {
+        const opp = result.bestOpportunity;
+        const runner = s.runners.find(r =>
+          String(r.betfairSelectionId || r.selectionId) === opp.selectionId &&
+          (r.marketId === opp.marketId || r.marketId === opp.betfairMarketId)
+        );
+        const market = s.markets.find(m => m.id === opp.marketId || m.betfairMarketId === opp.betfairMarketId);
+
+        if (runner && market) {
+          const signal = opportunityToSignal(opp, s.settings);
+          signal.runnerId = runner.id;
+          signal.proofMode = true;
+          signal.dataSource = 'MARKET_ONLY_PROOF';
+
+          setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+          base44.entities.StrategySignal.create(signal).catch(() => {});
+
+          // Create paper order directly — bypass pre-order checks in proof mode
+          // (the exchange engine already validated hard blockers)
+          const order = createPaperOrder(signal, market, runner, s.settings);
+          order.marketType = opp.marketType;
+          order.eventId = opp.eventId;
+          order.liability = opp.liability;
+          order.commissionRateUsed = opp.commissionRate;
+          order.proofMode = true;
+          order.persistenceType = 'LAPSE'; // Force LAPSE
+          order.dataSource = 'MARKET_ONLY_PROOF';
+
+          const newOrder = { ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: new Date().toISOString(), placed_date: new Date().toISOString() };
+          setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
+          base44.entities.PaperOrder.create(order).catch(() => {});
+          setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
+
+          paperOrderCreated = true;
+          orderStatus = order.status;
+          settlementStatus = order.status === 'matched' || order.status === 'partially_matched' ? 'awaiting_result' : 'not_applicable';
+
+          addAuditLog('Proof Order Created', 'order', 'info',
+            `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake} (${order.persistenceType}) — proof fallback: ${proofFallbackUsed}`);
+          addToBotActivity('Proof order created', `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake}`);
+        }
+      }
+
+      // Build cycle record
+      const cycleNum = s.botState.cycleNumber + 1;
+      const now = new Date().toISOString();
+      const cycleRecord = {
+        cycleNumber: cycleNum,
+        botMode: 'paper_proof',
+        startedAt: now,
+        finishedAt: new Date().toISOString(),
+        status: 'completed',
+        paperProofMode: true,
+        proofDefaultsApplied: true,
+        proofFallbackUsed,
+        proofReason: proofFallbackUsed ? result.bestOpportunity?.proofReason : null,
+        proofStake: result.bestOpportunity?.stake || null,
+        proofMaxLiability: s.settings.maxLayLiability,
+        proofOrderCreated: paperOrderCreated,
+        proofSettlementStatus: settlementStatus,
+        marketsScanned: result.diagnostics.totalMarketsLoaded ?? result.diagnostics.marketsScanned ?? 0,
+        marketsPassedFilters: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+        signalsCreated: paperOrderCreated ? 1 : 0,
+        ordersCreated: paperOrderCreated ? 1 : 0,
+        ordersBlocked: 0,
+        errors: 0,
+        notes: `Proof scan: ${result.diagnostics.totalOpportunities || 0} opportunities, ${positiveEV} positive-EV, fallback: ${proofFallbackUsed}, order: ${paperOrderCreated}`,
+        runnersAssessed: result.diagnostics.totalOpportunities || 0,
+        candidatesPassedEdge: positiveEV,
+        candidatesPassedROI: positiveEV,
+        candidatesPassedConfidence: positiveEV,
+        bestCandidate: result.bestOpportunity ? {
+          opportunityId: result.bestOpportunity.opportunityId,
+          runnerName: result.bestOpportunity.runnerName,
+          selectionId: result.bestOpportunity.selectionId,
+          marketId: result.bestOpportunity.marketId,
+          betfairMarketId: result.bestOpportunity.betfairMarketId,
+          marketName: result.bestOpportunity.marketName,
+          marketType: result.bestOpportunity.marketType,
+          side: result.bestOpportunity.side,
+          odds: result.bestOpportunity.odds,
+          stake: result.bestOpportunity.stake,
+          liability: result.bestOpportunity.liability,
+          proofMode: result.bestOpportunity.proofMode || false,
+          proofReason: result.bestOpportunity.proofReason || null,
+        } : null,
+        noBetReason: paperOrderCreated ? null : (result.diagnostics.noBetReason || 'No proof opportunity created'),
+        scanSummary: {
+          marketsScanned: result.diagnostics.marketsScanned,
+          totalMarketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
+          openPreRaceMarkets: result.diagnostics.openPreRaceMarkets ?? 0,
+          marketsInsideTimeWindow: result.diagnostics.marketsInsideTimeWindow ?? 0,
+          marketsSentToExchangeEngine: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+          totalOpportunities: result.diagnostics.totalOpportunities,
+          positiveEVOpportunities: positiveEV,
+          proofFallbackUsed,
+          paperOrderCreated,
+          orderStatus,
+          settlementStatus,
+          paperProofMode: true,
+        },
+        selectedMarketName: result.bestOpportunity?.marketName || null,
+      };
+      setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+      base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+
+      setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
+      addAuditLog('Proof Scan Complete', 'system', 'info',
+        `Markets: ${result.diagnostics.totalMarketsLoaded ?? 0}, Opportunities: ${result.diagnostics.totalOpportunities || 0}, Positive-EV: ${positiveEV}, Fallback: ${proofFallbackUsed}, Order: ${paperOrderCreated}`);
+
+      return {
+        marketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
+        marketsEligible: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+        opportunitiesGenerated: result.diagnostics.totalOpportunities || 0,
+        positiveEVOpportunities: positiveEV,
+        proofFallbackUsed,
+        selectedMarket: result.bestOpportunity?.marketName || null,
+        selectedRunner: result.bestOpportunity?.runnerName || null,
+        side: result.bestOpportunity?.side || null,
+        odds: result.bestOpportunity?.odds || null,
+        stake: result.bestOpportunity?.stake || null,
+        liability: result.bestOpportunity?.liability || null,
+        paperOrderCreated,
+        orderStatus,
+        settlementStatus,
+      };
+    } catch (err) {
+      addAuditLog('Proof Scan Error', 'system', 'error', `Proof scan error: ${err.message}`);
+      return { error: err.message };
+    } finally {
+      cycleInProgressRef.current = false;
+    }
+  };
+
+  // ── Paper Proof Mode: Run Settlement Check ──
+  const runSettlementCheckNow = async () => {
+    const s = stateRef.current;
+    try {
+      const result = await runSettlementCheck({
+        paperOrders: s.paperOrders,
+        markets: s.markets,
+        runners: s.runners,
+        settings: s.settings,
+        updateOrder: async (orderId, settledOrder) => {
+          setPaperOrders(prev => prev.map(o => o.id === orderId ? settledOrder : o));
+          base44.entities.PaperOrder.update(orderId, settledOrder).catch(() => {});
+          if (settledOrder.netProfit != null) {
+            setBankrollStats(prev => ({
+              ...prev,
+              bankroll: prev.bankroll + settledOrder.netProfit,
+              todayPL: prev.todayPL + settledOrder.netProfit,
+              totalPL: prev.totalPL + settledOrder.netProfit,
+              available: prev.available + settledOrder.netProfit,
+              commissionPaid: prev.commissionPaid + (settledOrder.commission || 0),
+              wins: settledOrder.result === 'won' ? prev.wins + 1 : prev.wins,
+              losses: settledOrder.result === 'lost' ? prev.losses + 1 : prev.losses,
+            }));
+          }
+        },
+        invokeFunction: (name, payload) => base44.functions.invoke(name, payload),
+        addAuditLog,
+      });
+      return result;
+    } catch (err) {
+      addAuditLog('Settlement Check Error', 'system', 'error', `Settlement check error: ${err.message}`);
+      return { error: err.message };
+    }
+  };
+
+  // ── Settlement Watcher — runs every 30s when there are awaiting_result orders ──
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const s = stateRef.current;
+      const hasAwaiting = s.paperOrders.some(o =>
+        o.status === 'awaiting_result' ||
+        (o.result === 'pending' && o.status !== 'settled' && o.status !== 'voided' && o.status !== 'lapsed' && o.status !== 'cancelled' && o.status !== 'rejected')
+      );
+      if (!hasAwaiting) return;
+      if (cycleInProgressRef.current) return;
+      try {
+        await runSettlementCheckNow();
+      } catch (_) {}
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Bot Cycle Interval ──
   useEffect(() => {
@@ -1801,6 +2106,8 @@ export function AppProvider({ children }) {
     // Bot
     botState, botSettings, updateBotSettings, botCycles, clearBotCycles, strategyStats, botActivity,
     startBot, pauseBot, stopBot, runManualScan, runDebugScanCycle, addToBotActivity,
+    // Paper Proof Mode
+    applyPaperProofDefaults, runProofScan, runSettlementCheckNow,
     // Strategy Library
     strategyLibrary,
     // Emergency controls

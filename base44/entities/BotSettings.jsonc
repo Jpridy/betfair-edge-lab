@@ -10,7 +10,8 @@
       "type": "string",
       "enum": [
         "demo",
-        "live"
+        "live",
+        "paper_proof"
       ],
       "default": "demo"
     },
@@ -67,6 +68,10 @@
     "stopOnEmergency": {
       "type": "boolean",
       "default": true
+    },
+    "paperProofMode": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

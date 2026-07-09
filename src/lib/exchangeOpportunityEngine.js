@@ -21,6 +21,8 @@ import { generateOpportunitiesForEvent, rankOpportunities, getBestByCategory } f
 import { resolveMarketTypeThresholds, MARKET_TYPE_THRESHOLDS } from './crossMarketValueScanner';
 import { getCachedAIResult, setCachedAIResult, getCacheStats } from './exchangeEngineCache';
 import { getCachedExternalSearch, setCachedExternalSearch, getExternalSearchCacheStats } from './externalSearchCache';
+import { isPaperProofModeActive } from './paperProofDefaults';
+import { buildProofOpportunity } from './paperProofScanner';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -563,9 +565,21 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   // 8. Rank all opportunities by EV
   const ranked = rankOpportunities(allOpportunities);
 
+  // ── Paper Proof Mode: check if active ──
+  const paperProofMode = isPaperProofModeActive(settings, {}, featherlessSettings);
+
   // 9. Choose best positive-EV opportunity
   // In debug scan mode, do NOT select any opportunity for order placement
-  const bestOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
+  let bestOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
+
+  // ── Paper Proof Fallback: if no positive-EV opportunity and proof mode is active ──
+  if (!debugScanMode && !bestOpportunity && paperProofMode) {
+    const proofOpp = buildProofOpportunity(eventClusters, runners, paperOrders, settings);
+    if (proofOpp) {
+      bestOpportunity = proofOpp;
+      allOpportunities.push(proofOpp);
+    }
+  }
 
   // ── Top 20 opportunities by EV (for export and diagnostics) ──
   const topOpportunities = ranked.slice(0, 20).map(o => ({
@@ -769,7 +783,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
  */
 export function opportunityToSignal(opportunity, settings) {
   return {
-    strategyName: STRATEGY_NAME,
+    strategyName: opportunity.proofMode ? 'Paper Proof Mode' : STRATEGY_NAME,
     marketId: opportunity.marketId,
     betfairMarketId: opportunity.betfairMarketId,
     selectionId: opportunity.selectionId,
@@ -784,14 +798,15 @@ export function opportunityToSignal(opportunity, settings) {
     expectedValue: opportunity.ev,
     confidence: opportunity.confidence,
     signalStatus: 'active',
-    persistenceType: 'LAPSE',
+    persistenceType: 'LAPSE', // Always LAPSE — never PERSIST
     spreadTicks: opportunity.spreadTicks,
     reason: opportunity.reasons.join('; '),
-    dataSource: 'BETFAIR_METADATA_PLUS_MARKET',
+    dataSource: opportunity.proofMode ? 'MARKET_ONLY_PROOF' : 'BETFAIR_METADATA_PLUS_MARKET',
     marketType: opportunity.marketType,
     opponentSelectionId: opportunity.opponentSelectionId,
     liability: opportunity.liability,
     commissionRate: opportunity.commissionRate,
+    proofMode: opportunity.proofMode || false,
   };
 }
 

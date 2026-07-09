@@ -8,6 +8,7 @@
 
 import { isValidTickPrice, roundToNearestTick, countTicksBetween } from './tickLadder';
 import { isCommissionValidForLive, isInPlayLocked, isOrderOpen } from './betfairMapping';
+import { isPaperProofModeActive } from './paperProofDefaults';
 
 /**
  * Run the full pre-order validation checklist.
@@ -26,6 +27,7 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   const failures = [];
   const isLiveMode = connectionState?.apiConnected === true;
   const riskDisabled = settings?.riskLimitsDisabled === true;
+  const paperProofMode = isPaperProofModeActive(settings, {}, settings);
 
   // ── Market Checks ──
   if (!market) {
@@ -70,10 +72,10 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
       failures.push({ field: 'bestLayPrice', reason: 'No lay price available' });
     }
 
-    // Size availability — in live mode, just require a token minimum ($2).
+    // Size availability — in live mode or paper proof mode, require only $2.
     // Live markets have thin liquidity at best price; the paper matching engine
     // already simulates partial fills.
-    const sizeThreshold = isLiveMode ? 2 : (settings.baseStake || 50);
+    const sizeThreshold = (isLiveMode || paperProofMode) ? 2 : (settings.baseStake || 50);
     if (order.side === 'BACK' && runner.bestBackSize < sizeThreshold) {
       failures.push({ field: 'bestBackSize', reason: `Insufficient available back size ($${runner.bestBackSize?.toFixed(2)}, need $${sizeThreshold.toFixed(2)})` });
     }
@@ -131,28 +133,35 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Time Window Check ──
-  // In live mode, the market selection already picks the market closest to
-  // the trading window. Most live markets are further out than 5 minutes, so
-  // blocking on the strict window would prevent any paper orders from ever
-  // being created. Skip the hard block in live mode.
+  // In live mode or paper proof mode, relax the time window.
+  // Proof mode allows 1s to 86400s (24h) before jump.
   if (market.startTime && strategy && !strategy.allowInPlay && connectionState?.apiConnected !== true) {
     const start = new Date(market.startTime).getTime();
     const now = Date.now();
     const secondsBefore = (start - now) / 1000;
 
-    const windowStart = strategy.timeWindowStart || settings.defaultTimeWindowStartSeconds || 500;
-    const windowEnd = strategy.timeWindowEnd || settings.defaultTimeWindowEndSeconds || 30;
+    if (paperProofMode) {
+      // In proof mode, only block if race has already jumped or is >24h away
+      if (secondsBefore <= 0 && !market.inPlay) {
+        failures.push({ field: 'timeWindow', reason: 'Race has jumped — pre-off window closed' });
+      } else if (secondsBefore > 86400) {
+        failures.push({ field: 'timeWindow', reason: `Race starts in ${Math.round(secondsBefore)}s — outside 24h proof window` });
+      }
+    } else {
+      const windowStart = strategy.timeWindowStart || settings.defaultTimeWindowStartSeconds || 500;
+      const windowEnd = strategy.timeWindowEnd || settings.defaultTimeWindowEndSeconds || 30;
 
-    if (secondsBefore > windowStart) {
-      failures.push({ field: 'timeWindow', reason: `Too early — race starts in ${Math.round(secondsBefore)}s (window opens at ${windowStart}s before start)` });
-    }
+      if (secondsBefore > windowStart) {
+        failures.push({ field: 'timeWindow', reason: `Too early — race starts in ${Math.round(secondsBefore)}s (window opens at ${windowStart}s before start)` });
+      }
 
-    if (secondsBefore < windowEnd && secondsBefore > 0) {
-      failures.push({ field: 'timeWindow', reason: `Too late — race starts in ${Math.round(secondsBefore)}s (window closes at ${windowEnd}s before start)` });
-    }
+      if (secondsBefore < windowEnd && secondsBefore > 0) {
+        failures.push({ field: 'timeWindow', reason: `Too late — race starts in ${Math.round(secondsBefore)}s (window closes at ${windowEnd}s before start)` });
+      }
 
-    if (secondsBefore <= 0 && !market.inPlay) {
-      failures.push({ field: 'timeWindow', reason: 'Race has jumped — pre-off window closed' });
+      if (secondsBefore <= 0 && !market.inPlay) {
+        failures.push({ field: 'timeWindow', reason: 'Race has jumped — pre-off window closed' });
+      }
     }
   }
 
@@ -160,18 +169,23 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   // Market total traded volume is not a reliable gate for early AU racing
   // markets. The real test is whether the target runner has available size
   // at the best price for a partial fill.
+  // In paper proof mode, only require $2 available.
+  const minAvailable = paperProofMode ? 2 : 2;
   const availableAtPrice = order.side === 'BACK' ? (runner?.bestBackSize || 0) : (runner?.bestLaySize || 0);
-  if (!riskDisabled && availableAtPrice < 2) {
+  if (!riskDisabled && availableAtPrice < minAvailable) {
     failures.push({ field: 'runnerLiquidity', reason: `Runner has no available size at best price ($${availableAtPrice.toFixed(2)})` });
   }
 
   // ── Price Validation ──
-  if (!riskDisabled && (!order.price || order.price < (settings.minOdds || 1.5))) {
-    failures.push({ field: 'price', reason: `Price ${order.price} below minimum odds ${settings.minOdds || 1.5}` });
+  // In paper proof mode, use relaxed odds bounds from settings (1.01 to 1000)
+  const minOddsCheck = paperProofMode ? (settings.minOdds || 1.01) : (settings.minOdds || 1.5);
+  const maxOddsCheck = paperProofMode ? (settings.maxOdds || 1000) : (settings.maxOdds || 20);
+  if (!riskDisabled && (!order.price || order.price < minOddsCheck)) {
+    failures.push({ field: 'price', reason: `Price ${order.price} below minimum odds ${minOddsCheck}` });
   }
 
-  if (!riskDisabled && order.price > (settings.maxOdds || 20)) {
-    failures.push({ field: 'price', reason: `Price ${order.price} above maximum odds ${settings.maxOdds || 20}` });
+  if (!riskDisabled && order.price > maxOddsCheck) {
+    failures.push({ field: 'price', reason: `Price ${order.price} above maximum odds ${maxOddsCheck}` });
   }
 
   if (!isValidTickPrice(order.price)) {
@@ -183,12 +197,15 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   }
 
   // ── Stake Checks ──
-  if (!riskDisabled && (!order.size || order.size < (settings.baseStake || 50))) {
-    failures.push({ field: 'size', reason: `Stake $${order.size} below minimum $${settings.baseStake || 50}` });
+  // In paper proof mode, minimum stake is $2, max is $5
+  const minStake = paperProofMode ? 2 : (settings.baseStake || 50);
+  const maxStake = paperProofMode ? (settings.maxStake || 5) : (settings.maxStake || 500);
+  if (!riskDisabled && (!order.size || order.size < minStake)) {
+    failures.push({ field: 'size', reason: `Stake $${order.size} below minimum $${minStake}` });
   }
 
-  if (!riskDisabled && order.size > (settings.maxStake || 500)) {
-    failures.push({ field: 'size', reason: `Stake $${order.size} exceeds max $${settings.maxStake || 500}` });
+  if (!riskDisabled && order.size > maxStake) {
+    failures.push({ field: 'size', reason: `Stake $${order.size} exceeds max $${maxStake}` });
   }
 
   // ── Lay Liability Check ──

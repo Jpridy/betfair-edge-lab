@@ -11,6 +11,7 @@
 // ============================================================================
 
 import { calculateCommission } from './betfairMapping';
+import { isPaperProofModeActive } from './paperProofDefaults';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -56,6 +57,9 @@ export function createValidatedPaperOrder({
 }) {
   const failures = [];
 
+  // ── Paper Proof Mode detection ──
+  const paperProofMode = isPaperProofModeActive(settings, {}, settings);
+
   // ── Emergency Stop ──
   if (emergencyStop) {
     failures.push({ field: 'emergencyStop', reason: 'Emergency stop is active — no orders can be placed' });
@@ -85,30 +89,40 @@ export function createValidatedPaperOrder({
     }
   }
 
+  // ── Force LAPSE in Paper Proof Mode ──
+  if (paperProofMode && persistenceType === 'PERSIST') {
+    persistenceType = 'LAPSE';
+  }
+
   // ── Determine price ──
   const price = odds || (side === 'BACK' ? runner?.bestBackPrice : runner?.bestLayPrice) || 0;
 
-  // ── Odds Bounds ──
-  if (!price || price < (settings.minOdds || 1.5)) {
-    failures.push({ field: 'odds', reason: `Odds ${price} below minimum ${settings.minOdds || 1.5}` });
+  // ── Odds Bounds ── (relaxed in proof mode)
+  const minOddsCheck = paperProofMode ? (settings.minOdds || 1.01) : (settings.minOdds || 1.5);
+  const maxOddsCheck = paperProofMode ? (settings.maxOdds || 1000) : (settings.maxOdds || 20);
+  if (!price || price < minOddsCheck) {
+    failures.push({ field: 'odds', reason: `Odds ${price} below minimum ${minOddsCheck}` });
   }
-  if (price > (settings.maxOdds || 20)) {
-    failures.push({ field: 'odds', reason: `Odds ${price} above maximum ${settings.maxOdds || 20}` });
+  if (price > maxOddsCheck) {
+    failures.push({ field: 'odds', reason: `Odds ${price} above maximum ${maxOddsCheck}` });
   }
 
-  // ── Stake Bounds ──
-  if (!stake || stake < 1) {
+  // ── Stake Bounds ── (relaxed in proof mode: $2 min, $5 max)
+  const minStake = paperProofMode ? 1 : 1;
+  const maxStake = paperProofMode ? (settings.maxStake || 5) : (settings.maxStake || 500);
+  if (!stake || stake < minStake) {
     failures.push({ field: 'stake', reason: `Invalid stake: $${stake}` });
   }
-  if (stake > (settings.maxStake || 500)) {
-    failures.push({ field: 'stake', reason: `Stake $${stake} exceeds max $${settings.maxStake || 500}` });
+  if (stake > maxStake) {
+    failures.push({ field: 'stake', reason: `Stake $${stake} exceeds max $${maxStake}` });
   }
   const stakePct = bankrollStats.bankroll > 0 ? (stake / bankrollStats.bankroll) * 100 : 0;
-  if (stakePct > (settings.maxStakePercent || 5)) {
-    failures.push({ field: 'stakePercent', reason: `Stake ${stakePct.toFixed(1)}% exceeds max ${settings.maxStakePercent || 5}% of bankroll` });
+  const maxStakePct = paperProofMode ? (settings.maxStakePercent || 0.1) : (settings.maxStakePercent || 5);
+  if (stakePct > maxStakePct) {
+    failures.push({ field: 'stakePercent', reason: `Stake ${stakePct.toFixed(1)}% exceeds max ${maxStakePct}% of bankroll` });
   }
 
-  // ── Lay Liability Check ──
+  // ── Lay Liability Check ── (always enforced, but max is $25 in proof mode)
   if (side === 'LAY' && price > 0) {
     const liability = stake * (price - 1);
     const maxLiability = settings.maxLayLiability || 1500;
