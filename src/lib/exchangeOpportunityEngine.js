@@ -326,9 +326,14 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   }).length;
 
   if (eligibleMarkets.length === 0) {
-    const reason = debugScanMode
-      ? `No open pre-race markets with 2+ runners found (${totalMarketsLoaded} markets loaded, ${openPreRaceMarkets} open pre-race)`
-      : `No eligible markets in time window — ${marketsInsideTimeWindow} inside window, ${timeWindowFunnel.tooEarlyMarkets} too early, ${timeWindowFunnel.tooLateMarkets} too late, ${timeWindowFunnel.noStartTimeMarkets} no start time (of ${openPreRaceMarkets} open pre-race markets)`;
+    let reason;
+    if (totalMarketsLoaded === 0) {
+      reason = 'No Betfair market data loaded — connect your Betfair session in Setup, then click Refresh Markets';
+    } else if (debugScanMode) {
+      reason = `No open pre-race markets with 2+ runners found (${totalMarketsLoaded} markets loaded, ${openPreRaceMarkets} open pre-race)`;
+    } else {
+      reason = `No eligible markets in time window — ${marketsInsideTimeWindow} inside window, ${timeWindowFunnel.tooEarlyMarkets} too early, ${timeWindowFunnel.tooLateMarkets} too late, ${timeWindowFunnel.noStartTimeMarkets} no start time (of ${openPreRaceMarkets} open pre-race markets)`;
+    }
     return {
       bestOpportunity: null,
       allOpportunities: [],
