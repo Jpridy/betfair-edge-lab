@@ -8,8 +8,9 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 
 const PAGE_TITLES = {
-  '/': { title: 'Dashboard', subtitle: 'Real-time P/L, strategy health, and system activity across all paper trading' },
-  '/bot-control': { title: 'Bot Control Centre', subtitle: 'Start, stop, and monitor automated market scanning and signal generation' },
+  '/': { title: 'Bot Control Centre', subtitle: 'Single-screen control room — bot status, system health, decisions, opportunities, risk, and settlement' },
+  '/dashboard': { title: 'Dashboard Summary', subtitle: 'Real-time P/L, strategy health, and system activity across all paper trading' },
+  '/setup-wizard': { title: 'Setup Wizard', subtitle: 'Test all connections and configuration before running the bot' },
   '/scanner': { title: 'Market Scanner', subtitle: 'Browse live Australian racing markets with liquidity and eligibility filters' },
   '/strategy-library': { title: 'Strategy Library', subtitle: 'Compare all strategies by status, performance, and live approval readiness' },
   '/runner': { title: 'Runner View', subtitle: 'Back/lay prices, edge, CLV estimate, and strategy suitability per runner' },
@@ -19,7 +20,7 @@ const PAGE_TITLES = {
   '/performance-analytics': { title: 'Performance Analytics', subtitle: 'Equity curves, drawdown, CLV trends, and profit breakdowns by strategy and market' },
   '/orders': { title: 'Orders', subtitle: 'Complete paper and live order history with full audit trail and filtering' },
   '/risk': { title: 'Risk Manager', subtitle: 'Global risk state, loss limits, exposure, and emergency controls for all trading' },
-  '/settings': { title: 'Settings', subtitle: 'Betfair API, commission, bankroll, risk limits, and strategy configuration' },
+  '/settings': { title: 'Settings Hub', subtitle: 'Bot mode, market filters, opportunity rules, risk management, AI, Betfair, and settlement configuration' },
   '/logs': { title: 'Logs / Audit', subtitle: 'Complete audit trail of every strategy, bot, order, and risk action' },
 };
 

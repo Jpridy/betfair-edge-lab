@@ -9,7 +9,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 // Eager imports — auth pages and layout must load immediately
 import Layout from '@/components/Layout';
-import DashboardHome from '@/pages/DashboardHome';
+import BotControlCentre from '@/pages/BotControlCentre';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -18,7 +18,8 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { AppProvider } from '@/lib/AppContext';
 
 // Lazy-loaded pages — reduces initial bundle size
-const BotControlCentre = lazy(() => import('@/pages/BotControlCentre'));
+const DashboardHome = lazy(() => import('@/pages/DashboardHome'));
+const SetupWizard = lazy(() => import('@/pages/SetupWizard'));
 const MarketScanner = lazy(() => import('@/pages/MarketScanner'));
 const PaperTrading = lazy(() => import('@/pages/PaperTrading'));
 const PerformanceAnalytics = lazy(() => import('@/pages/PerformanceAnalytics'));
@@ -71,8 +72,9 @@ const AuthenticatedApp = () => {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
           <Route element={<Layout />}>
-            <Route path="/" element={<DashboardHome />} />
-            <Route path="/bot-control" element={<Suspense fallback={<PageLoader />}><BotControlCentre /></Suspense>} />
+            <Route path="/" element={<BotControlCentre />} />
+            <Route path="/dashboard" element={<Suspense fallback={<PageLoader />}><DashboardHome /></Suspense>} />
+            <Route path="/setup-wizard" element={<Suspense fallback={<PageLoader />}><SetupWizard /></Suspense>} />
             <Route path="/scanner" element={<Suspense fallback={<PageLoader />}><MarketScanner /></Suspense>} />
             <Route path="/paper-trading" element={<Suspense fallback={<PageLoader />}><PaperTrading /></Suspense>} />
             <Route path="/performance-analytics" element={<Suspense fallback={<PageLoader />}><PerformanceAnalytics /></Suspense>} />
