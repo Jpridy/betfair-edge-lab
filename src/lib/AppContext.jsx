@@ -1078,6 +1078,7 @@ export function AppProvider({ children }) {
     addAuditLog('Betfair Catalogue Refresh', 'api', 'info', 'Fetching latest market catalogue from Betfair');
     try {
       const resp = await base44.functions.invoke('betfairMarkets', { sessionToken: s.betfairSessionToken });
+      if (resp.data?.error) throw new Error(resp.data.error);
       const catRunners = resp.data?.runners || [];
       if (catRunners.length > 0) {
         const nameMap = new Map();
@@ -1921,6 +1922,7 @@ export function AppProvider({ children }) {
       try {
         const resp = await base44.functions.invoke('betfairMarkets', { sessionToken: betfairSessionToken });
         if (cancelled) return;
+        if (resp.data?.error) throw new Error(resp.data.error);
         const catRunners = resp.data?.runners || [];
         const nameMap = new Map();
         const metaMap = new Map();

@@ -79,12 +79,12 @@ Deno.serve(async (req) => {
     }
 
     if (!catalogueRes.ok) {
-      return Response.json({ error: `Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 200)}` }, { status: 502 });
+      return Response.json({ error: `Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 200)}` }, { status: 200 });
     }
 
     let catalogues;
     try { catalogues = JSON.parse(catalogueText); } catch {
-      return Response.json({ error: 'Betfair returned non-JSON response for catalogue' }, { status: 502 });
+      return Response.json({ error: 'Betfair returned non-JSON response for catalogue' }, { status: 200 });
     }
 
     if (!Array.isArray(catalogues) || catalogues.length === 0) {

@@ -380,7 +380,7 @@ Deno.serve(async (req) => {
       const errText = await apiResp.text();
       let errMessage = `Featherless API error ${apiResp.status}`;
       try { const errJson = JSON.parse(errText); errMessage = errJson.error?.message || errMessage; } catch (_) {}
-      return Response.json({ error: errMessage, status: apiResp.status, responseTimeMs }, { status: 502 });
+      return Response.json({ error: errMessage, status: apiResp.status, responseTimeMs }, { status: 200 });
     }
 
     const apiData = await apiResp.json();
@@ -413,7 +413,7 @@ Deno.serve(async (req) => {
         for (let i = 0; i < braces; i++) fixed += '}';
         parsed = JSON.parse(fixed);
       } catch (_) {
-        return Response.json({ error: 'AI returned invalid JSON', rawResponse: rawContent.slice(0, 2000) }, { status: 422 });
+        return Response.json({ error: 'AI returned invalid JSON', rawResponse: rawContent.slice(0, 2000) }, { status: 200 });
       }
     }
 
