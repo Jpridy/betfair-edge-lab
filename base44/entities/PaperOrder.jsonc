@@ -78,6 +78,13 @@
       "type": "boolean",
       "default": false
     },
+    "proofMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "proofReason": {
+      "type": "string"
+    },
     "betfairBetId": {
       "type": "string"
     },
@@ -145,7 +152,8 @@
         "settled",
         "result_unknown",
         "voided",
-        "lapsed"
+        "lapsed",
+        "awaiting_result"
       ]
     },
     "resultSource": {
@@ -296,7 +304,8 @@
       "enum": [
         "MARKET_ONLY",
         "BETFAIR_METADATA_PLUS_MARKET",
-        "EXTERNAL_FORM_PLUS_MARKET"
+        "EXTERNAL_FORM_PLUS_MARKET",
+        "MARKET_ONLY_PROOF"
       ]
     }
   },

@@ -79,6 +79,34 @@
     },
     "selectedMarketName": {
       "type": "string"
+    },
+    "paperProofMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "proofDefaultsApplied": {
+      "type": "boolean",
+      "default": false
+    },
+    "proofFallbackUsed": {
+      "type": "boolean",
+      "default": false
+    },
+    "proofReason": {
+      "type": "string"
+    },
+    "proofStake": {
+      "type": "number"
+    },
+    "proofMaxLiability": {
+      "type": "number"
+    },
+    "proofOrderCreated": {
+      "type": "boolean",
+      "default": false
+    },
+    "proofSettlementStatus": {
+      "type": "string"
     }
   },
   "required": [
