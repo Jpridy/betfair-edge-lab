@@ -7,7 +7,7 @@ import OpenAISearchDebugPanel from '@/components/bot/OpenAISearchDebugPanel';
 import ExternalSearchTestButton from '@/components/bot/ExternalSearchTestButton';
 
 export default function AIResearchPanel() {
-  const { featherlessSettings, lastExchangeDiagnostics, aiDecisions } = useApp();
+  const { featherlessSettings, lastExchangeDiagnostics, aiDecisions, botCycles } = useApp();
 
   const aiEnabled = featherlessSettings?.enabled === true;
   const extEnabled = featherlessSettings?.externalSearchEnabled === true;
@@ -63,6 +63,44 @@ export default function AIResearchPanel() {
                 )}
               </div>
             )}
+            {/* Pre/Post search probability comparison */}
+            {(() => {
+              const extDiag = aiDiag?.externalSearchDiagnostics || botCycles?.[0]?.scanSummary?.externalSearchDiagnostics;
+              const bestOpp = botCycles?.[0]?.bestCandidate;
+              const preSearch = bestOpp?.preSearchProbability;
+              const postSearch = bestOpp?.postSearchProbability;
+              const delta = bestOpp?.probabilityDelta;
+              const decisionImpact = bestOpp?.decisionImpact;
+              if (extEnabled && extDiag && extDiag.callsThisCycle > 0) {
+                return (
+                  <div className="text-xs border-t border-border pt-2 space-y-1">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase">OpenAI Search Impact (Latest Cycle)</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Stat label="Search Calls" value={extDiag.callsThisCycle || 0} />
+                      <Stat label="Sources Found" value={extDiag.totalSourcesFound || 0} />
+                      <Stat label="Cache Hits" value={extDiag.cacheHits || 0} />
+                      <Stat label="Errors" value={extDiag.errors || 0} iconColor={extDiag.errors > 0 ? 'text-chart-5' : 'text-chart-1'} />
+                    </div>
+                    {preSearch != null && postSearch != null && (
+                      <div className="bg-muted/30 rounded p-2 space-y-0.5">
+                        <div className="flex justify-between"><span className="text-muted-foreground">Pre-search prob:</span><span className="font-mono">{(preSearch * 100).toFixed(1)}%</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">Post-search prob:</span><span className="font-mono">{(postSearch * 100).toFixed(1)}%</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">Delta:</span><span className={cn('font-mono font-bold', Math.abs(delta || 0) > 0.01 ? 'text-chart-4' : 'text-muted-foreground')}>{((delta || 0) * 100).toFixed(2)}%</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">Decision impact:</span><span className="font-mono text-chart-3">{decisionImpact || 'no_effect'}</span></div>
+                      </div>
+                    )}
+                  </div>
+                );
+              } else if (extEnabled) {
+                return (
+                  <div className="text-xs border-t border-border pt-2">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase">OpenAI Search</div>
+                    <div className="text-muted-foreground">Enabled but not called this cycle (no qualifying markets or all cached).</div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             <div className="text-[10px] text-muted-foreground bg-chart-2/5 border border-chart-2/20 rounded p-2">
               AI provides probabilities only. EV, ROI, and BET/NO_BET are calculated deterministically by the exchange engine using live Betfair prices.
             </div>

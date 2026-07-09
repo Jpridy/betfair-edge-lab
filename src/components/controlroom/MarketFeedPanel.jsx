@@ -96,6 +96,18 @@ export default function MarketFeedPanel() {
         {unknownMarkets > 0 && <span className="text-chart-4 font-semibold">{unknownMarkets} unknown type</span>}
       </div>
 
+      {/* Market type detection note */}
+      {totalLoaded > 0 && placeMarkets === 0 && h2hMarkets === 0 && (
+        <div className="px-4 py-1.5 border-b border-border text-[10px] text-muted-foreground">
+          {unknownMarkets > 0
+            ? `${unknownMarkets} market(s) could not be classified as WIN/PLACE/H2H — marketTypeCode missing from Betfair feed. Detection uses market name + marketTypeCode.`
+            : winMarkets > 0
+              ? 'Only WIN markets detected. Betfair did not return PLACE/H2H markets for current events (common outside AU/NZ racing).'
+              : 'No WIN/PLACE/H2H markets detected. Market type detection failed or no qualifying racing events.'
+          }
+        </div>
+      )}
+
       {/* Nearest markets table */}
       <div className="max-h-80 overflow-auto">
         <Table>

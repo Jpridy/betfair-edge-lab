@@ -1,7 +1,8 @@
 import React from 'react';
-import { Shield, ShieldOff, Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign } from 'lucide-react';
+import { Shield, ShieldOff, Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2 } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
+import { buildSettingsWiringCheck } from '@/lib/wiringAudit';
 
 function Banner({ icon: Icon, text, tone }) {
   const tones = {
@@ -19,7 +20,7 @@ function Banner({ icon: Icon, text, tone }) {
 }
 
 export default function SafetyBanners() {
-  const { apiConnected, betfairConnection, featherlessSettings, lastExchangeDiagnostics, paperOrders, settings } = useApp();
+  const { apiConnected, betfairConnection, featherlessSettings, lastExchangeDiagnostics, paperOrders, settings, botSettings } = useApp();
 
   const banners = [];
 
@@ -32,6 +33,11 @@ export default function SafetyBanners() {
   // Price feed stale
   if (!apiConnected || betfairConnection.dataFresh === false) {
     banners.push(<Banner key="stale" icon={WifiOff} text="PRICE FEED STALE — Connect Betfair for live data" tone="warning" />);
+  }
+
+  // Delayed API mode — stream not connected but API is (polling fallback)
+  if (apiConnected && betfairConnection.streamConnectionStatus !== 'connected' && betfairConnection.streamConnectionStatus !== 'polling') {
+    banners.push(<Banner key="delayed" icon={Clock} text={`DELAYED API MODE — Stream: ${betfairConnection.streamConnectionStatus}`} tone="warning" />);
   }
 
   // OpenAI search not working
@@ -67,7 +73,14 @@ export default function SafetyBanners() {
     banners.push(<Banner key="lay-liab" icon={DollarSign} text={`LAY LIABILITY ACTIVE: $${totalLiability.toFixed(2)} at risk`} tone="danger" />);
   }
 
-  // Settings mismatch
+  // Settings mismatch — compare saved DB values with bot-used values
+  const wiringRows = buildSettingsWiringCheck(settings, featherlessSettings, botSettings);
+  const mismatchCount = wiringRows.filter(r => r.status === 'mismatch' || r.status === 'missing').length;
+  if (mismatchCount > 0) {
+    banners.push(<Banner key="mismatch" icon={Settings2} text={`SETTINGS MISMATCH — ${mismatchCount} setting(s) differ between saved and bot-used values`} tone="danger" />);
+  }
+
+  // Risk limits disabled
   if (settings.riskLimitsDisabled) {
     banners.push(<Banner key="risk-off" icon={AlertTriangle} text="RISK LIMITS DISABLED — Testing mode active" tone="danger" />);
   }
