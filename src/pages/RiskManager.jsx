@@ -1,10 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, ArrowRight, FlaskConical } from 'lucide-react';
+import { AlertOctagon, Shield, CheckCircle2, XCircle, AlertTriangle, FlaskConical } from 'lucide-react';
 import GlobalStopRules from '@/components/risk/GlobalStopRules';
 import RiskOverview from '@/components/risk/RiskOverview';
 import { Switch } from '@/components/ui/switch';

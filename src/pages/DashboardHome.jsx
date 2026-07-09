@@ -48,11 +48,11 @@ export default function DashboardHome() {
   if (emergencyStop) {
     nextAction = { text: 'Emergency stop is active. Clear it from Settings → Risk to resume.', link: '/settings', linkText: 'Go to Settings' };
   } else if (!botState.running) {
-    nextAction = { text: 'The bot is stopped. Start it to begin scanning and trading.', link: '/bot-control', linkText: 'Start Bot' };
+    nextAction = { text: 'The bot is stopped. Start it to begin scanning and trading.', link: '/', linkText: 'Start Bot' };
   } else if (isPaused) {
-    nextAction = { text: 'The bot is paused. It is still scanning but not placing new paper orders.', link: '/bot-control', linkText: 'Resume Bot' };
+    nextAction = { text: 'The bot is paused. It is still scanning but not placing new paper orders.', link: '/', linkText: 'Resume Bot' };
   } else if (isRunning) {
-    nextAction = { text: 'The bot is running. Watch the activity feed below for real-time updates.', link: '/bot-control', linkText: 'Bot Control' };
+    nextAction = { text: 'The bot is running. Watch the activity feed below for real-time updates.', link: '/', linkText: 'Bot Control' };
   }
 
   return (
@@ -93,7 +93,7 @@ export default function DashboardHome() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <QuickAction to="/bot-control" icon={Bot} label="Paper Bot" sub="Start/stop paper bot" accent="purple" />
+        <QuickAction to="/" icon={Bot} label="Control Centre" sub="Start/stop paper bot" accent="purple" />
         <QuickAction to="/scanner" icon={Radar} label="Markets" sub="Browse markets" accent="blue" />
         <QuickAction to="/paper-trading" icon={BarChart3} label="Paper Orders" sub="Place test orders" accent="green" />
         <QuickAction to="/performance-analytics" icon={TrendingUp} label="Analytics" sub="Paper performance" accent="green" />

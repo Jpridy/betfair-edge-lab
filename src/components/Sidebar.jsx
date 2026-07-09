@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bot, Settings, ScrollText, FileText, Wrench, ChevronDown, ChevronRight, AlertOctagon, X, Radar, Layers, Footprints, FlaskConical, History, BarChart3, ShieldAlert, BookOpen, Network, Zap, LayoutDashboard, TrendingUp } from 'lucide-react';
+import { Bot, Settings, ScrollText, FileText, Wrench, ChevronDown, ChevronRight, AlertOctagon, X, Radar, Layers, Footprints, FlaskConical, History, BarChart3, ShieldAlert, BookOpen, Network, Zap, LayoutDashboard } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';

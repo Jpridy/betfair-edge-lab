@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldOff, Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2 } from 'lucide-react';
+import { Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2 } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildSettingsWiringCheck } from '@/lib/wiringAudit';

@@ -31,13 +31,13 @@ export default function OnboardingChecklist() {
       label: 'Enable Featherless AI strategy',
       detail: 'The AI Value Decision Engine is the only active strategy — enable it in Bot Control',
       done: true,
-      link: '/bot-control',
+      link: '/',
     },
     {
       label: 'Start the Paper Bot',
       detail: botState.running ? 'Bot is running!' : 'Press Start on the Bot Control Centre',
       done: botState.running || botState.cycleNumber > 0,
-      link: '/bot-control',
+      link: '/',
     },
     {
       label: 'Review paper results',
