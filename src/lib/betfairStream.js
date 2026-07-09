@@ -28,6 +28,9 @@ export class BetfairStreamClient {
     this.reconnectTimer = null;
     this.shouldReconnect = false;
     this.subscribed = false;
+    this.onHeartbeat = null;
+    this.lastMessageAt = 0;
+    this.watchdogTimer = null;
   }
 
   connect(isReconnect = false) {
@@ -67,6 +70,19 @@ export class BetfairStreamClient {
     this.ws.onerror = () => this._onError();
 
     if (this.onStatusChange) this.onStatusChange('connecting');
+
+    // Watchdog: check every 15s if the connection is truly alive.
+    // Betfair sends heartbeats every ~5s, so no message in 60s = dead connection.
+    this.lastMessageAt = Date.now();
+    this.watchdogTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      const silentMs = Date.now() - this.lastMessageAt;
+      if (silentMs > 60000) {
+        if (this.onError) this.onError(`No heartbeat from Betfair for ${Math.round(silentMs / 1000)}s — forcing reconnect`);
+        try { this.ws.close(); } catch (_) {}
+        // _onClose will handle reconnection
+      }
+    }, 15000);
   }
 
   _onOpen() {
@@ -82,6 +98,8 @@ export class BetfairStreamClient {
   _onMessage(event) {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
+
+    this.lastMessageAt = Date.now();
 
     if (data.op === 'status') {
       this._handleStatus(data);
@@ -100,6 +118,10 @@ export class BetfairStreamClient {
         this.subscribed = true;
         if (this.onStatusChange) this.onStatusChange('connected');
         this._subscribeToMarkets();
+      } else {
+        // Heartbeat — Betfair sends these every ~5s when no market changes occur.
+        // Fire callback so AppContext can keep lastMarketSyncTime fresh.
+        if (this.onHeartbeat) this.onHeartbeat();
       }
     } else if (data.statusCode === 'FAILURE') {
       const errorCode = data.errorCode || '';
@@ -583,6 +605,7 @@ export class BetfairStreamClient {
   }
 
   _onClose(event) {
+    if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     if (this.onStatusChange) this.onStatusChange('disconnected');
     if (!this.shouldReconnect) return;
 
@@ -612,6 +635,10 @@ export class BetfairStreamClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
     }
     if (this.ws) {
       this.ws.onclose = null;

@@ -1975,6 +1975,10 @@ export function AppProvider({ children }) {
           sessionTokenStatus: 'connected',
         }));
       },
+      onHeartbeat: () => {
+        if (cancelled) return;
+        setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), dataFresh: true }));
+      },
       onStatusChange: (status) => {
         if (cancelled) return;
         if (status === 'session_expired') {

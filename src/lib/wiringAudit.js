@@ -113,7 +113,7 @@ export function buildLiveWiringStatus(appContext) {
   const lastRejectedDate = rejectedOrders?.[0]?.id || null;
   const lastStreamUpdate = betfairConnection?.lastMarketSyncTime || syncState?.lastCatalogueSync || null;
   const streamStatus = betfairConnection?.streamConnectionStatus || 'disconnected';
-  const isStale = lastStreamUpdate ? (Date.now() - new Date(lastStreamUpdate).getTime()) > 30000 : true;
+  const isStale = lastStreamUpdate ? (Date.now() - new Date(lastStreamUpdate).getTime()) > 45000 : true;
 
   return [
     {

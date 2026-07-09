@@ -102,6 +102,7 @@ export async function createBetfairStream(sessionToken, callbacks) {
   client.onStatusChange = callbacks.onStatusChange;
   client.onError = callbacks.onError;
   client.onMarketSettled = callbacks.onMarketSettled;
+  client.onHeartbeat = callbacks.onHeartbeat;
   client.connect();
   return { client, config };
 }
