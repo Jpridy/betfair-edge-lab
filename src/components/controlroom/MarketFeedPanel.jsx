@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { exportToCSV } from '@/lib/csvExport';

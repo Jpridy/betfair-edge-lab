@@ -1,5 +1,5 @@
-import React from 'react';
-import { Play, Pause, Square, RefreshCw, Download, AlertOctagon, Zap, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Play, Pause, Square, RefreshCw, Download, AlertOctagon, Zap, Clock, FileDown } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -7,35 +7,72 @@ import { exportToCSV } from '@/lib/csvExport';
 
 export default function ControlBar() {
   const {
-    botState, startBot, pauseBot, stopBot, runManualScan,
+    botState, startBot, pauseBot, stopBot, runDebugScanCycle,
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,
-    refreshMarketState, botCycles,
+    refreshBetfairData, refreshMarketState, botCycles, exchangeOpportunities, lastExchangeDiagnostics, paperOrders, markets,
   } = useApp();
 
+  const [exporting, setExporting] = useState(false);
   const isRunning = botState.running && !botState.paused && !emergencyStop;
   const isPaused = botState.paused && !emergencyStop;
   const lastCycle = botCycles[0];
   const lastDecision = lastCycle?.ordersCreated > 0 ? 'BET' : lastCycle?.noBetReason ? 'NO_BET' : lastCycle ? 'NO_BET' : '—';
 
-  const handleExportLogs = () => {
-    const cycle = botCycles[0];
-    if (!cycle) return;
-    const row = {
-      cycleNumber: cycle.cycleNumber,
-      status: cycle.status,
-      startedAt: cycle.startedAt,
-      finishedAt: cycle.finishedAt,
-      marketsScanned: cycle.marketsScanned,
-      marketsPassedFilters: cycle.marketsPassedFilters,
-      signalsCreated: cycle.signalsCreated,
-      ordersCreated: cycle.ordersCreated,
-      ordersBlocked: cycle.ordersBlocked,
-      noBetReason: cycle.noBetReason || '',
-      selectedMarket: cycle.selectedMarketName || '',
-      bestCandidate: cycle.bestCandidate?.runnerName || '',
-      notes: cycle.notes || '',
-    };
-    exportToCSV(`bot-cycle-${cycle.cycleNumber}.csv`, [row]);
+  const handleExportDebugBundle = () => {
+    setExporting(true);
+    try {
+      const cycle = botCycles[0];
+      // 1. Latest cycle full row
+      if (cycle) {
+        exportToCSV(`latest-cycle.csv`, [{
+          cycleNumber: cycle.cycleNumber, status: cycle.status, debugOnly: cycle.debugOnly || false,
+          startedAt: cycle.startedAt, finishedAt: cycle.finishedAt,
+          marketsScanned: cycle.marketsScanned, marketsPassedFilters: cycle.marketsPassedFilters,
+          signalsCreated: cycle.signalsCreated, ordersCreated: cycle.ordersCreated, ordersBlocked: cycle.ordersBlocked,
+          noBetReason: cycle.noBetReason || '', selectedMarket: cycle.selectedMarketName || '',
+          bestCandidate: cycle.bestCandidate?.runnerName || '', bestCandidateSide: cycle.bestCandidate?.side || '',
+          bestCandidateOdds: cycle.bestCandidate?.odds || '', bestCandidateEV: cycle.bestCandidate?.ev || '',
+          bestCandidateROI: cycle.bestCandidate?.expectedROI || '', bestCandidateBlocker: cycle.bestCandidate?.failedGate || cycle.bestCandidate?.mainBlocker || '',
+          notes: cycle.notes || '',
+        }]);
+      }
+      // 2. Latest opportunities
+      const opps = exchangeOpportunities?.length > 0 ? exchangeOpportunities : (lastCycle?.scanSummary?.topOpportunities || []);
+      if (opps.length > 0) {
+        exportToCSV('latest-opportunities.csv', opps.map(o => ({
+          marketType: o.marketType || o.detectedMarketType || '', side: o.side || '', runner: o.runnerName || '',
+          eventName: o.eventName || '', marketName: o.marketName || '', odds: o.odds || '',
+          ev: o.ev || '', roi: o.roi || o.expectedROI || '', confidence: o.confidence || '',
+          stake: o.stake || '', liability: o.liability || '', edge: o.edge || '',
+          modelProbability: o.modelProbability || '', finalProbabilityUsedInEV: o.finalProbabilityUsedInEV || '',
+          preSearchProbability: o.preSearchProbability || '', postSearchProbability: o.postSearchProbability || '',
+          probabilityDelta: o.probabilityDelta || '', decisionImpact: o.decisionImpact || '',
+          blocker: o.failedGate || o.mainBlocker || (o.blockers || []).join('; '), decision: o.decision || '',
+        })));
+      }
+      // 3. Latest loaded markets
+      const loadedMarkets = lastExchangeDiagnostics?.loadedMarketsTable || [];
+      if (loadedMarkets.length > 0) {
+        exportToCSV('latest-loaded-markets.csv', loadedMarkets);
+      }
+      // 4. Latest nearest markets (same as loaded but sorted by seconds to jump)
+      const nearest = [...loadedMarkets].sort((a, b) => (a.secondsToJump ?? 99999) - (b.secondsToJump ?? 99999)).slice(0, 20);
+      if (nearest.length > 0) {
+        exportToCSV('latest-nearest-markets.csv', nearest);
+      }
+      // 5. Latest paper orders
+      if (paperOrders.length > 0) {
+        exportToCSV('latest-paper-orders.csv', paperOrders.slice(0, 50).map(o => ({
+          created_date: o.created_date || '', runnerName: o.runnerName || '', side: o.side || '',
+          status: o.status || '', requestedOdds: o.requestedOdds || '', requestedStake: o.requestedStake || '',
+          liability: o.liability || '', marketType: o.marketType || '', result: o.result || '',
+          netProfit: o.netProfit || '', rejection_reason: o.rejection_reason || '',
+          persistenceType: o.persistenceType || '', strategyName: o.strategyName || '',
+        })));
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -64,14 +101,17 @@ export default function ControlBar() {
 
       {/* Action buttons */}
       <div className="flex items-center gap-1.5">
-        <Button size="sm" variant="outline" onClick={runManualScan} disabled={emergencyStop} className="gap-1.5">
-          <Zap className="h-4 w-4" /> Force Scan
+        <Button size="sm" variant="outline" onClick={runDebugScanCycle} disabled={emergencyStop} className="gap-1.5">
+          <Zap className="h-4 w-4" /> Force Debug Scan
+        </Button>
+        <Button size="sm" variant="outline" onClick={refreshBetfairData} className="gap-1.5">
+          <RefreshCw className="h-4 w-4" /> Refresh Betfair
         </Button>
         <Button size="sm" variant="outline" onClick={refreshMarketState} className="gap-1.5">
-          <RefreshCw className="h-4 w-4" /> Refresh Data
+          <RefreshCw className="h-4 w-4" /> Refresh Local State
         </Button>
-        <Button size="sm" variant="outline" onClick={handleExportLogs} disabled={!lastCycle} className="gap-1.5">
-          <Download className="h-4 w-4" /> Export Logs
+        <Button size="sm" variant="outline" onClick={handleExportDebugBundle} disabled={!lastCycle || exporting} className="gap-1.5">
+          <FileDown className="h-4 w-4" /> Export Debug Bundle
         </Button>
       </div>
 

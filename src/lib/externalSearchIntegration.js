@@ -26,7 +26,7 @@ export function findRunnerResearch(externalSearchResult, selectionId) {
  * @param {object} settings - FeatherlessSettings
  * @returns {object} { postSearchProbability, probabilityDelta, decisionImpact }
  */
-export function applyExternalAdjustment(preSearchProbability, runnerResearch, settings) {
+export function applyExternalAdjustment(preSearchProbability, runnerResearch, settings, externalDataQuality) {
   const maxAdj = settings?.maxExternalProbabilityAdjustment ?? 0.05;
   const minSourceCount = settings?.minExternalSourceCount ?? 2;
   const minDataQuality = settings?.minExternalDataQuality ?? 50;
@@ -40,24 +40,23 @@ export function applyExternalAdjustment(preSearchProbability, runnerResearch, se
     };
   }
 
-  // Check data quality threshold
-  const dataQuality = externalSearchResultDataQuality(runnerResearch);
+  // Check data quality threshold — uses actual externalSearchResult data quality passed by caller
+  const dataQuality = externalDataQuality ?? 100;
   if (dataQuality < minDataQuality) {
     return {
       postSearchProbability: preSearchProbability,
       probabilityDelta: 0,
-      decisionImpact: 'no_effect',
+      decisionImpact: 'blocked_due_to_bad_external_data',
     };
   }
 
-  // Check source count threshold
+  // Check source count threshold — uses runnerResearch source URLs
   const sourceCount = (runnerResearch.sourceUrls || []).length;
   if (sourceCount < minSourceCount && Math.abs(runnerResearch.probabilityAdjustment || 0) > 0.001) {
-    // Not enough sources to trust a non-zero adjustment
     return {
       postSearchProbability: preSearchProbability,
       probabilityDelta: 0,
-      decisionImpact: 'no_effect',
+      decisionImpact: 'blocked_due_to_bad_external_data',
     };
   }
 
@@ -80,13 +79,7 @@ export function applyExternalAdjustment(preSearchProbability, runnerResearch, se
   return { postSearchProbability, probabilityDelta, decisionImpact };
 }
 
-// Helper to get data quality from runner research context
-function externalSearchResultDataQuality(_runnerResearch) {
-  // The data quality is at the externalSearchResult level, not runner level.
-  // This is a fallback — the actual data quality check is done by the caller
-  // using the externalSearchResult.dataQuality field.
-  return 100;
-}
+// Data quality is now passed directly by the caller from externalSearchResult.dataQuality
 
 /**
  * Apply confidence adjustment from external search.

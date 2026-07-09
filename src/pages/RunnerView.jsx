@@ -259,7 +259,7 @@ export default function RunnerView() {
                 <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="LAPSE">LAPSE (cancel at jump)</SelectItem>
-                  <SelectItem value="PERSIST">PERSIST (keep in-play)</SelectItem>
+                  <SelectItem value="PERSIST" disabled={!settings.persistApproved}>PERSIST (keep in-play){!settings.persistApproved ? ' — disabled' : ''}</SelectItem>
                   <SelectItem value="MARKET_ON_CLOSE">MARKET_ON_CLOSE (BSP)</SelectItem>
                 </SelectContent>
               </Select>
@@ -273,8 +273,8 @@ export default function RunnerView() {
               <div className="md:col-span-5 text-xs text-chart-5">Stake exceeds max (${settings.maxStake})</div>
             )}
             {paperForm.persistenceType === 'PERSIST' && (
-              <div className="md:col-span-5 text-xs text-chart-4 flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" /> PERSIST may leave unmatched bets active in-play. Use only if intentionally approved.
+              <div className="md:col-span-5 text-xs text-chart-5 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> PERSIST keeps unmatched bets active in-play — dangerous in paper mode. {settings.persistApproved ? 'Approved.' : 'Not approved — bot never uses PERSIST.'}
               </div>
             )}
           </div>

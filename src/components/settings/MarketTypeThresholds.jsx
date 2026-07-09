@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { CheckCircle2, Save } from 'lucide-react';
 
 const MARKET_TYPES = [
   { key: 'win', label: 'WIN', prefix: 'win' },
@@ -21,9 +22,19 @@ const FIELDS = [
 
 export default function MarketTypeThresholds() {
   const { featherlessSettings, updateFeatherlessSettings } = useApp();
+  const [local, setLocal] = useState(featherlessSettings);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { setLocal(featherlessSettings); }, [featherlessSettings]);
 
   const update = (key, value) => {
-    updateFeatherlessSettings({ [key]: value });
+    setLocal(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = () => {
+    updateFeatherlessSettings(local);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -44,7 +55,7 @@ export default function MarketTypeThresholds() {
                   <Input
                     type="number"
                     step={f.step}
-                    value={featherlessSettings?.[fieldKey] ?? 0}
+                    value={local?.[fieldKey] ?? 0}
                     onChange={e => update(fieldKey, +e.target.value)}
                     className="h-8 text-xs mt-1"
                   />
@@ -54,6 +65,12 @@ export default function MarketTypeThresholds() {
           </div>
         </div>
       ))}
+
+      <div className="flex justify-end">
+        <Button size="sm" onClick={handleSave} className="gap-1.5">
+          {saved ? <><CheckCircle2 className="h-4 w-4" /> Saved!</> : <><Save className="h-4 w-4" /> Save Thresholds</>}
+        </Button>
+      </div>
     </div>
   );
 }

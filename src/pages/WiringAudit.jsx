@@ -4,7 +4,7 @@ import { runFullWiringTest, buildSettingsWiringCheck, buildLiveWiringStatus } fr
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Activity, Wifi, Settings, Search, TrendingUp, AlertTriangle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 export default function WiringAudit() {
   const app = useApp();

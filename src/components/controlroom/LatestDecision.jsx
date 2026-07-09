@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { Target, Ban, TrendingUp, Percent, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Target, Ban, TrendingUp, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
 export default function LatestDecision() {
   const { botCycles, lastExchangeDiagnostics } = useApp();

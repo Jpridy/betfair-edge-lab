@@ -4,15 +4,17 @@ import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildLiveWiringStatus } from '@/lib/wiringAudit';
 
-function HealthCard({ name, status, lastCall, error, records, usedByBot, icon: Icon }) {
+function HealthCard({ name, status, lastCall, lastAttempt, error, records, usedByBot, icon: Icon }) {
   const config = {
     healthy: { color: 'text-chart-1', bg: 'bg-chart-1/10', border: 'border-chart-1/30', icon: CheckCircle2 },
     warning: { color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', icon: AlertTriangle },
     error: { color: 'text-chart-5', bg: 'bg-chart-5/10', border: 'border-chart-5/30', icon: XCircle },
     disabled: { color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: Clock },
     stale: { color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', icon: Clock },
+    not_tested: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
+    unknown: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
   };
-  const c = config[status] || config.disabled;
+  const c = config[status] || config.unknown;
   const StatusIcon = c.icon;
 
   return (
@@ -26,7 +28,8 @@ function HealthCard({ name, status, lastCall, error, records, usedByBot, icon: I
       </div>
       <div className={cn('text-[10px] font-bold uppercase', c.color)}>{status}</div>
       <div className="mt-1.5 space-y-0.5 text-[9px] text-muted-foreground">
-        {lastCall && <div>Last: {new Date(lastCall).toLocaleTimeString('en-AU')}</div>}
+        {lastCall && <div>Last OK: {new Date(lastCall).toLocaleTimeString('en-AU')}</div>}
+        {lastAttempt && !lastCall && <div>Last attempt: {new Date(lastAttempt).toLocaleTimeString('en-AU')}</div>}
         {records != null && <div>Records: {records}</div>}
         {error && <div className="text-chart-5 truncate" title={error}>Err: {error}</div>}
         <div className={usedByBot ? 'text-chart-1' : 'text-muted-foreground'}>{usedByBot ? '✓ Used by bot' : 'Not used'}</div>
@@ -36,10 +39,13 @@ function HealthCard({ name, status, lastCall, error, records, usedByBot, icon: I
 }
 
 function mapStatus(svc) {
-  if (!svc) return 'disabled';
-  if (svc.status === 'connected' || svc.status === 'enabled' || svc.status === 'connected') return 'healthy';
-  if (svc.status === 'disconnected' || svc.status === 'error') return 'error';
-  if (svc.status === 'disabled') return 'disabled';
+  if (!svc) return 'unknown';
+  const s = svc.status;
+  if (s === 'connected' || s === 'enabled' || s === 'polling') return 'healthy';
+  if (s === 'disconnected' || s === 'error') return 'error';
+  if (s === 'disabled') return 'disabled';
+  if (s === 'stale') return 'stale';
+  if (s === 'not_tested') return 'not_tested';
   return 'warning';
 }
 
@@ -67,6 +73,7 @@ export default function SystemHealthRow() {
           name={svc.serviceName}
           status={mapStatus(svc)}
           lastCall={svc.lastSuccessfulCallAt}
+          lastAttempt={svc.lastAttemptedCallAt}
           error={svc.lastError}
           records={svc.recordsReturned}
           usedByBot={svc.dataUsedByBot}

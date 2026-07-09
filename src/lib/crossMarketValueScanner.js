@@ -188,8 +188,14 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
           externalSourceCount = externalSearchResult.sourceCount || 0;
           externalDataQuality = externalSearchResult.dataQuality || 0;
 
-          if (runnerResearch) {
-            const adjResult = applyExternalAdjustment(preSearchProbability, runnerResearch, featherlessSettings);
+          // ── Data quality gate: check externalSearchResult-level data quality and source count ──
+          const minDataQuality = featherlessSettings?.minExternalDataQuality ?? 50;
+          const minSourceCount = featherlessSettings?.minExternalSourceCount ?? 2;
+          const qualityOk = externalDataQuality >= minDataQuality;
+          const sourceCountOk = externalSourceCount >= minSourceCount;
+
+          if (runnerResearch && qualityOk && sourceCountOk) {
+            const adjResult = applyExternalAdjustment(preSearchProbability, runnerResearch, featherlessSettings, externalDataQuality);
             postSearchProbability = adjResult.postSearchProbability;
             probabilityDelta = adjResult.probabilityDelta;
 
@@ -202,11 +208,22 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
             externalNeutralSignals = runnerResearch.neutralSignals || [];
             externalSearchSummary = `${externalPositiveSignals.length} positive, ${externalNegativeSignals.length} negative, ${externalNeutralSignals.length} neutral signals`;
             externalSearchSourceUrls = (runnerResearch.sourceUrls || []).slice(0, 10);
+          } else if (runnerResearch && (!qualityOk || !sourceCountOk)) {
+            // External search succeeded but data quality or source count below threshold
+            // Do NOT apply probability adjustment — fall back to market-only probability
+            externalSearchUsed = false;
+            postSearchProbability = preSearchProbability;
+            probabilityDelta = 0;
+            decisionImpact = 'blocked_due_to_bad_external_data';
+            marketOnlyFallbackReason = `External data quality ${externalDataQuality} < ${minDataQuality} or sources ${externalSourceCount} < ${minSourceCount}`;
+            externalSearchSummary = `Blocked: data quality below threshold (${externalDataQuality}/${minDataQuality}, ${externalSourceCount}/${minSourceCount} sources)`;
           }
 
-          decisionImpact = determineDecisionImpact(
-            probabilityDelta, confidenceDelta, externalSearchUsed, externalDataQuality, featherlessSettings
-          );
+          if (decisionImpact !== 'blocked_due_to_bad_external_data') {
+            decisionImpact = determineDecisionImpact(
+              probabilityDelta, confidenceDelta, externalSearchUsed, externalDataQuality, featherlessSettings
+            );
+          }
         } else {
           // External search enabled but failed/timed out
           externalSearchStatus = externalSearchResult?.searchStatus || 'error';
@@ -525,6 +542,10 @@ function buildOpportunity({
     externalSearchSourceUrls: externalSearchFields?.externalSearchSourceUrls || [],
     decisionImpact: externalSearchFields?.decisionImpact || 'no_effect',
     marketOnlyFallbackReason: externalSearchFields?.marketOnlyFallbackReason || null,
+    // ── Probability traceability ──
+    marketOnlyProbability: externalSearchFields?.preSearchProbability ?? modelProbability,
+    openAIProbabilityAdjustment: externalSearchFields?.probabilityDelta ?? 0,
+    finalProbabilityUsedInEV: modelProbability, // This is the probability actually used in EV maths (post-adjustment, clamped)
   };
 }
 

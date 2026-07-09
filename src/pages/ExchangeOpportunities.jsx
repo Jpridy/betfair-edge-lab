@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { base44 } from '@/api/base44Client';
-import { scanEligibleMarkets, runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
+import { scanEligibleMarkets, runExchangeCycle } from '@/lib/exchangeOpportunityEngine';
 import { getBestByCategory, MARKET_TYPE_THRESHOLDS } from '@/lib/crossMarketValueScanner';
-import { clusterMarketsByEvent, detectMarketType } from '@/lib/marketClusterer';
 import ExchangeDebugPanel from '@/components/exchange/ExchangeDebugPanel';
-import { Panel, StatCard, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
+import { Panel, StatCard, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { RefreshCw, TrendingUp, TrendingDown, Zap, Shield, AlertTriangle, Target, Bug } from 'lucide-react';
+import { RefreshCw, TrendingUp, Zap, Shield, AlertTriangle, Target, Bug } from 'lucide-react';
 
 export default function ExchangeOpportunities() {
   const { markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, addAuditLog } = useApp();

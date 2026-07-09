@@ -18,7 +18,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
-    const { market, runners, settings } = body;
+    const { market, runners, settings, action } = body;
 
     const base44 = createClientFromRequest(req);
     let user;
@@ -26,6 +26,20 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Authentication required' }, { status: 401 });
     }
     if (!user) return Response.json({ error: 'Authentication required' }, { status: 401 });
+
+    // ── Status check action — verifies API key presence without making a search call ──
+    if (action === 'status_check') {
+      const apiKey = Deno.env.get('OPENAI_API_KEY');
+      return Response.json({
+        statusCheck: {
+          openAiApiKeyPresent: !!apiKey,
+          webSearchAvailable: !!apiKey,
+          model: 'gpt-4o-mini',
+          lastError: null,
+          checkedAt: new Date().toISOString(),
+        }
+      }, { status: 200 });
+    }
 
     if (!market) return Response.json({ error: 'market is required' }, { status: 400 });
 

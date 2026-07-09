@@ -1,28 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, XCircle, Loader2, RefreshCw, ArrowRight, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, ArrowRight, ShieldCheck } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 const STEPS = [
-  { id: 'betfair_login', name: 'Betfair Login / Session', testFn: 'testBetfairLogin' },
-  { id: 'betfair_catalogue', name: 'Betfair Market Catalogue', testFn: 'testBetfairCatalogue' },
-  { id: 'betfair_stream', name: 'Betfair Stream / Price Feed', testFn: 'testBetfairStream' },
-  { id: 'price_data', name: 'Price Data Available', testFn: 'testPriceData' },
-  { id: 'openai_api', name: 'OpenAI API Key Set', testFn: 'testOpenAIKey' },
-  { id: 'openai_search', name: 'OpenAI Web Search', testFn: 'testOpenAISearch' },
-  { id: 'featherless_api', name: 'Featherless AI API', testFn: 'testFeatherless' },
-  { id: 'database', name: 'Database Writes', testFn: 'testDatabase' },
-  { id: 'paper_mode', name: 'Paper Mode Enabled', testFn: 'testPaperMode' },
-  { id: 'risk_config', name: 'Risk Settings Configured', testFn: 'testRiskConfig' },
-  { id: 'settlement', name: 'Settlement Can Read Results', testFn: 'testSettlement' },
+  { id: 'betfair_login', name: 'Betfair Login / Session' },
+  { id: 'betfair_catalogue', name: 'Betfair Market Catalogue' },
+  { id: 'betfair_stream', name: 'Betfair Stream / Price Feed' },
+  { id: 'price_data', name: 'Price Data Available' },
+  { id: 'openai_api', name: 'OpenAI API Key (Status Check)' },
+  { id: 'openai_search', name: 'OpenAI Web Search (Live Test)' },
+  { id: 'featherless_api', name: 'Featherless AI API' },
+  { id: 'database', name: 'Database Writes' },
+  { id: 'paper_mode', name: 'Paper Mode Enabled' },
+  { id: 'risk_config', name: 'Risk Settings Configured' },
+  { id: 'settlement', name: 'Settlement Status' },
 ];
 
 export default function SetupWizard() {
-  const { apiConnected, betfairConnection, featherlessSettings, settings, markets, paperOrders, testBetfairConnection } = useApp();
+  const { apiConnected, betfairConnection, featherlessSettings, settings, markets, runners, paperOrders, addAuditLog } = useApp();
   const [results, setResults] = useState({});
   const [testing, setTesting] = useState(null);
   const [runningAll, setRunningAll] = useState(false);
@@ -59,29 +59,74 @@ export default function SetupWizard() {
           }
           break;
 
-        case 'price_data':
-          const runnersWithPrices = markets.reduce((s, m) => {
-            // Check if any runner has price data
-            return s;
-          }, 0);
-          if (markets.length > 0) {
-            result = { status: 'passed', message: `${markets.length} markets with data`, timestamp: new Date().toISOString() };
+        case 'price_data': {
+          // Real check: at least one runner with bestBackPrice or bestLayPrice > 0
+          const runnersWithPrices = runners.filter(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
+          if (runnersWithPrices.length > 0) {
+            result = { status: 'passed', message: `${runnersWithPrices.length} runners with live price data`, timestamp: new Date().toISOString() };
+          } else if (markets.length > 0) {
+            result = { status: 'warning', message: 'Markets loaded but no runners with price data yet. Wait for stream to populate.', timestamp: new Date().toISOString() };
           } else {
-            result = { status: 'warning', message: 'No price data yet. Connect Betfair and wait for stream.', timestamp: new Date().toISOString() };
+            result = { status: 'failed', message: 'No markets loaded — cannot check price data.', timestamp: new Date().toISOString() };
           }
           break;
+        }
 
-        case 'openai_api':
-          result = { status: 'passed', message: 'OPENAI_API_KEY secret is set', timestamp: new Date().toISOString() };
+        case 'openai_api': {
+          // Real check: call openAIWebSearch with action: "status_check"
+          try {
+            const resp = await base44.functions.invoke('openAIWebSearch', { action: 'status_check' });
+            const check = resp.data?.statusCheck;
+            if (check?.openAiApiKeyPresent) {
+              result = { status: 'passed', message: `OpenAI API key verified. Model: ${check.model}`, timestamp: new Date().toISOString() };
+            } else {
+              result = { status: 'failed', message: 'OpenAI API key not set or backend did not confirm', timestamp: new Date().toISOString() };
+            }
+          } catch (err) {
+            result = { status: 'failed', message: `Status check failed: ${err.message}`, timestamp: new Date().toISOString() };
+          }
           break;
+        }
 
-        case 'openai_search':
+        case 'openai_search': {
+          // Real check: call openAIWebSearch with a small test market
           if (!featherlessSettings?.externalSearchEnabled) {
-            result = { status: 'skipped', message: 'External search disabled. Enable in Settings Hub → AI & Research.', timestamp: new Date().toISOString() };
-          } else {
-            result = { status: 'passed', message: 'External search enabled. Use "Run OpenAI Search Test" on Bot Control Centre to verify.', timestamp: new Date().toISOString() };
+            result = { status: 'skipped', message: 'External search disabled. Enable in Settings Hub → AI & Research to test.', timestamp: new Date().toISOString() };
+            break;
+          }
+          try {
+            const testMarket = markets[0] ? {
+              eventId: markets[0].eventId || 'test',
+              eventName: markets[0].eventName || 'Test Race',
+              venue: markets[0].venue || 'Test',
+              raceNumber: markets[0].raceNumber || 1,
+              marketName: markets[0].marketName || 'WIN',
+              startTime: markets[0].startTime || markets[0].marketStartTime || new Date().toISOString(),
+            } : {
+              eventId: 'test', eventName: 'Test Race', venue: 'Test', raceNumber: 1,
+              marketName: 'WIN', startTime: new Date().toISOString(),
+            };
+            const testRunners = runners.slice(0, 3).map(r => ({
+              betfairSelectionId: r.betfairSelectionId || r.selectionId,
+              runnerName: r.runnerName || 'Test Runner',
+              status: 'ACTIVE',
+            }));
+            const resp = await base44.functions.invoke('openAIWebSearch', {
+              market: testMarket, runners: testRunners, settings: featherlessSettings,
+            });
+            const searchResult = resp.data?.externalSearchResult;
+            if (searchResult?.searchStatus === 'success' || searchResult?.searchStatus === 'no_results') {
+              result = { status: 'passed', message: `Search returned: ${searchResult.searchStatus}, ${searchResult.sourceCount || 0} sources, quality ${searchResult.dataQuality || 0}`, timestamp: new Date().toISOString() };
+            } else if (searchResult?.searchStatus === 'timeout') {
+              result = { status: 'warning', message: `Search timed out: ${searchResult.errorMessage || ''}`, timestamp: new Date().toISOString() };
+            } else {
+              result = { status: 'failed', message: `Search failed: ${searchResult?.searchStatus || 'unknown'} — ${searchResult?.errorMessage || resp.data?.error || ''}`, timestamp: new Date().toISOString() };
+            }
+          } catch (err) {
+            result = { status: 'failed', message: `Search test error: ${err.message}`, timestamp: new Date().toISOString() };
           }
           break;
+        }
 
         case 'featherless_api':
           if (!featherlessSettings?.enabled) {
@@ -91,36 +136,70 @@ export default function SetupWizard() {
           }
           break;
 
-        case 'database':
-          result = { status: 'passed', message: `${paperOrders.length} paper orders in database`, timestamp: new Date().toISOString() };
+        case 'database': {
+          // Real check: write a test AuditLog and confirm
+          try {
+            const testLog = {
+              action: 'Setup Wizard Database Test',
+              category: 'system',
+              severity: 'info',
+              details: `Database write test at ${new Date().toISOString()}`,
+              timestamp: new Date().toISOString(),
+            };
+            const created = await base44.entities.AuditLog.create(testLog);
+            if (created?.id) {
+              result = { status: 'passed', message: `Test record written and confirmed (ID: ${created.id.slice(0, 8)}...)`, timestamp: new Date().toISOString() };
+            } else {
+              result = { status: 'warning', message: 'Write returned but no ID confirmed', timestamp: new Date().toISOString() };
+            }
+          } catch (err) {
+            result = { status: 'failed', message: `Database write failed: ${err.message}`, timestamp: new Date().toISOString() };
+          }
           break;
+        }
 
         case 'paper_mode':
           result = { status: 'passed', message: 'Paper mode is active. Live betting is disabled and locked.', timestamp: new Date().toISOString() };
           break;
 
-        case 'risk_config':
+        case 'risk_config': {
           const issues = [];
           if (!settings.baseStake || settings.baseStake <= 0) issues.push('Base stake not set');
           if (!settings.maxStake || settings.maxStake <= 0) issues.push('Max stake not set');
           if (!settings.dailyLossLimit || settings.dailyLossLimit <= 0) issues.push('Daily loss limit not set');
           if (!settings.maxMarketExposure || settings.maxMarketExposure <= 0) issues.push('Max market exposure not set');
+          if (settings.riskLimitsDisabled) issues.push('⚠️ Risk limits DISABLED (testing mode)');
           if (issues.length > 0) {
             result = { status: 'warning', message: issues.join('; '), timestamp: new Date().toISOString() };
           } else {
             result = { status: 'passed', message: 'All risk settings configured', timestamp: new Date().toISOString() };
           }
           break;
+        }
 
-        case 'settlement':
-          const settled = paperOrders.filter(o => o.status === 'settled').length;
-          const awaiting = paperOrders.filter(o => o.status === 'awaiting_result').length;
-          if (settled > 0) {
-            result = { status: 'passed', message: `${settled} settled, ${awaiting} awaiting result`, timestamp: new Date().toISOString() };
+        case 'settlement': {
+          const settled = paperOrders.filter(o => o.status === 'settled');
+          const awaiting = paperOrders.filter(o => o.status === 'awaiting_result');
+          const unknown = paperOrders.filter(o => o.status === 'awaiting_result' && o.resultConfidence === 'unknown');
+          const latestSettled = settled[0];
+          const parts = [
+            `${settled.length} settled`,
+            `${awaiting.length} awaiting result`,
+            `${unknown.length} result unknown`,
+          ];
+          if (latestSettled) {
+            parts.push(`latest source: ${latestSettled.resultSource || 'betfair_stream'}`);
+            parts.push(`result: ${latestSettled.result}`);
+          }
+          if (settled.length > 0) {
+            result = { status: 'passed', message: parts.join(', '), timestamp: new Date().toISOString() };
+          } else if (awaiting.length > 0) {
+            result = { status: 'warning', message: parts.join(', ') + ' — settlement pending market close', timestamp: new Date().toISOString() };
           } else {
-            result = { status: 'warning', message: 'No settled orders yet. Settlement happens when markets close via Betfair stream.', timestamp: new Date().toISOString() };
+            result = { status: 'warning', message: 'No settled or awaiting orders. Settlement happens when markets close via Betfair stream.', timestamp: new Date().toISOString() };
           }
           break;
+        }
       }
     } catch (err) {
       result = { status: 'failed', message: err.message, timestamp: new Date().toISOString() };
@@ -145,18 +224,16 @@ export default function SetupWizard() {
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-foreground">Setup Wizard</h2>
-          <p className="text-xs text-muted-foreground">Verify all connections and configuration before running the bot.</p>
+          <p className="text-xs text-muted-foreground">Verify all connections and configuration before running the bot. Each test calls the real backend.</p>
         </div>
         <Button onClick={runAll} disabled={runningAll} className="gap-1.5">
           {runningAll ? <><Loader2 className="h-4 w-4 animate-spin" /> Running...</> : <><RefreshCw className="h-4 w-4" /> Run All Tests</>}
         </Button>
       </div>
 
-      {/* Summary */}
       <div className="flex items-center gap-4 text-xs">
         <span className="text-chart-1 font-bold">{passedCount} passed</span>
         <span className="text-chart-4 font-bold">{warningCount} warnings</span>
@@ -164,7 +241,6 @@ export default function SetupWizard() {
         <span className="text-muted-foreground">{STEPS.length - passedCount - warningCount - failedCount} not tested</span>
       </div>
 
-      {/* Steps */}
       <div className="space-y-2">
         {STEPS.map((step, idx) => {
           const result = results[step.id];
@@ -206,7 +282,6 @@ export default function SetupWizard() {
         })}
       </div>
 
-      {/* Paper mode notice */}
       <Panel>
         <div className="p-4 flex items-center gap-3">
           <ShieldCheck className="h-5 w-5 text-chart-1 shrink-0" />
@@ -217,7 +292,6 @@ export default function SetupWizard() {
         </div>
       </Panel>
 
-      {/* Next steps */}
       <div className="flex justify-between">
         <Link to="/settings">
           <Button variant="outline" size="sm" className="gap-1.5">

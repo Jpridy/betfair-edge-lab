@@ -1,7 +1,7 @@
 import React from 'react';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Globe, Search, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
+import { Globe, Search, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 
 export default function OpenAISearchDebugPanel() {

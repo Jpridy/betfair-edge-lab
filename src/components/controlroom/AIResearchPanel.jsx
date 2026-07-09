@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { Brain, CheckCircle2, XCircle, Loader2, Globe } from 'lucide-react';
+import { Brain, CheckCircle2, XCircle, Globe } from 'lucide-react';
 import OpenAISearchDebugPanel from '@/components/bot/OpenAISearchDebugPanel';
 import ExternalSearchTestButton from '@/components/bot/ExternalSearchTestButton';
 

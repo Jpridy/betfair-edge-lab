@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
-import { Panel, StatusBadge } from '@/components/ui/Trading';
+import { Panel } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, Clock, ChevronDown, ChevronRight, MinusCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronDown, ChevronRight, MinusCircle } from 'lucide-react';
 
 export default function DecisionTimeline() {
   const { botCycles, lastExchangeDiagnostics } = useApp();
@@ -22,30 +22,34 @@ export default function DecisionTimeline() {
 
   const scan = lastCycle.scanSummary || {};
   const extDiag = scan.externalSearchDiagnostics || diag?.externalSearchDiagnostics || {};
+  const marketsLoaded = scan.totalMarketsLoaded ?? diag?.totalMarketsLoaded ?? lastCycle.marketsScanned ?? 0;
+  const marketsSent = scan.marketsSentToExchangeEngine ?? diag?.marketsSentToExchangeEngine ?? lastCycle.marketsPassedFilters ?? 0;
+  const totalOpps = scan.totalOpportunities ?? diag?.totalOpportunities ?? 0;
+  const best = lastCycle.bestCandidate;
 
   const steps = [
     {
       id: 1,
       name: 'Markets Loaded',
-      status: 'passed',
-      count: scan.totalMarketsLoaded ?? diag?.totalMarketsLoaded ?? lastCycle.marketsScanned ?? 0,
-      reason: `${scan.totalMarketsLoaded ?? diag?.totalMarketsLoaded ?? 0} markets loaded from Betfair stream`,
+      status: marketsLoaded > 0 ? 'passed' : 'failed',
+      count: marketsLoaded,
+      reason: `${marketsLoaded} markets loaded from Betfair stream`,
       detail: scan.marketFeedDiagnostics ? JSON.stringify(scan.marketFeedDiagnostics, null, 2) : null,
     },
     {
       id: 2,
       name: 'Markets Filtered',
-      status: 'passed',
-      count: scan.marketsSentToExchangeEngine ?? diag?.marketsSentToExchangeEngine ?? lastCycle.marketsPassedFilters ?? 0,
+      status: marketsSent > 0 ? 'passed' : 'failed',
+      count: marketsSent,
       reason: `${scan.openPreRaceMarkets ?? diag?.openPreRaceMarkets ?? 0} open pre-race, ${scan.marketsInsideTimeWindow ?? diag?.marketsInsideTimeWindow ?? 0} inside time window`,
       detail: scan.timeWindowFunnel ? JSON.stringify(scan.timeWindowFunnel, null, 2) : null,
     },
     {
       id: 3,
       name: 'Opportunities Generated',
-      status: (scan.totalOpportunities ?? diag?.totalOpportunities ?? 0) > 0 ? 'passed' : 'failed',
-      count: scan.totalOpportunities ?? diag?.totalOpportunities ?? 0,
-      reason: `${scan.totalOpportunities ?? 0} opportunities (${scan.backOpportunities ?? 0} BACK, ${scan.layOpportunities ?? 0} LAY), ${scan.positiveEVOpportunities ?? 0} positive EV`,
+      status: totalOpps > 0 ? 'passed' : 'failed',
+      count: totalOpps,
+      reason: `${totalOpps} opportunities (${scan.backOpportunities ?? 0} BACK, ${scan.layOpportunities ?? 0} LAY), ${scan.positiveEVOpportunities ?? 0} positive EV`,
       detail: scan.topOpportunities ? JSON.stringify(scan.topOpportunities.slice(0, 5), null, 2) : null,
     },
     {
@@ -61,55 +65,55 @@ export default function DecisionTimeline() {
     {
       id: 5,
       name: 'Featherless AI',
-      status: !diag?.aiCallsMade && !scan.aiCallsMade ? 'skipped' : (scan.eventsWithAI ?? diag?.eventsWithAI) > 0 ? 'passed' : 'failed',
+      status: !diag?.aiCallsMade && !scan.aiCallsMade && !scan.aiStatusLog?.length ? 'skipped' : (scan.eventsWithAI ?? diag?.eventsWithAI) > 0 ? 'passed' : 'failed',
       count: scan.eventsWithAI ?? diag?.eventsWithAI ?? 0,
       reason: `${scan.aiCallsMade ?? diag?.aiCallsMade ?? 0} AI calls, ${scan.aiCacheHits ?? diag?.aiCacheHits ?? 0} cache hits, ${scan.eventsWithAI ?? 0} events with probabilities`,
-      detail: diag?.aiStatusLog ? JSON.stringify(diag.aiStatusLog, null, 2) : null,
+      detail: diag?.aiStatusLog || scan.aiStatusLog ? JSON.stringify(diag?.aiStatusLog || scan.aiStatusLog, null, 2) : null,
     },
     {
       id: 6,
       name: 'Probability Finalised',
-      status: lastCycle.bestCandidate ? 'passed' : 'failed',
-      count: lastCycle.bestCandidate ? 1 : 0,
-      reason: lastCycle.bestCandidate
-        ? `${lastCycle.bestCandidate.runnerName}: ${((lastCycle.bestCandidate.modelProbability || lastCycle.bestCandidate.estimatedProbability || 0) * 100).toFixed(1)}% model probability`
+      status: best && (best.finalProbabilityUsedInEV != null || best.modelProbability != null || best.estimatedProbability != null) ? 'passed' : 'failed',
+      count: best ? 1 : 0,
+      reason: best
+        ? `${best.runnerName}: ${((best.finalProbabilityUsedInEV ?? best.modelProbability ?? best.estimatedProbability ?? 0) * 100).toFixed(1)}% probability used in EV`
         : 'No probability finalised — no best candidate selected',
       detail: null,
     },
     {
       id: 7,
       name: 'EV Calculated',
-      status: lastCycle.bestCandidate ? 'passed' : 'failed',
-      count: lastCycle.bestCandidate ? 1 : 0,
-      reason: lastCycle.bestCandidate
-        ? `EV: $${(lastCycle.bestCandidate.ev || 0).toFixed(2)}, ROI: ${((lastCycle.bestCandidate.expectedROI || lastCycle.bestCandidate.roi || 0) * 100).toFixed(1)}%`
+      status: best && best.ev != null ? 'passed' : 'failed',
+      count: best ? 1 : 0,
+      reason: best
+        ? `EV: $${(best.ev || 0).toFixed(2)}, ROI: ${((best.expectedROI || best.roi || 0) * 100).toFixed(1)}%`
         : 'No EV calculated — no opportunity selected',
       detail: null,
     },
     {
       id: 8,
       name: 'Safety Gates Checked',
-      status: lastCycle.ordersBlocked > 0 ? 'failed' : lastCycle.ordersCreated > 0 ? 'passed' : 'skipped',
-      count: lastCycle.ordersBlocked + lastCycle.ordersCreated,
-      reason: lastCycle.bestCandidate?.failedGate || lastCycle.bestCandidate?.mainBlocker || lastCycle.bestCandidate?.blockers?.[0] || 'All gates passed',
-      detail: lastCycle.bestCandidate?.blockers ? JSON.stringify(lastCycle.bestCandidate.blockers, null, 2) : null,
+      status: best ? (best.blockers?.length > 0 || best.failedGate ? 'failed' : 'passed') : 'skipped',
+      count: best?.blockers?.length || 0,
+      reason: best?.failedGate || best?.mainBlocker || best?.blockers?.[0] || (best ? 'All gates passed' : 'No candidate to check'),
+      detail: best?.blockers ? JSON.stringify(best.blockers, null, 2) : null,
     },
     {
       id: 9,
       name: 'Risk Check',
-      status: lastCycle.ordersBlocked > 0 && !lastCycle.bestCandidate?.failedGate ? 'failed' : lastCycle.ordersCreated > 0 ? 'passed' : 'skipped',
+      status: lastCycle.ordersCreated > 0 ? 'passed' : lastCycle.ordersBlocked > 0 && best?.failedGate ? 'failed' : 'skipped',
       count: lastCycle.ordersCreated,
-      reason: lastCycle.noBetReason && lastCycle.ordersCreated === 0 ? lastCycle.noBetReason : 'Risk check passed',
+      reason: lastCycle.noBetReason && lastCycle.ordersCreated === 0 ? lastCycle.noBetReason : lastCycle.ordersCreated > 0 ? 'Risk check passed' : 'No order to check',
       detail: null,
     },
     {
       id: 10,
       name: 'Order Created / Rejected',
-      status: lastCycle.ordersCreated > 0 ? 'passed' : lastCycle.ordersBlocked > 0 ? 'failed' : 'skipped',
+      status: lastCycle.ordersCreated > 0 ? 'passed' : lastCycle.ordersBlocked > 0 ? 'failed' : (lastCycle.debugOnly ? 'skipped' : 'skipped'),
       count: lastCycle.ordersCreated + lastCycle.ordersBlocked,
       reason: lastCycle.ordersCreated > 0
-        ? `Paper order created: ${lastCycle.bestCandidate?.side} ${lastCycle.bestCandidate?.runnerName} @ ${lastCycle.bestCandidate?.odds?.toFixed(2)}`
-        : lastCycle.ordersBlocked > 0 ? `Order blocked: ${lastCycle.noBetReason || lastCycle.bestCandidate?.failedGate || 'Unknown'}` : 'No order action',
+        ? `Paper order created: ${best?.side} ${best?.runnerName} @ ${best?.odds?.toFixed(2)}`
+        : lastCycle.ordersBlocked > 0 ? `Order blocked: ${lastCycle.noBetReason || best?.failedGate || 'Unknown'}` : lastCycle.debugOnly ? 'Debug scan — no order created' : 'No order action',
       detail: null,
     },
     {

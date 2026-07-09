@@ -101,16 +101,27 @@ export function buildSettingsWiringCheck(settings, featherlessSettings, botSetti
  * Build the live wiring status table for all services.
  */
 export function buildLiveWiringStatus(appContext) {
-  const { apiConnected, betfairConnection, featherlessSettings, lastExchangeDiagnostics, botCycles, paperOrders } = appContext;
+  const { apiConnected, betfairConnection, featherlessSettings, lastExchangeDiagnostics, botCycles, paperOrders, auditLogs, syncState, rejectedOrders } = appContext;
   const lastCycle = botCycles?.[0];
   const extDiag = lastExchangeDiagnostics?.externalSearchDiagnostics || lastCycle?.scanSummary?.externalSearchDiagnostics || {};
+  const aiStatusLog = lastExchangeDiagnostics?.aiStatusLog || lastCycle?.scanSummary?.aiStatusLog || [];
+
+  // Real timestamps from actual data
+  const lastOrderDate = paperOrders?.[0]?.created_date || paperOrders?.[0]?.placed_date || null;
+  const lastSettledDate = paperOrders?.find(o => o.status === 'settled')?.settled_date || paperOrders?.find(o => o.status === 'settled')?.settledAt || null;
+  const lastAuditDate = auditLogs?.[0]?.timestamp || null;
+  const lastRejectedDate = rejectedOrders?.[0]?.id || null;
+  const lastStreamUpdate = betfairConnection?.lastMarketSyncTime || syncState?.lastCatalogueSync || null;
+  const streamStatus = betfairConnection?.streamConnectionStatus || 'disconnected';
+  const isStale = lastStreamUpdate ? (Date.now() - new Date(lastStreamUpdate).getTime()) > 30000 : true;
 
   return [
     {
       serviceName: 'Betfair Login/Session',
       connected: apiConnected,
-      lastSuccessfulCallAt: betfairConnection?.lastMarketSyncTime || null,
-      lastError: betfairConnection?.streamConnectionStatus === 'error' ? 'Stream error' : null,
+      lastSuccessfulCallAt: lastStreamUpdate,
+      lastAttemptedCallAt: lastStreamUpdate,
+      lastError: streamStatus === 'error' ? 'Stream connection error' : null,
       latestLatencyMs: null,
       recordsReturned: null,
       dataUsedByBot: true,
@@ -118,83 +129,91 @@ export function buildLiveWiringStatus(appContext) {
     },
     {
       serviceName: 'Betfair Stream/Price Feed',
-      connected: betfairConnection?.streamConnectionStatus === 'connected',
-      lastSuccessfulCallAt: betfairConnection?.lastMarketSyncTime || null,
-      lastError: betfairConnection?.streamConnectionStatus === 'error' ? 'Stream error' : null,
+      connected: streamStatus === 'connected' || streamStatus === 'polling',
+      lastSuccessfulCallAt: lastStreamUpdate,
+      lastAttemptedCallAt: lastStreamUpdate,
+      lastError: streamStatus === 'error' ? 'Stream error' : null,
       latestLatencyMs: null,
       recordsReturned: appContext.markets?.length || 0,
       dataUsedByBot: true,
-      status: betfairConnection?.streamConnectionStatus || 'disconnected',
+      status: !apiConnected ? 'disconnected' : isStale ? 'stale' : streamStatus,
     },
     {
       serviceName: 'Betfair Market Catalogue',
       connected: apiConnected && (appContext.markets?.length || 0) > 0,
-      lastSuccessfulCallAt: betfairConnection?.lastMarketSyncTime || null,
-      lastError: null,
+      lastSuccessfulCallAt: syncState?.lastCatalogueSync || lastStreamUpdate,
+      lastAttemptedCallAt: syncState?.lastCatalogueSync || lastStreamUpdate,
+      lastError: betfairConnection?.marketCatalogueError || null,
       latestLatencyMs: null,
       recordsReturned: appContext.markets?.length || 0,
       dataUsedByBot: true,
-      status: apiConnected ? 'connected' : 'disconnected',
+      status: !apiConnected ? 'disconnected' : (appContext.markets?.length || 0) > 0 ? 'connected' : 'not_tested',
     },
     {
       serviceName: 'Featherless AI API',
       connected: featherlessSettings?.enabled === true,
-      lastSuccessfulCallAt: lastCycle?.finishedAt || null,
-      lastError: lastExchangeDiagnostics?.aiStatusLog?.find(s => s.status === 'ai_error')?.reason || null,
+      lastSuccessfulCallAt: aiStatusLog.filter(s => s.status === 'ai_called' && s.success).length > 0 ? lastCycle?.finishedAt : null,
+      lastAttemptedCallAt: lastCycle?.finishedAt || null,
+      lastError: aiStatusLog.find(s => s.status === 'ai_error')?.reason || aiStatusLog.find(s => s.status === 'ai_timeout')?.reason || null,
       latestLatencyMs: null,
-      recordsReturned: lastExchangeDiagnostics?.eventsWithAI || 0,
+      recordsReturned: lastExchangeDiagnostics?.eventsWithAI || lastCycle?.scanSummary?.eventsWithAI || 0,
       dataUsedByBot: true,
-      status: featherlessSettings?.enabled ? 'connected' : 'disabled',
+      status: !featherlessSettings?.enabled ? 'disabled' : (aiStatusLog.some(s => s.status === 'ai_error') ? 'error' : lastCycle ? 'connected' : 'not_tested'),
     },
     {
       serviceName: 'OpenAI External Web Search',
       connected: featherlessSettings?.externalSearchEnabled === true,
-      lastSuccessfulCallAt: null,
-      lastError: extDiag.errors > 0 ? `${extDiag.errors} errors this cycle` : null,
+      lastSuccessfulCallAt: extDiag.callsThisCycle > 0 ? lastCycle?.finishedAt : null,
+      lastAttemptedCallAt: extDiag.callsThisCycle > 0 || extDiag.cacheHits > 0 ? lastCycle?.finishedAt : null,
+      lastError: extDiag.errors > 0 ? `${extDiag.errors} errors this cycle` : extDiag.timeouts > 0 ? `${extDiag.timeouts} timeouts` : null,
       latestLatencyMs: null,
       recordsReturned: extDiag.totalSourcesFound || 0,
       dataUsedByBot: true,
-      status: featherlessSettings?.externalSearchEnabled ? 'enabled' : 'disabled',
+      status: !featherlessSettings?.externalSearchEnabled ? 'disabled' : extDiag.errors > 0 ? 'error' : extDiag.callsThisCycle > 0 ? 'connected' : 'not_tested',
     },
     {
       serviceName: 'Database/Entity Writes',
       connected: true,
-      lastSuccessfulCallAt: new Date().toISOString(),
+      lastSuccessfulCallAt: lastAuditDate || lastOrderDate || null,
+      lastAttemptedCallAt: lastAuditDate || lastOrderDate || null,
       lastError: null,
       latestLatencyMs: null,
       recordsReturned: paperOrders?.length || 0,
       dataUsedByBot: true,
-      status: 'connected',
+      status: lastAuditDate || lastOrderDate ? 'connected' : 'not_tested',
     },
     {
       serviceName: 'Paper Order Creation',
       connected: true,
-      lastSuccessfulCallAt: lastCycle?.finishedAt || null,
+      lastSuccessfulCallAt: lastOrderDate || (lastCycle?.ordersCreated > 0 ? lastCycle?.finishedAt : null),
+      lastAttemptedCallAt: lastOrderDate || lastCycle?.finishedAt || null,
       lastError: null,
       latestLatencyMs: null,
       recordsReturned: lastCycle?.ordersCreated || 0,
       dataUsedByBot: true,
-      status: 'connected',
+      status: lastOrderDate ? 'connected' : lastCycle ? 'not_tested' : 'not_tested',
     },
     {
       serviceName: 'Settlement Service',
       connected: true,
-      lastSuccessfulCallAt: null,
+      lastSuccessfulCallAt: lastSettledDate || null,
+      lastAttemptedCallAt: paperOrders?.find(o => o.status === 'awaiting_result')?.settledAt || lastSettledDate || null,
       lastError: null,
       latestLatencyMs: null,
       recordsReturned: paperOrders?.filter(o => o.status === 'settled')?.length || 0,
       dataUsedByBot: true,
-      status: 'connected',
+      status: lastSettledDate ? 'connected' : paperOrders?.some(o => o.status === 'awaiting_result') ? 'warning' : 'not_tested',
     },
     {
       serviceName: 'Decision Log Export',
       connected: true,
-      lastSuccessfulCallAt: null,
+      lastSuccessfulCallAt: lastCycle?.finishedAt || null,
+      lastAttemptedCallAt: lastCycle?.finishedAt || null,
       lastError: null,
       latestLatencyMs: null,
       recordsReturned: botCycles?.length || 0,
       dataUsedByBot: true,
-      status: 'connected',
+      status: botCycles?.length > 0 ? 'connected' : 'not_tested',
     },
   ];
 }

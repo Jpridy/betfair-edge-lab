@@ -1,7 +1,7 @@
 import React from 'react';
 import { Panel, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Bug, Activity, AlertCircle } from 'lucide-react';
+import { Bug, AlertCircle } from 'lucide-react';
 
 export default function ExchangeDebugPanel({ diagnostics, eventClusters, opportunities }) {
   if (!diagnostics) return null;

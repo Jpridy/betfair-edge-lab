@@ -888,6 +888,226 @@ export function AppProvider({ children }) {
     runBotCycleRef.current();
   };
 
+  // ── Debug Scan Cycle — diagnostic only, never creates orders/signals ──
+  const runDebugScanCycle = async () => {
+    if (cycleInProgressRef.current) return;
+    cycleInProgressRef.current = true;
+    try {
+      const s = stateRef.current;
+      if (s.emergencyStop) return;
+
+      const cycleNum = s.botState.cycleNumber + 1;
+      const now = new Date().toISOString();
+      addAuditLog('Debug Scan Cycle Triggered', 'system', 'info', 'Diagnostic-only scan initiated. No orders or signals will be created.');
+
+      const diagnostics = buildScanDiagnostics(s.markets, s.runners, s.settings, s.featherlessSettings, s.paperOrders, s.bankrollStats, s.emergencyStop);
+      setLastScanDiagnostics(diagnostics);
+
+      // Always run the exchange engine, regardless of Featherless enabled/disabled
+      try {
+        const debugScanMode = true; // Always true for debug scans
+        const conn = s.betfairConnection || {};
+        const connectionState = {
+          apiConnected: s.apiConnected,
+          streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
+          lastStreamUpdateAt: conn.lastMarketSyncTime || null,
+          lastCatalogueRefreshAt: conn.lastMarketSyncTime || null,
+          marketCatalogueError: null,
+          streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
+          priceFeedStale: conn.dataFresh === false,
+        };
+
+        const aiEnabled = s.featherlessSettings?.enabled !== false;
+        const result = await runExchangeCycle({
+          markets: s.markets,
+          runners: s.runners,
+          settings: s.settings,
+          featherlessSettings: { ...s.featherlessSettings, debugScanMode: true },
+          bankrollStats: s.bankrollStats,
+          paperOrders: s.paperOrders,
+          emergencyStop: s.emergencyStop,
+          connectionState,
+          callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners) => {
+            let webResearch = null;
+            if (s.featherlessSettings?.webResearchEnabled) {
+              try {
+                const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
+                if (researchResp.data?.research) webResearch = researchResp.data.research;
+              } catch (err) { /* skip */ }
+            }
+            const resp = await base44.functions.invoke('featherlessAI', {
+              market: primaryMarket, runners: marketRunners, settings: s.settings,
+              strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
+              raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
+              webResearch,
+              allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+            });
+            if (resp.data?.error) throw new Error(resp.data.error);
+            return resp.data?.aiResult || null;
+          } : null, // null callAI = market-only mode
+          callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
+            try {
+              const resp = await base44.functions.invoke('openAIWebSearch', {
+                market: primaryMarket, runners: marketRunners, settings: s.featherlessSettings,
+              });
+              if (resp.data?.error) throw new Error(resp.data.error);
+              return resp.data?.externalSearchResult || null;
+            } catch (err) {
+              return { searchStatus: 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: err.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
+            }
+          } : null,
+        });
+
+        setExchangeOpportunities(result.allOpportunities);
+        setLastExchangeDiagnostics(result.diagnostics);
+
+        // Create a debug-only BotCycle record — NO signals, NO orders, NO bankroll changes
+        const cycleRecord = {
+          cycleNumber: cycleNum,
+          botMode: 'paper',
+          startedAt: now,
+          finishedAt: new Date().toISOString(),
+          status: 'completed',
+          debugOnly: true,
+          marketsScanned: result.diagnostics.totalMarketsLoaded ?? result.diagnostics.marketsScanned ?? 0,
+          marketsPassedFilters: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+          signalsCreated: 0, // Never create signals in debug mode
+          ordersCreated: 0, // Never create orders in debug mode
+          ordersBlocked: 0,
+          errors: 0,
+          notes: `Debug scan: ${result.diagnostics.totalOpportunities || 0} opportunities found, ${result.diagnostics.positiveEVOpportunities || 0} positive-EV. NO orders placed (debug mode).`,
+          runnersAssessed: result.diagnostics.totalOpportunities || 0,
+          candidatesPassedLiquidity: 0,
+          candidatesPassedOddsRange: 0,
+          candidatesPassedEdge: result.diagnostics.positiveEVOpportunities || 0,
+          candidatesPassedROI: result.diagnostics.positiveEVOpportunities || 0,
+          candidatesPassedConfidence: result.diagnostics.positiveEVOpportunities || 0,
+          bestCandidate: result.bestOpportunity ? {
+            opportunityId: result.bestOpportunity.opportunityId,
+            runnerName: result.bestOpportunity.runnerName,
+            selectionId: result.bestOpportunity.selectionId,
+            marketId: result.bestOpportunity.marketId,
+            betfairMarketId: result.bestOpportunity.betfairMarketId,
+            marketName: result.bestOpportunity.marketName,
+            marketType: result.bestOpportunity.marketType,
+            side: result.bestOpportunity.side,
+            odds: result.bestOpportunity.odds,
+            edge: result.bestOpportunity.edge,
+            ev: result.bestOpportunity.ev,
+            expectedROI: result.bestOpportunity.roi,
+            confidence: result.bestOpportunity.confidence,
+            stake: result.bestOpportunity.stake,
+            liability: result.bestOpportunity.liability,
+            maxProfit: result.bestOpportunity.maxProfit,
+            maxLoss: result.bestOpportunity.maxLoss,
+            modelProbability: result.bestOpportunity.modelProbability,
+            finalProbabilityUsedInEV: result.bestOpportunity.finalProbabilityUsedInEV ?? result.bestOpportunity.modelProbability,
+            marketOnlyProbability: result.bestOpportunity.marketOnlyProbability ?? null,
+            openAIProbabilityAdjustment: result.bestOpportunity.openAIProbabilityAdjustment ?? 0,
+            failedGate: result.bestOpportunity.failedGate || result.bestOpportunity.blockers?.[0] || null,
+            mainBlocker: result.bestOpportunity.failedGate || result.bestOpportunity.blockers?.[0] || null,
+            blockers: result.bestOpportunity.blockers,
+            externalSearchUsed: result.bestOpportunity.externalSearchUsed || false,
+            externalSearchStatus: result.bestOpportunity.externalSearchStatus || 'not_called',
+            preSearchProbability: result.bestOpportunity.preSearchProbability ?? null,
+            postSearchProbability: result.bestOpportunity.postSearchProbability ?? null,
+            probabilityDelta: result.bestOpportunity.probabilityDelta ?? 0,
+            decisionImpact: result.bestOpportunity.decisionImpact || 'no_effect',
+            marketOnlyFallbackReason: result.bestOpportunity.marketOnlyFallbackReason || null,
+          } : null,
+          noBetReason: result.diagnostics.noBetReason || 'Debug scan — no orders placed',
+          scanSummary: {
+            marketsScanned: result.diagnostics.marketsScanned,
+            totalMarketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
+            openPreRaceMarkets: result.diagnostics.openPreRaceMarkets ?? 0,
+            marketsInsideTimeWindow: result.diagnostics.marketsInsideTimeWindow ?? 0,
+            marketsSentToExchangeEngine: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+            eventsScanned: result.diagnostics.eventsScanned,
+            eventsWithAI: result.diagnostics.eventsWithAI,
+            cacheHits: result.diagnostics.cacheHits,
+            totalOpportunities: result.diagnostics.totalOpportunities,
+            backOpportunities: result.diagnostics.backOpportunities,
+            layOpportunities: result.diagnostics.layOpportunities,
+            positiveEVOpportunities: result.diagnostics.positiveEVOpportunities,
+            rejectedOpportunities: result.diagnostics.rejectedOpportunities,
+            winMarketsFound: result.diagnostics.winMarketsFound,
+            placeMarketsFound: result.diagnostics.placeMarketsFound,
+            h2hMarketsFound: result.diagnostics.h2hMarketsFound,
+            unknownMarketsFound: result.diagnostics.unknownMarketsFound,
+            aiCallsMade: result.diagnostics.aiCallsMade,
+            aiCacheHits: result.diagnostics.aiCacheHits,
+            aiDisabled: result.diagnostics.aiDisabled,
+            aiStatusLog: result.diagnostics.aiStatusLog,
+            marketDetectionLog: result.diagnostics.marketDetectionLog?.slice(0, 20),
+            topOpportunities: result.diagnostics.topOpportunities,
+            topRejected: result.diagnostics.topRejected,
+            noBetReason: result.diagnostics.noBetReason,
+            debugScanMode: true,
+            marketFeedDiagnostics: result.diagnostics.marketFeedDiagnostics ?? null,
+            timeWindowFunnel: result.diagnostics.timeWindowFunnel ?? null,
+            loadedMarketsTable: result.diagnostics.loadedMarketsTable ?? null,
+            connectionDiagnostics: result.diagnostics.connectionDiagnostics ?? null,
+            externalSearchDiagnostics: result.diagnostics.externalSearchDiagnostics ?? null,
+          },
+          selectedMarketName: result.bestOpportunity?.marketName || null,
+        };
+        setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+        base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+
+        setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
+        addAuditLog('Debug Scan Complete', 'system', 'info', `Scanned ${cycleRecord.marketsScanned} markets, ${result.diagnostics.totalOpportunities || 0} opportunities, 0 orders (debug only).`);
+        addToBotActivity('Debug scan completed', `${cycleRecord.marketsScanned} markets, ${result.diagnostics.totalOpportunities || 0} opportunities — no orders placed`);
+      } catch (err) {
+        addAuditLog('Debug Scan Error', 'system', 'error', `Exchange engine error: ${err.message}`);
+      }
+    } finally {
+      cycleInProgressRef.current = false;
+    }
+  };
+
+  // ── Refresh Betfair Data — calls backend to refresh market catalogue ──
+  const refreshBetfairData = async () => {
+    const s = stateRef.current;
+    if (!s.apiConnected || !s.betfairSessionToken) {
+      addAuditLog('Refresh Failed', 'api', 'warning', 'Betfair not connected — cannot refresh catalogue');
+      return;
+    }
+    addAuditLog('Betfair Catalogue Refresh', 'api', 'info', 'Fetching latest market catalogue from Betfair');
+    try {
+      const resp = await base44.functions.invoke('betfairMarkets', { sessionToken: s.betfairSessionToken });
+      const catRunners = resp.data?.runners || [];
+      if (catRunners.length > 0) {
+        const nameMap = new Map();
+        const metaMap = new Map();
+        for (const r of catRunners) {
+          if (r.betfairSelectionId) {
+            nameMap.set(String(r.betfairSelectionId), r.runnerName || '');
+            if (r.raceFormProfile) metaMap.set(String(r.betfairSelectionId), r.raceFormProfile);
+          }
+        }
+        catalogueRef.current = { nameMap, metaMap, fetchedAt: Date.now() };
+        // Merge names into existing runners
+        setRunners(prev => prev.map(r => {
+          const selId = String(r.betfairSelectionId || r.selectionId || '');
+          const properName = nameMap.get(selId);
+          const meta = metaMap.get(selId);
+          return {
+            ...r,
+            runnerName: (properName && (!r.runnerName || r.runnerName.startsWith('Selection '))) ? properName : r.runnerName,
+            raceFormProfile: meta || r.raceFormProfile,
+          };
+        }));
+      }
+      const now = new Date().toISOString();
+      setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: now, dataFresh: true, lastCatalogueRefreshAt: now }));
+      setSyncState(prev => ({ ...prev, lastCatalogueSync: now }));
+      addAuditLog('Betfair Catalogue Refreshed', 'api', 'info', `${catRunners.length} runners updated from catalogue`);
+    } catch (err) {
+      setBetfairConnection(prev => ({ ...prev, marketCatalogueError: err.message }));
+      addAuditLog('Betfair Catalogue Refresh Failed', 'api', 'error', err.message);
+    }
+  };
+
   // ── Order Management ──
   const addPaperOrder = (order) => {
     const newOrder = {
@@ -981,16 +1201,22 @@ export function AppProvider({ children }) {
     // Scans ALL eligible markets, groups by event, calls AI per event for
     // probabilities, generates BACK + LAY opportunities across WIN/PLACE/H2H,
     // runs deterministic exchange EV maths, ranks by EV, picks best.
+    // The engine ALWAYS runs — when Featherless AI is disabled, it uses
+    // market-only probabilities (implied from Betfair prices).
     const aiEnabled = s.featherlessSettings?.enabled !== false;
+    const debugScanModeActive = s.featherlessSettings?.debugScanMode === true;
     steps[0].status = 'passed';
     steps[1].status = 'passed';
     steps[2].status = 'passed';
-    steps[3].status = aiEnabled ? 'passed' : 'blocked';
-    if (steps[3].status === 'blocked') steps[3].reason = 'Featherless AI is disabled. Enable it in Settings.';
+    steps[3].status = aiEnabled ? 'passed' : 'passed'; // Engine always runs
+    if (!aiEnabled) steps[3].reason = 'Featherless AI disabled — using market-only probabilities';
 
-    if (aiEnabled) {
+    // When debug scan mode is active, force diagnostic-only mode
+    const forceDebugOnly = debugScanModeActive;
+
+    if (true) { // Always run the exchange engine
       try {
-        const debugScanMode = s.featherlessSettings?.debugScanMode === true;
+        const debugScanMode = debugScanModeActive;
         const conn = s.betfairConnection || {};
         const connectionState = {
           apiConnected: s.apiConnected,
@@ -1075,7 +1301,7 @@ export function AppProvider({ children }) {
             steps[4].reason = `${opp.marketType} ${opp.side} ${opp.runnerName} — EV $${opp.ev.toFixed(2)}, ROI ${(opp.roi * 100).toFixed(1)}%`;
 
             setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-            base44.entities.StrategySignal.create(signal).catch(() => {});
+            if (!forceDebugOnly) base44.entities.StrategySignal.create(signal).catch(() => {});
 
             const connectionState = { apiConnected: s.apiConnected, betfairSessionToken: s.betfairSessionToken, dataFresh: s.betfairConnection?.dataFresh ?? true };
             const strategy = s.strategyLibrary?.find(sl => sl.name === strategyName);
@@ -1104,7 +1330,7 @@ export function AppProvider({ children }) {
                 notes.push(`Risk blocked: ${risk.reasons[0]}`);
               } else {
                 steps[6].status = 'passed';
-                if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled) {
+                if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled && !forceDebugOnly) {
                   const order = createPaperOrder(signal, market, runner, s.settings);
                   order.marketType = opp.marketType;
                   order.eventId = opp.eventId;
@@ -1115,7 +1341,7 @@ export function AppProvider({ children }) {
                   steps[7].status = 'passed';
                   steps[8].status = 'passed';
                   setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
-                  base44.entities.PaperOrder.create(order).catch(() => {});
+                  if (!forceDebugOnly) base44.entities.PaperOrder.create(order).catch(() => {});
                   setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
                 } else {
                   steps[7].status = 'blocked';
@@ -1570,11 +1796,11 @@ export function AppProvider({ children }) {
     addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,
     toggleWatchMarket, handleRunnerRemoval,
     rejectedOrders,
-    // Refresh (local recalculation — not Betfair API sync)
-    syncState, refreshMarketState, refreshOrderState, recalculateSettledStats, recalculateMetrics, recalculateRiskState,
+    // Refresh
+    syncState, refreshMarketState, refreshBetfairData, refreshOrderState, recalculateSettledStats, recalculateMetrics, recalculateRiskState,
     // Bot
     botState, botSettings, updateBotSettings, botCycles, clearBotCycles, strategyStats, botActivity,
-    startBot, pauseBot, stopBot, runManualScan, addToBotActivity,
+    startBot, pauseBot, stopBot, runManualScan, runDebugScanCycle, addToBotActivity,
     // Strategy Library
     strategyLibrary,
     // Emergency controls

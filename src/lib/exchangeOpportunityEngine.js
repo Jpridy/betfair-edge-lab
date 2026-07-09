@@ -205,6 +205,44 @@ function buildLoadedMarketsTable(markets, runners) {
 }
 
 /**
+ * Build a market-only AI result when Featherless AI is disabled.
+ * Derives win probabilities from Betfair back/lay prices (implied probability).
+ * Lower data quality (30) and confidence (25) to ensure safety gates flag these.
+ */
+function buildMarketOnlyAIResult(cluster, marketRunners) {
+  const runnerProbabilities = [];
+  for (const runner of marketRunners) {
+    const backPrice = runner.bestBackPrice || 0;
+    const layPrice = runner.bestLayPrice || 0;
+    const lastTraded = runner.lastTradedPrice || 0;
+    const midPrice = (backPrice + layPrice) / 2 || backPrice || layPrice || lastTraded;
+    if (midPrice > 1) {
+      runnerProbabilities.push({
+        selectionId: String(runner.betfairSelectionId || runner.selectionId || ''),
+        runnerName: runner.runnerName || '',
+        pWin: 1 / midPrice,
+        pPlace: Math.min(0.95, (1 / midPrice) * 1.5),
+        confidence: 25,
+      });
+    }
+  }
+  // Normalize pWin to sum to ~1
+  const totalP = runnerProbabilities.reduce((s, r) => s + r.pWin, 0);
+  if (totalP > 0) {
+    for (const r of runnerProbabilities) {
+      r.pWin = r.pWin / totalP;
+      r.pPlace = Math.min(0.95, r.pPlace / totalP);
+    }
+  }
+  return {
+    runnerProbabilities,
+    h2hProbabilities: [],
+    dataQuality: 30,
+    raceSummary: 'Market-only mode — probabilities derived from Betfair implied odds',
+  };
+}
+
+/**
  * Run the full exchange opportunity cycle.
  *
  * @param {object} params
@@ -408,7 +446,18 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
       aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
     }
 
-    if (!aiResult) continue;
+    if (!aiResult) {
+      // If AI is disabled (no callAI provided), fall back to market-only probabilities
+      // derived from Betfair back/lay prices. This ensures the exchange engine always
+      // generates opportunities even when Featherless AI is disabled.
+      if (!callAI) {
+        aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
+        aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only', success: true, reason: 'AI disabled — using market-implied probabilities' });
+      } else {
+        // AI was called but returned null or errored — skip this event
+        continue;
+      }
+    }
 
     // ── External search: call OpenAI web search for this event ──
     let externalSearchResult = null;
@@ -576,6 +625,9 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     externalSearchSourceUrls: (o.externalSearchSourceUrls || []).slice(0, 5),
     decisionImpact: o.decisionImpact || 'no_effect',
     marketOnlyFallbackReason: o.marketOnlyFallbackReason || null,
+    marketOnlyProbability: o.marketOnlyProbability ?? null,
+    openAIProbabilityAdjustment: o.openAIProbabilityAdjustment ?? 0,
+    finalProbabilityUsedInEV: o.finalProbabilityUsedInEV ?? o.modelProbability,
   }));
 
   // ── Top 10 rejected opportunities (for no-bet logs) ──
@@ -631,6 +683,9 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
       probabilityDelta: o.probabilityDelta ?? 0,
       decisionImpact: o.decisionImpact || 'no_effect',
       marketOnlyFallbackReason: o.marketOnlyFallbackReason || null,
+      marketOnlyProbability: o.marketOnlyProbability ?? null,
+      openAIProbabilityAdjustment: o.openAIProbabilityAdjustment ?? 0,
+      finalProbabilityUsedInEV: o.finalProbabilityUsedInEV ?? o.modelProbability,
     }));
 
   // Build diagnostics

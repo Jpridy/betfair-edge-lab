@@ -6,11 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Upload, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, Bug, FileDown, Network, FlaskConical } from 'lucide-react';
+import { Download, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, FileDown, Network, FlaskConical } from 'lucide-react';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
-import { getCommissionWarnings, isCommissionValidForLive } from '@/lib/betfairMapping';
+import { getCommissionWarnings } from '@/lib/betfairMapping';
 import { exportToCSV } from '@/lib/csvExport';
 import { Link } from 'react-router-dom';
 
@@ -37,7 +37,8 @@ export default function Settings() {
 
   const handleSave = (section) => {
     updateSettings(local);
-    if (section === 'bot') updateBotSettings(botLocal);
+    if (section === 'bot' || section === 'all') updateBotSettings(botLocal);
+    if (section === 'all') updateFeatherlessSettings(featherlessSettings);
     setSavedSection(section);
     setTimeout(() => setSavedSection(null), 2000);
   };
