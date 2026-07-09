@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// AU/NZ endpoint: https://api.betfair.com.au (CORRECT)
+// Global: https://api.betfair.com
+// NEVER use https://api-au.betfair.com — returns HTML 403
+const ENDPOINT_AU = 'https://api.betfair.com.au';
+const ENDPOINT_GLOBAL = 'https://api.betfair.com';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -10,16 +16,14 @@ Deno.serve(async (req) => {
     const envUsername = Deno.env.get("BETFAIR_USERNAME");
     const envPassword = Deno.env.get("BETFAIR_PASSWORD");
 
-    const apiBase = jurisdiction === 'AU'
-      ? 'https://api-au.betfair.com'
-      : 'https://api.betfair.com';
+    const apiBase = jurisdiction === 'AU' ? ENDPOINT_AU : ENDPOINT_GLOBAL;
 
     const config = { status: 'success', appKey, jurisdiction, apiBase, proxyUrl: proxyUrl || null };
 
     let body;
     try { body = await req.json(); } catch { body = {}; }
 
-    // Helper: call Betfair through the proxy
+    // Helper: call Betfair through the proxy — only 4 clean headers
     async function callBetfair(targetUrl, headers, bodyStr) {
       const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
       const res = await fetch(proxyFetchUrl, {
@@ -30,8 +34,7 @@ Deno.serve(async (req) => {
       return res;
     }
 
-    // Helper: validate a session token by fetching account data through the proxy
-    // (Betfair's account API is also behind Cloudflare WAF — must route through the edge proxy)
+    // Helper: validate a session token by fetching account data
     async function validateSession(sessionToken) {
       const accountHeaders = {
         'X-Authentication': sessionToken,
@@ -44,8 +47,12 @@ Deno.serve(async (req) => {
       let fundsError = null;
       try {
         const fundsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountFunds/`, accountHeaders, '{}');
-        if (fundsRes.ok) {
-          funds = await fundsRes.json();
+        const fundsText = await fundsRes.text();
+        const looksHtml = fundsText.trimStart().startsWith('<!DOCTYPE html') || fundsText.includes('<html');
+        if (looksHtml) {
+          fundsError = `getAccountFunds: HTML response (HTTP ${fundsRes.status}) — wrong endpoint or WAF block`;
+        } else if (fundsRes.ok) {
+          try { funds = JSON.parse(fundsText); } catch { fundsError = 'getAccountFunds: non-JSON response'; }
         } else {
           fundsError = `getAccountFunds: HTTP ${fundsRes.status}`;
         }
@@ -57,8 +64,12 @@ Deno.serve(async (req) => {
       let detailsError = null;
       try {
         const detailsRes = await callBetfair(`${apiBase}/exchange/account/rest/v1.0/getAccountDetails/`, accountHeaders, '{}');
-        if (detailsRes.ok) {
-          details = await detailsRes.json();
+        const detailsText = await detailsRes.text();
+        const looksHtml = detailsText.trimStart().startsWith('<!DOCTYPE html') || detailsText.includes('<html');
+        if (looksHtml) {
+          detailsError = `getAccountDetails: HTML response (HTTP ${detailsRes.status})`;
+        } else if (detailsRes.ok) {
+          try { details = JSON.parse(detailsText); } catch { detailsError = 'getAccountDetails: non-JSON response'; }
         } else {
           detailsError = `getAccountDetails: HTTP ${detailsRes.status}`;
         }
@@ -70,15 +81,14 @@ Deno.serve(async (req) => {
     }
 
     // ─── Session token mode ───
-    // User provides a session token obtained from their browser after logging into Betfair.
-    // Betfair's account API is behind Cloudflare WAF which blocks serverless/edge proxy requests,
-    // so we accept the token as-is (the user obtained it from their authenticated browser session).
-    // The token will be validated when the frontend makes actual market data API calls through the proxy.
+    // User provides a session token. Token is NOT validated here — validation
+    // happens when the frontend makes actual market data API calls.
     if (body?.sessionToken) {
       return Response.json({
         ...config,
         status: 'success',
         sessionToken: body.sessionToken,
+        sessionValidated: false,
         account: {
           balance: null,
           exposure: null,
@@ -97,7 +107,6 @@ Deno.serve(async (req) => {
     const username = body?.username || envUsername;
     const password = body?.password || envPassword;
 
-    // No login requested — return config only
     if (!username || !password) {
       return Response.json(config);
     }
@@ -135,7 +144,7 @@ Deno.serve(async (req) => {
       return Response.json({
         ...config,
         status: 'error',
-        error: `Betfair login: ${loginData.loginStatus}. Automated username/password login may require a client certificate. Use a session token instead — log into Betfair in your browser, then paste your session token into the app.`,
+        error: `Betfair login: ${loginData.loginStatus}. Automated username/password login may require a client certificate. Use a session token instead.`,
       });
     }
 
@@ -143,7 +152,7 @@ Deno.serve(async (req) => {
       return Response.json({
         ...config,
         status: 'error',
-        error: `Betfair login failed: ${loginData.error || loginData.loginStatus || 'Unknown error'}. Use a session token instead — log into Betfair in your browser, then paste your session token into the app.`,
+        error: `Betfair login failed: ${loginData.error || loginData.loginStatus || 'Unknown error'}. Use a session token instead.`,
       });
     }
 
@@ -154,6 +163,7 @@ Deno.serve(async (req) => {
       ...config,
       status: 'success',
       sessionToken,
+      sessionValidated: true,
       account: {
         balance: funds?.availableToBetBalance ?? null,
         exposure: funds?.exposure ?? null,

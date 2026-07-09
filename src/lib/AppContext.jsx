@@ -929,10 +929,10 @@ export function AppProvider({ children }) {
           apiConnected: s.apiConnected,
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
           lastStreamUpdateAt: conn.lastMarketSyncTime || null,
-          lastCatalogueRefreshAt: conn.lastMarketSyncTime || null,
-          marketCatalogueError: null,
+          lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || conn.lastMarketSyncTime || null,
+          marketCatalogueError: conn.marketCatalogueError || null,
           streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
-          priceFeedStale: conn.dataFresh === false,
+          priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
         };
 
         const aiEnabled = s.featherlessSettings?.enabled !== false;
@@ -1156,6 +1156,9 @@ export function AppProvider({ children }) {
         marketsWithPriceData,
         marketCatalogueError: null,
         priceFeedStale: pricedRunners === 0,
+        apiValidationStatus: 'api_connected',
+        loginStatus: 'connected',
+        sessionTokenStatus: 'connected',
       }));
 
       setSyncState(prev => ({ ...prev, lastCatalogueSync: now }));
@@ -1196,9 +1199,15 @@ export function AppProvider({ children }) {
         errors: resp.data?.errors || [],
       };
     } catch (err) {
-      setBetfairConnection(prev => ({ ...prev, marketCatalogueError: err.message }));
-      addAuditLog('Betfair Catalogue Refresh Failed', 'api', 'error', err.message);
-      return { error: err.message, sessionTokenPresent: true };
+      const errMsg = err.message || '';
+      const isHtmlError = errMsg.includes('HTML') || errMsg.includes('DOCTYPE');
+      setBetfairConnection(prev => ({
+        ...prev,
+        marketCatalogueError: errMsg,
+        apiValidationStatus: isHtmlError ? 'html_response' : 'api_error',
+      }));
+      addAuditLog('Betfair Catalogue Refresh Failed', 'api', 'error', errMsg);
+      return { error: errMsg, sessionTokenPresent: true };
     }
   };
 
@@ -1316,10 +1325,10 @@ export function AppProvider({ children }) {
           apiConnected: s.apiConnected,
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
           lastStreamUpdateAt: conn.lastMarketSyncTime || null,
-          lastCatalogueRefreshAt: conn.lastMarketSyncTime || null,
-          marketCatalogueError: null,
+          lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || conn.lastMarketSyncTime || null,
+          marketCatalogueError: conn.marketCatalogueError || null,
           streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
-          priceFeedStale: conn.dataFresh === false,
+          priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
         };
         const result = await runExchangeCycle({
           markets: s.markets,

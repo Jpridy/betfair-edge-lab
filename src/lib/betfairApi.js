@@ -122,6 +122,32 @@ function proxied(targetUrl, config) {
 }
 
 /**
+ * Run Betfair endpoint diagnostic — tests both api.betfair.com.au and
+ * api.betfair.com to find which one returns valid JSON.
+ * Returns detailed per-endpoint results.
+ */
+export async function diagnoseBetfairEndpoint(sessionToken, testBothEndpoints = true) {
+  const res = await base44.functions.invoke('betfairMarkets', {
+    action: 'diagnose_endpoint',
+    sessionToken,
+    testBothEndpoints,
+  });
+  return res.data;
+}
+
+/**
+ * List available market types for horse racing — discovers what Betfair
+ * actually returns (WIN, PLACE, etc.) so we don't request non-existent types.
+ */
+export async function listBetfairMarketTypes(sessionToken) {
+  const res = await base44.functions.invoke('betfairMarkets', {
+    action: 'list_market_types',
+    sessionToken,
+  });
+  return res.data;
+}
+
+/**
  * Fetch live horse racing markets and runner prices.
  * Returns { status, markets, runners, fetchedAt, isDelayed }.
  */
@@ -145,11 +171,11 @@ export async function fetchBetfairMarkets(ssoid) {
   const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
 
-  // 1. List Market Catalogue
+  // 1. List Market Catalogue — WIN + PLACE only (MATCH_BET doesn't exist for AU horse racing)
   const catalogueBody = {
     filter: {
       eventTypeIds: ['7'],
-      marketTypeCodes: ['WIN', 'PLACE', 'MATCH_BET'],
+      marketTypeCodes: ['WIN', 'PLACE'],
       marketStartTime: { from: fromTime, to: toTime },
     },
     maxResults: '200',

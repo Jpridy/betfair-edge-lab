@@ -1,5 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// ── Betfair API endpoints ──
+// AU/NZ: https://api.betfair.com.au  (CORRECT)
+// Global: https://api.betfair.com
+// NEVER use https://api-au.betfair.com — it returns HTML 403
+const ENDPOINT_AU = 'https://api.betfair.com.au';
+const ENDPOINT_GLOBAL = 'https://api.betfair.com';
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -14,71 +21,276 @@ Deno.serve(async (req) => {
     try { body = await req.json(); } catch { body = {}; }
 
     const sessionToken = body?.sessionToken;
-    const requestedMarketTypes = body?.requestedMarketTypes || ['WIN', 'PLACE', 'MATCH_BET'];
+    const action = body?.action;
+    // Optional override from request body — allowed values: https://api.betfair.com.au | https://api.betfair.com
+    const envApiBase = body?.apiBase;
 
+    // Determine the configured endpoint
+    const configuredApiBase = envApiBase || (jurisdiction === 'AU' ? ENDPOINT_AU : ENDPOINT_GLOBAL);
+
+    // ── Endpoint validation helper ──
+    // Calls listEventTypes (lightweight) to verify the endpoint works.
+    async function testEndpoint(apiBase) {
+      const requestUrl = `${apiBase}/exchange/betting/rest/v1.0/listEventTypes/`;
+      const headers = {
+        'X-Application': appKey,
+        'X-Authentication': sessionToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      const bodyStr = JSON.stringify({ filter: {} });
+
+      const result = {
+        apiBase,
+        requestUrl,
+        httpStatus: null,
+        contentType: null,
+        responseLooksJson: false,
+        responseLooksHtml: false,
+        betfairErrorCode: null,
+        success: false,
+        firstResponseSnippet: null,
+        failureReason: null,
+      };
+
+      try {
+        const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(requestUrl)}`;
+        const res = await fetch(proxyFetchUrl, {
+          method: 'POST',
+          headers,
+          body: bodyStr,
+        });
+        const text = await res.text();
+        result.httpStatus = res.status;
+        result.contentType = res.headers.get('content-type') || '';
+        result.firstResponseSnippet = text.slice(0, 500);
+
+        // HTML detection — Betfair WAF returns HTML on wrong endpoint or blocked proxy
+        const looksHtml = text.trimStart().startsWith('<!DOCTYPE html') ||
+                          text.includes('<html') ||
+                          text.includes('<title>Betfair</title>');
+        result.responseLooksHtml = looksHtml;
+
+        if (looksHtml) {
+          result.failureReason = 'BETFAIR_HTML_403_WRONG_ENDPOINT_OR_WAF';
+          return result;
+        }
+
+        // Try to parse as JSON
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+          result.responseLooksJson = true;
+        } catch {
+          result.failureReason = 'Response is not JSON and not HTML — unknown format';
+          return result;
+        }
+
+        // Betfair error object?
+        if (parsed && typeof parsed === 'object' && parsed.error) {
+          const errStr = JSON.stringify(parsed);
+          if (errStr.includes('INVALID_SESSION') || errStr.includes('NO_SESSION')) {
+            result.betfairErrorCode = 'INVALID_SESSION';
+            result.failureReason = 'Session token expired or invalid';
+          } else {
+            result.betfairErrorCode = parsed.error;
+            result.failureReason = `Betfair API error: ${JSON.stringify(parsed.error).slice(0, 200)}`;
+          }
+          return result;
+        }
+
+        // Success — got a JSON array (listEventTypes returns an array)
+        if (Array.isArray(parsed)) {
+          result.success = true;
+          return result;
+        }
+
+        result.failureReason = 'JSON response but unexpected structure';
+        return result;
+      } catch (err) {
+        result.failureReason = `Network/proxy error: ${err.message}`;
+        return result;
+      }
+    }
+
+    // ── Action: diagnose_endpoint ──
+    if (action === 'diagnose_endpoint') {
+      if (!appKey || !sessionToken || !proxyUrl) {
+        return Response.json({
+          status: 'error',
+          error: 'Missing prerequisites for endpoint diagnostic',
+          sessionTokenPresent: !!sessionToken,
+          appKeyPresent: !!appKey,
+          proxyUrlPresent: !!proxyUrl,
+          endpoints: [],
+        }, { status: 200 });
+      }
+
+      const endpointsToTest = body?.testBothEndpoints
+        ? [configuredApiBase, ENDPOINT_AU, ENDPOINT_GLOBAL]
+        : [configuredApiBase];
+
+      // Deduplicate
+      const seen = new Set();
+      const uniqueEndpoints = endpointsToTest.filter(e => {
+        if (seen.has(e)) return false;
+        seen.add(e);
+        return true;
+      });
+
+      const endpointResults = [];
+      let workingApiBase = null;
+
+      for (const ep of uniqueEndpoints) {
+        const r = await testEndpoint(ep);
+        endpointResults.push(r);
+        if (r.success && !workingApiBase) {
+          workingApiBase = ep;
+        }
+      }
+
+      return Response.json({
+        status: 'success',
+        action: 'diagnose_endpoint',
+        configuredApiBase,
+        endpoints: endpointResults,
+        workingApiBase,
+        html403Detected: endpointResults.some(r => r.responseLooksHtml),
+        sessionTokenPresent: !!sessionToken,
+        appKeyPresent: !!appKey,
+        proxyUrlPresent: !!proxyUrl,
+      }, { status: 200 });
+    }
+
+    // ── Action: list_market_types ──
+    // Discovers what market types actually exist for horse racing
+    if (action === 'list_market_types') {
+      if (!appKey || !sessionToken || !proxyUrl) {
+        return Response.json({ status: 'error', error: 'Missing prerequisites', sessionTokenPresent: !!sessionToken, appKeyPresent: !!appKey, proxyUrlPresent: !!proxyUrl }, { status: 200 });
+      }
+
+      const now = new Date();
+      const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+
+      const mtBody = {
+        filter: {
+          eventTypeIds: ['7'],
+          marketStartTime: { from: fromTime, to: toTime },
+        },
+      };
+
+      const requestUrl = `${configuredApiBase}/exchange/betting/rest/v1.0/listMarketTypes/`;
+      const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(requestUrl)}`;
+      const res = await fetch(proxyFetchUrl, {
+        method: 'POST',
+        headers: { 'X-Application': appKey, 'X-Authentication': sessionToken, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(mtBody),
+      });
+      const text = await res.text();
+      const looksHtml = text.trimStart().startsWith('<!DOCTYPE html') || text.includes('<html');
+
+      if (looksHtml) {
+        return Response.json({ status: 'error', errorCode: 'BETFAIR_HTML_RESPONSE', message: 'Betfair returned HTML instead of JSON', httpStatus: res.status, contentType: res.headers.get('content-type'), apiBase: configuredApiBase, responseSnippet: text.slice(0, 500) }, { status: 200 });
+      }
+
+      let parsed;
+      try { parsed = JSON.parse(text); } catch {
+        return Response.json({ status: 'error', error: 'Non-JSON response from listMarketTypes', httpStatus: res.status, responseSnippet: text.slice(0, 300) }, { status: 200 });
+      }
+
+      if (parsed?.error) {
+        return Response.json({ status: 'error', error: `Betfair error: ${JSON.stringify(parsed.error)}`, sessionExpired: JSON.stringify(parsed.error).includes('INVALID_SESSION') || JSON.stringify(parsed.error).includes('NO_SESSION') }, { status: 200 });
+      }
+
+      const marketTypes = Array.isArray(parsed) ? parsed.map(m => m.marketType).filter(Boolean) : [];
+      return Response.json({ status: 'success', marketTypes, rawCount: marketTypes.length, apiBase: configuredApiBase }, { status: 200 });
+    }
+
+    // ── Default action: fetch markets (catalogue + book) ──
     const errors = [];
+    if (!appKey) errors.push('BETFAIR_APP_KEY missing. Configure BETFAIR_APP_KEY secret.');
+    if (!sessionToken) errors.push('Betfair session token missing. Open Setup and connect with session token.');
+    if (!proxyUrl) errors.push('BETFAIR_PROXY_URL missing. Configure Cloudflare Worker proxy.');
 
-    if (!appKey) {
-      errors.push('BETFAIR_APP_KEY missing. Configure BETFAIR_APP_KEY secret.');
-    }
-    if (!sessionToken) {
-      errors.push('Betfair session token missing. Open Setup and connect with session token.');
-    }
-    if (!proxyUrl) {
-      errors.push('BETFAIR_PROXY_URL missing. Configure Cloudflare Worker proxy.');
-    }
-
-    if (!appKey || !sessionToken) {
+    if (!appKey || !sessionToken || !proxyUrl) {
       return Response.json({
         status: 'error',
         error: errors.join(' '),
         errors,
-        requestedMarketTypes,
         markets: [],
         runners: [],
+        sessionTokenPresent: !!sessionToken,
+        appKeyPresent: !!appKey,
+        proxyUrlPresent: !!proxyUrl,
       }, { status: 200 });
     }
 
-    if (!proxyUrl) {
+    // ── Step 1: Find a working endpoint ──
+    // Test the configured endpoint first, then fall back to the other
+    const fallbackEndpoints = configuredApiBase === ENDPOINT_AU
+      ? [ENDPOINT_AU, ENDPOINT_GLOBAL]
+      : [ENDPOINT_GLOBAL, ENDPOINT_AU];
+
+    let workingApiBase = null;
+    for (const ep of fallbackEndpoints) {
+      const test = await testEndpoint(ep);
+      if (test.success) {
+        workingApiBase = ep;
+        break;
+      }
+      if (test.responseLooksHtml) {
+        errors.push(`Endpoint ${ep} returned HTML 403 (wrong endpoint or WAF block)`);
+      }
+    }
+
+    if (!workingApiBase) {
       return Response.json({
         status: 'error',
-        error: errors.join(' '),
+        errorCode: 'NO_WORKING_ENDPOINT',
+        error: 'No Betfair API endpoint returned valid JSON. All endpoints returned HTML 403 or errors. Run the Endpoint Diagnostic in Setup Wizard.',
         errors,
-        requestedMarketTypes,
+        configuredApiBase,
+        endpointsTested: fallbackEndpoints,
         markets: [],
         runners: [],
+        sessionTokenPresent: !!sessionToken,
+        appKeyPresent: !!appKey,
+        proxyUrlPresent: !!proxyUrl,
+        nextAction: 'Run Betfair Endpoint Diagnostic',
       }, { status: 200 });
     }
 
-    const apiBase = jurisdiction === 'AU'
-      ? 'https://api-au.betfair.com'
-      : 'https://api.betfair.com';
-    const bettingBase = `${apiBase}/exchange/betting/rest/v1.0`;
+    const bettingBase = `${workingApiBase}/exchange/betting/rest/v1.0`;
 
+    // Clean auth headers — only these 4, nothing browser-like
     const authHeaders = {
-      'X-Authentication': sessionToken,
       'X-Application': appKey,
+      'X-Authentication': sessionToken,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
 
-    // Helper: call Betfair through the proxy (direct calls are WAF-blocked)
-    async function callBetfair(targetUrl, headers, bodyStr) {
+    // Helper: call Betfair through the proxy
+    async function callBetfair(targetUrl, bodyStr) {
       const proxyFetchUrl = `${proxyUrl}?url=${encodeURIComponent(targetUrl)}`;
       const res = await fetch(proxyFetchUrl, {
         method: 'POST',
-        headers,
+        headers: authHeaders,
         body: bodyStr,
       });
       return res;
     }
 
-    // Date range: midnight today to midnight tomorrow+1 (covers in-play + upcoming)
+    // ── Step 2: List Market Catalogue ──
+    // Horse Racing (eventType 7), WIN + PLACE only.
+    // MATCH_BET does not exist for AU horse racing — don't request it blindly.
+    const requestedMarketTypes = body?.requestedMarketTypes || ['WIN', 'PLACE'];
+
     const now = new Date();
     const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
 
-    // 1. List Market Catalogue — Horse Racing (eventType 7), WIN + PLACE + MATCH_BET
     const catalogueBody = {
       filter: {
         eventTypeIds: ['7'],
@@ -97,32 +309,80 @@ Deno.serve(async (req) => {
       ],
     };
 
-    const catalogueRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, authHeaders, JSON.stringify(catalogueBody));
+    const catalogueRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(catalogueBody));
     const catalogueText = await catalogueRes.text();
+    const catalogueContentType = catalogueRes.headers.get('content-type') || '';
+
+    // HTML detection
+    const catalogueLooksHtml = catalogueText.trimStart().startsWith('<!DOCTYPE html') ||
+                               catalogueText.includes('<html') ||
+                               catalogueText.includes('<title>Betfair</title>');
+
+    if (catalogueLooksHtml) {
+      return Response.json({
+        status: 'error',
+        errorCode: 'BETFAIR_HTML_RESPONSE',
+        message: 'Betfair returned HTML instead of JSON. This usually means wrong endpoint, WAF/proxy block, or invalid API route.',
+        httpStatus: catalogueRes.status,
+        contentType: catalogueContentType,
+        apiBase: workingApiBase,
+        requestUrl: `${bettingBase}/listMarketCatalogue/`,
+        responseSnippet: catalogueText.slice(0, 500),
+        sessionTokenPresent: !!sessionToken,
+        appKeyPresent: !!appKey,
+        proxyUrlPresent: !!proxyUrl,
+        nextAction: 'Run Betfair Endpoint Diagnostic',
+        markets: [],
+        runners: [],
+      }, { status: 200 });
+    }
 
     // Session expired?
     if (catalogueText.includes('UNAUTHORIZED') || catalogueText.includes('INVALID_SESSION') || catalogueText.includes('NO_SESSION')) {
-      return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired', errors: ['Betfair session expired'], requestedMarketTypes, markets: [], runners: [] }, { status: 200 });
+      return Response.json({
+        status: 'error',
+        sessionExpired: true,
+        error: 'Betfair session expired',
+        errors: ['Betfair session expired'],
+        markets: [],
+        runners: [],
+      }, { status: 200 });
     }
 
     if (!catalogueRes.ok) {
       return Response.json({
         status: 'error',
         error: `Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 300)}`,
-        errors: [`Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 300)}`],
-        requestedMarketTypes,
+        errors: [`Catalogue fetch failed (HTTP ${catalogueRes.status})`],
+        markets: [],
+        runners: [],
+        apiBase: workingApiBase,
+      }, { status: 200 });
+    }
+
+    let catalogues;
+    try {
+      catalogues = JSON.parse(catalogueText);
+    } catch {
+      return Response.json({
+        status: 'error',
+        errorCode: 'BETFAIR_NON_JSON',
+        error: 'Betfair returned non-JSON response for catalogue',
+        errors: ['Betfair returned non-JSON response for catalogue'],
+        contentType: catalogueContentType,
+        responseSnippet: catalogueText.slice(0, 500),
         markets: [],
         runners: [],
       }, { status: 200 });
     }
 
-    let catalogues;
-    try { catalogues = JSON.parse(catalogueText); } catch {
+    // Betfair error in JSON body?
+    if (catalogues && !Array.isArray(catalogues) && catalogues.error) {
+      const errStr = JSON.stringify(catalogues.error);
       return Response.json({
         status: 'error',
-        error: 'Betfair returned non-JSON response for catalogue',
-        errors: ['Betfair returned non-JSON response for catalogue'],
-        requestedMarketTypes,
+        error: `Betfair API error: ${errStr.slice(0, 300)}`,
+        sessionExpired: errStr.includes('INVALID_SESSION') || errStr.includes('NO_SESSION'),
         markets: [],
         runners: [],
       }, { status: 200 });
@@ -146,12 +406,12 @@ Deno.serve(async (req) => {
         unknownMarketsReturned: 0,
         rawMarketCount: 0,
         rawBookCount: 0,
-        errors: [],
+        workingApiBase,
+        errors,
       });
     }
 
-    // 2. List Market Book — get live prices for all markets
-    // Betfair listMarketBook supports max 100 marketIds per call; batch if needed
+    // ── Step 3: List Market Book — get live prices ──
     const marketIds = catalogues.map(c => c.marketId);
     let books = [];
     const BATCH_SIZE = 100;
@@ -165,12 +425,24 @@ Deno.serve(async (req) => {
         },
       };
       try {
-        const bookRes = await callBetfair(`${bettingBase}/listMarketBook/`, authHeaders, JSON.stringify(bookBody));
+        const bookRes = await callBetfair(`${bettingBase}/listMarketBook/`, JSON.stringify(bookBody));
+        const bookText = await bookRes.text();
+
+        // HTML check on book response too
+        if (bookText.trimStart().startsWith('<!DOCTYPE html') || bookText.includes('<html')) {
+          errors.push(`listMarketBook batch returned HTML (HTTP ${bookRes.status})`);
+          continue;
+        }
+
         if (bookRes.ok) {
-          const batchBooks = await bookRes.json();
-          if (Array.isArray(batchBooks)) books = books.concat(batchBooks);
+          try {
+            const batchBooks = JSON.parse(bookText);
+            if (Array.isArray(batchBooks)) books = books.concat(batchBooks);
+          } catch {
+            errors.push(`listMarketBook batch ${Math.floor(i / BATCH_SIZE) + 1} returned non-JSON`);
+          }
         } else {
-          errors.push(`listMarketBook batch ${i / BATCH_SIZE + 1} failed (HTTP ${bookRes.status})`);
+          errors.push(`listMarketBook batch ${Math.floor(i / BATCH_SIZE) + 1} failed (HTTP ${bookRes.status})`);
         }
       } catch (e) {
         errors.push(`listMarketBook batch error: ${e.message}`);
@@ -179,17 +451,17 @@ Deno.serve(async (req) => {
 
     const rawBookCount = books.length;
 
-    // 3. Transform into app format
+    // ── Step 4: Transform into app format ──
     const markets = [];
     const runners = [];
     const receivedMarketTypesSet = new Set();
     let winCount = 0, placeCount = 0, h2hCount = 0, unknownCount = 0;
+    let runnersWithBackPrice = 0, runnersWithLayPrice = 0;
+    let firstPricedRunner = null;
 
     for (const cat of catalogues) {
       const book = books.find(b => b.marketId === cat.marketId);
       if (!book) continue;
-
-      // Skip settled/closed markets — no useful price data
       if (book.status === 'CLOSED' || book.status === 'SETTLED') continue;
 
       const venue = cat.event?.venue || '';
@@ -199,7 +471,6 @@ Deno.serve(async (req) => {
 
       receivedMarketTypesSet.add(marketTypeCode);
 
-      // Classify market type
       const mtUpper = marketTypeCode.toUpperCase();
       if (mtUpper === 'WIN') winCount++;
       else if (mtUpper === 'PLACE' || mtUpper.includes('TO_BE_PLACED')) placeCount++;
@@ -228,9 +499,9 @@ Deno.serve(async (req) => {
         marketBaseRate: cat.description?.marketBaseRate ?? null,
         watched: false,
         source: 'catalogue',
+        hasPriceData: false,
       });
 
-      // Sort runners by best back price to determine favourite rank
       const sortedRunners = [...(cat.runners || [])].sort((a, b) => {
         const aBook = book.runners?.find(r => r.selectionId === a.selectionId);
         const bBook = book.runners?.find(r => r.selectionId === b.selectionId);
@@ -238,6 +509,8 @@ Deno.serve(async (req) => {
         const bPrice = bBook?.ex?.availableToBack?.[0]?.price || 9999;
         return aPrice - bPrice;
       });
+
+      let marketHasPrice = false;
 
       for (let idx = 0; idx < sortedRunners.length; idx++) {
         const runner = sortedRunners[idx];
@@ -252,7 +525,17 @@ Deno.serve(async (req) => {
         const bestLayPrice = bestLay?.price || 0;
         const impliedProb = bestBackPrice > 0 ? (1 / bestBackPrice) * 100 : 0;
 
-        // Extract RaceFormProfile from Betfair RUNNER_METADATA (optional — may be null)
+        if (bestBackPrice > 0) runnersWithBackPrice++;
+        if (bestLayPrice > 0) runnersWithLayPrice++;
+        if ((bestBackPrice > 0 || bestLayPrice > 0) && !firstPricedRunner) {
+          firstPricedRunner = {
+            runnerName: runner.runnerName || `Selection ${runner.selectionId}`,
+            bestBackPrice,
+            bestLayPrice,
+          };
+        }
+        if (bestBackPrice > 0 || bestLayPrice > 0) marketHasPrice = true;
+
         const metadata = runner.metadata || null;
         let raceFormProfile = null;
         let formDataStatus = 'MARKET_ONLY';
@@ -320,7 +603,13 @@ Deno.serve(async (req) => {
           source: 'catalogue',
         });
       }
+
+      // Mark market as having price data
+      const mIdx = markets.length - 1;
+      markets[mIdx].hasPriceData = marketHasPrice;
     }
+
+    const marketsWithPriceData = markets.filter(m => m.hasPriceData).length;
 
     return Response.json({
       status: 'success',
@@ -337,6 +626,12 @@ Deno.serve(async (req) => {
       unknownMarketsReturned: unknownCount,
       rawMarketCount,
       rawBookCount,
+      marketsWithPriceData,
+      runnersWithBackPrice,
+      runnersWithLayPrice,
+      firstPricedRunner,
+      workingApiBase,
+      configuredApiBase,
       errors,
     });
   } catch (error) {

@@ -18,9 +18,10 @@ const statusConfig = {
 const nextActionHints = {
   'Betfair Login/Session': {
     not_configured: 'Open Setup to connect',
-    error: 'Check credentials in Setup',
+    error: 'Run Endpoint Diagnostic in Setup',
     disabled: 'Open Setup to connect',
-    healthy: 'Session active',
+    healthy: 'API validated — session active',
+    token_present_not_validated: 'Token present — fetch markets to validate',
   },
   'Betfair Stream/Price Feed': {
     error: 'Fetch markets or connect stream',
@@ -118,6 +119,7 @@ function mapStatus(svc) {
   if (s === 'stale') return 'stale';
   if (s === 'not_tested') return 'not_tested';
   if (s === 'not_configured') return 'not_configured';
+  if (s === 'token_present_not_validated') return 'warning';
   return 'warning';
 }
 

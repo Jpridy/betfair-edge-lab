@@ -115,17 +115,23 @@ export function buildLiveWiringStatus(appContext) {
   const streamStatus = betfairConnection?.streamConnectionStatus || 'disconnected';
   const isStale = lastStreamUpdate ? (Date.now() - new Date(lastStreamUpdate).getTime()) > 45000 : true;
 
+  // Truthful API status: token present ≠ API connected
+  // API is only "connected" when a real Betfair API call returned valid JSON
+  const hasMarkets = (appContext.markets?.length || 0) > 0;
+  const hasCatalogueError = !!betfairConnection?.marketCatalogueError;
+  const htmlErrorDetected = hasCatalogueError && betfairConnection.marketCatalogueError.includes('HTML');
+
   return [
     {
       serviceName: 'Betfair Login/Session',
       connected: !!apiConnected,
       lastSuccessfulCallAt: lastStreamUpdate,
       lastAttemptedCallAt: lastStreamUpdate,
-      lastError: streamStatus === 'error' ? 'Stream connection error' : null,
+      lastError: htmlErrorDetected ? 'HTML 403 — wrong endpoint or WAF block' : (streamStatus === 'error' ? 'Stream connection error' : hasCatalogueError ? betfairConnection.marketCatalogueError : null),
       latestLatencyMs: null,
       recordsReturned: null,
       dataUsedByBot: true,
-      status: apiConnected ? 'connected' : 'not_configured',
+      status: !apiConnected ? 'not_configured' : htmlErrorDetected ? 'error' : hasMarkets ? 'connected' : 'token_present_not_validated',
     },
     {
       serviceName: 'Betfair Stream/Price Feed',
@@ -140,14 +146,14 @@ export function buildLiveWiringStatus(appContext) {
     },
     {
       serviceName: 'Betfair Market Catalogue',
-      connected: apiConnected && (appContext.markets?.length || 0) > 0,
+      connected: apiConnected && (appContext.markets?.length || 0) > 0 && !hasCatalogueError,
       lastSuccessfulCallAt: syncState?.lastCatalogueSync || lastStreamUpdate,
       lastAttemptedCallAt: syncState?.lastCatalogueSync || lastStreamUpdate,
       lastError: betfairConnection?.marketCatalogueError || null,
       latestLatencyMs: null,
       recordsReturned: appContext.markets?.length || 0,
       dataUsedByBot: true,
-      status: !apiConnected ? 'disconnected' : (appContext.markets?.length || 0) > 0 ? 'connected' : 'not_tested',
+      status: !apiConnected ? 'disconnected' : htmlErrorDetected ? 'error' : (appContext.markets?.length || 0) > 0 ? 'connected' : 'not_tested',
     },
     {
       serviceName: 'Featherless AI API',

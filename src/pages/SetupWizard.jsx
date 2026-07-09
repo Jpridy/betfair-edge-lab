@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2, RefreshCw, ArrowRight, ShieldCheck, Database, Radio } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, ArrowRight, ShieldCheck, Database, Radio, Stethoscope } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 const STEPS = [
   { id: 'betfair_session', name: 'Test Betfair Session' },
+  { id: 'endpoint_diagnostic', name: 'Run Betfair Endpoint Diagnostic' },
   { id: 'fetch_markets', name: 'Fetch Betfair Markets Now' },
   { id: 'check_prices', name: 'Check Betfair Prices Now' },
   { id: 'betfair_stream', name: 'Betfair Stream / Price Feed' },
@@ -57,7 +58,45 @@ export default function SetupWizard() {
           break;
         }
 
-        // ── B. Fetch Betfair Markets Now ──
+        // ── B. Run Betfair Endpoint Diagnostic ──
+        case 'endpoint_diagnostic': {
+          if (!betfairSessionToken) {
+            result = { status: 'failed', message: 'Betfair session token missing. Connect a session token first.', timestamp: new Date().toISOString() };
+            break;
+          }
+          try {
+            const resp = await base44.functions.invoke('betfairMarkets', {
+              action: 'diagnose_endpoint',
+              sessionToken: betfairSessionToken,
+              testBothEndpoints: true,
+            });
+            const d = resp.data;
+            if (d?.error) {
+              result = { status: 'failed', message: d.error, timestamp: new Date().toISOString(), detail: d };
+            } else if (d?.workingApiBase) {
+              const endpoints = d.endpoints || [];
+              const summary = endpoints.map(e => `${e.apiBase.replace('https://', '')}: ${e.success ? '✓' : '✗'} (HTTP ${e.httpStatus}, HTML: ${e.responseLooksHtml ? 'Y' : 'N'})`).join('; ');
+              result = {
+                status: 'passed',
+                message: `Working endpoint: ${d.workingApiBase}. HTML 403 detected: ${d.html403Detected ? 'Yes' : 'No'}. ${summary}`,
+                timestamp: new Date().toISOString(),
+                detail: d,
+              };
+            } else {
+              result = {
+                status: 'failed',
+                message: `No working endpoint found. HTML 403 detected: ${d?.html403Detected ? 'Yes' : 'No'}. All endpoints returned HTML or errors. Check proxy configuration.`,
+                timestamp: new Date().toISOString(),
+                detail: d,
+              };
+            }
+          } catch (err) {
+            result = { status: 'failed', message: `Diagnostic failed: ${err.message}`, timestamp: new Date().toISOString() };
+          }
+          break;
+        }
+
+        // ── C. Fetch Betfair Markets Now ──
         case 'fetch_markets': {
           if (!betfairSessionToken) {
             result = { status: 'failed', message: 'Betfair session missing. Open Setup and connect with session token.', timestamp: new Date().toISOString() };

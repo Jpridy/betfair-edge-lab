@@ -4,16 +4,19 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, ExternalLink, KeyRound } from 'lucide-react';
-import { connectToBetfair, connectWithSessionToken } from '@/lib/betfairApi';
+import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, ExternalLink, KeyRound, Stethoscope, Globe } from 'lucide-react';
+import { connectToBetfair, connectWithSessionToken, diagnoseBetfairEndpoint } from '@/lib/betfairApi';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function BetfairConnection() {
-  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, addAuditLog, betfairConnection, updateBetfairConnection, disconnectBetfair, markets, runners } = useApp();
+  const { apiConnected, setApiConnected, betfairAccount, setBetfairAccount, setBetfairSessionToken, addAuditLog, betfairConnection, updateBetfairConnection, disconnectBetfair, markets, runners, betfairSessionToken } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [sessionTokenInput, setSessionTokenInput] = useState('');
+  const [diagnosticRunning, setDiagnosticRunning] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState(null);
 
   const handleQuickConnect = async () => {
     setLoading(true);
@@ -70,7 +73,15 @@ export default function BetfairConnection() {
   const finishConnect = (account, displayUsername) => {
     setApiConnected(true);
     setBetfairSessionToken(account.sessionToken);
-    updateBetfairConnection({ appKey: account.appKey, jurisdiction: account.jurisdiction, loginStatus: 'connected', sessionTokenStatus: 'connected', streamApiEnabled: true });
+    // Token present but NOT validated — don't say "API Connected" until a real API call succeeds
+    updateBetfairConnection({
+      appKey: account.appKey,
+      jurisdiction: account.jurisdiction,
+      loginStatus: 'token_present_not_validated',
+      sessionTokenStatus: 'token_present_not_validated',
+      streamApiEnabled: true,
+      apiValidationStatus: 'token_present_not_validated',
+    });
     setBetfairAccount({
       username: displayUsername,
       jurisdiction: account.jurisdiction,
@@ -85,7 +96,30 @@ export default function BetfairConnection() {
       locale: account.locale,
       connectedAt: new Date().toISOString(),
     });
-    addAuditLog('Betfair Account Linked', 'api', 'info', `Connected as ${displayUsername} (${account.jurisdiction})`);
+    addAuditLog('Betfair Account Linked', 'api', 'info', `Connected as ${displayUsername} (${account.jurisdiction}). Token present — not yet validated via API call.`);
+  };
+
+  const handleRunDiagnostic = async () => {
+    if (!betfairSessionToken) {
+      setError('Connect a session token first');
+      return;
+    }
+    setDiagnosticRunning(true);
+    setDiagnosticResult(null);
+    try {
+      const result = await diagnoseBetfairEndpoint(betfairSessionToken, true);
+      setDiagnosticResult(result);
+      if (result?.workingApiBase) {
+        addAuditLog('Endpoint Diagnostic Passed', 'api', 'info', `Working endpoint: ${result.workingApiBase}. HTML 403 detected: ${result.html403Detected}`);
+      } else {
+        addAuditLog('Endpoint Diagnostic Failed', 'api', 'error', `No working endpoint found. HTML 403: ${result?.html403Detected}. Endpoints tested: ${result?.endpoints?.length || 0}`);
+      }
+    } catch (err) {
+      setError(`Diagnostic failed: ${err.message}`);
+      addAuditLog('Endpoint Diagnostic Error', 'api', 'error', err.message);
+    } finally {
+      setDiagnosticRunning(false);
+    }
   };
 
   const handleDisconnect = () => {
@@ -93,6 +127,23 @@ export default function BetfairConnection() {
     setUsernameInput('');
     setPasswordInput('');
     setSessionTokenInput('');
+    setDiagnosticResult(null);
+  };
+
+  // ── Truthful API status ──
+  // apiConnected = session token present
+  // apiValidated = a real Betfair API call has returned valid JSON
+  const apiValidated = betfairConnection?.apiValidationStatus === 'api_connected' ||
+                       (markets.length > 0 && !betfairConnection?.marketCatalogueError);
+  const hasHtmlError = betfairConnection?.marketCatalogueError?.includes('HTML') ||
+                       diagnosticResult?.html403Detected === true;
+  const tokenPresent = apiConnected && !!betfairSessionToken;
+
+  const apiStatusBadge = () => {
+    if (!apiConnected) return <StatusBadge status="warning">Not Connected</StatusBadge>;
+    if (apiValidated) return <StatusBadge status="ok">API Connected</StatusBadge>;
+    if (hasHtmlError) return <StatusBadge status="danger">HTML 403 Error</StatusBadge>;
+    return <StatusBadge status="warning">Token Present — Not Validated</StatusBadge>;
   };
 
   return (
@@ -182,37 +233,115 @@ export default function BetfairConnection() {
           </>
         ) : (
           <>
+            {/* Truthful status header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                {apiValidated ? (
+                  <CheckCircle2 className="h-5 w-5 text-success" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-warning" />
+                )}
                 <div>
-                  <div className="text-sm font-semibold text-foreground">Betfair Account Connected</div>
-                  <div className="text-xs text-muted-foreground">Logged in as {betfairAccount?.username || 'Betfair user'}{betfairAccount?.firstName ? ` — ${betfairAccount.firstName} ${betfairAccount.lastName}` : ''}</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {apiValidated ? 'Betfair API Connected' : 'Betfair Session: Token Present'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {apiValidated
+                      ? `Logged in as ${betfairAccount?.username || 'Betfair user'} — API validated`
+                      : `Token present, not validated. Run Endpoint Diagnostic or Fetch Markets to validate.`
+                    }
+                  </div>
                 </div>
               </div>
-              <StatusBadge status="ok">Connected</StatusBadge>
+              {apiStatusBadge()}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Stream Status</div>
-                <div className="text-lg font-bold font-mono mt-1 flex items-center gap-1.5">
-                  {betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling' ? (
-                    <><span className="h-2 w-2 rounded-full bg-success animate-pulse" /><span className="text-success">DATA</span></>
-                  ) : betfairConnection.streamConnectionStatus === 'connecting' || betfairConnection.streamConnectionStatus === 'authenticating' || betfairConnection.streamConnectionStatus === 'subscribing' ? (
-                    <><Loader2 className="h-3.5 w-3.5 animate-spin text-warning" /><span className="text-warning">{betfairConnection.streamConnectionStatus}</span></>
-                  ) : (
-                    <span className="text-muted-foreground">{betfairConnection.streamConnectionStatus || '—'}</span>
+            {/* HTML 403 error banner */}
+            {hasHtmlError && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-xs">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold">HTML 403 from Betfair</div>
+                  <div className="mt-0.5">Likely cause: wrong endpoint or proxy blocked. Action: Run Endpoint Diagnostic below.</div>
+                  {betfairConnection?.marketCatalogueError && (
+                    <div className="mt-1 font-mono text-[10px] opacity-70">{betfairConnection.marketCatalogueError.slice(0, 200)}</div>
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Endpoint Diagnostic */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <Stethoscope className="h-3.5 w-3.5 text-info" />
+                Betfair Endpoint Diagnostic
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Tests both <span className="font-mono">api.betfair.com.au</span> and <span className="font-mono">api.betfair.com</span> to find which returns valid JSON. Detects HTML 403 WAF blocks.
+              </div>
+              <Button onClick={handleRunDiagnostic} disabled={diagnosticRunning || !betfairSessionToken} variant="outline" size="sm" className="w-full gap-1.5">
+                {diagnosticRunning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Running...</> : <><Stethoscope className="h-3.5 w-3.5" /> Run Endpoint Diagnostic</>}
+              </Button>
+
+              {diagnosticResult && (
+                <div className="space-y-2">
+                  {diagnosticResult.workingApiBase ? (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-success/10 text-success text-xs">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Working endpoint: <span className="font-mono">{diagnosticResult.workingApiBase}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 text-destructive text-xs">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      No working endpoint found. All returned HTML 403 or errors.
+                    </div>
+                  )}
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-[9px] h-7 px-2">Endpoint</TableHead>
+                        <TableHead className="text-[9px] h-7 px-2">HTTP</TableHead>
+                        <TableHead className="text-[9px] h-7 px-2">JSON</TableHead>
+                        <TableHead className="text-[9px] h-7 px-2">HTML</TableHead>
+                        <TableHead className="text-[9px] h-7 px-2">Success</TableHead>
+                        <TableHead className="text-[9px] h-7 px-2">Error / Snippet</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(diagnosticResult.endpoints || []).map((ep, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-[10px] px-2 py-1 font-mono">{ep.apiBase?.replace('https://', '')}</TableCell>
+                          <TableCell className="text-[10px] px-2 py-1 font-mono">{ep.httpStatus || '—'}</TableCell>
+                          <TableCell className="text-[10px] px-2 py-1">{ep.responseLooksJson ? <span className="text-success">✓</span> : <span className="text-danger">✗</span>}</TableCell>
+                          <TableCell className="text-[10px] px-2 py-1">{ep.responseLooksHtml ? <span className="text-danger">✓</span> : <span className="text-muted-foreground">✗</span>}</TableCell>
+                          <TableCell className="text-[10px] px-2 py-1">{ep.success ? <span className="text-success">✓</span> : <span className="text-danger">✗</span>}</TableCell>
+                          <TableCell className="text-[10px] px-2 py-1 max-w-[200px] truncate" title={ep.failureReason || ep.firstResponseSnippet}>
+                            {ep.betfairErrorCode || ep.failureReason || (ep.firstResponseSnippet?.slice(0, 80) || '—')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+
+            {/* Connection details */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="bg-background/50 border border-border rounded-lg p-3">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Markets Streaming</div>
-                <div className="text-lg font-bold font-mono text-success mt-1">{markets.length}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">API Status</div>
+                <div className="text-sm font-bold font-mono mt-1">
+                  {apiValidated ? <span className="text-success">Validated</span> : <span className="text-warning">Not Validated</span>}
+                </div>
+              </div>
+              <div className="bg-background/50 border border-border rounded-lg p-3">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Markets Loaded</div>
+                <div className="text-lg font-bold font-mono text-foreground mt-1">{markets.length}</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Runners Tracked</div>
-                <div className="text-lg font-bold font-mono text-success mt-1">{runners.length}</div>
+                <div className="text-lg font-bold font-mono text-foreground mt-1">{runners.length}</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Refresh</div>
@@ -222,13 +351,13 @@ export default function BetfairConnection() {
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Data Fresh</div>
-                <div className="text-lg font-bold font-mono mt-1">
+                <div className="text-sm font-bold font-mono mt-1">
                   {betfairConnection.dataFresh ? <span className="text-success">✓ Yes</span> : <span className="text-danger">✗ Stale</span>}
                 </div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Jurisdiction</div>
-                <div className="text-lg font-bold font-mono text-foreground mt-1">{betfairAccount?.jurisdiction || 'AU'}</div>
+                <div className="text-sm font-bold font-mono text-foreground mt-1">{betfairAccount?.jurisdiction || 'AU'}</div>
               </div>
             </div>
 

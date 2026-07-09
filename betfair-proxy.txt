@@ -5,8 +5,8 @@ export default {
         status: 204,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, X-Application, X-Authentication',
         },
       });
     }
@@ -15,35 +15,64 @@ export default {
     const targetUrl = url.searchParams.get('url');
 
     if (!targetUrl) {
-      return new Response('Missing "url" query parameter', { status: 400 });
+      return json({ error: 'Missing url parameter' }, 400);
     }
 
+    const allowedHosts = new Set([
+      'api.betfair.com',
+      'api.betfair.com.au',
+      'identitysso.betfair.com',
+      'identitysso-cert.betfair.com',
+    ]);
+
+    const target = new URL(targetUrl);
+    if (!allowedHosts.has(target.hostname)) {
+      return json({ error: 'Target host not allowed', host: target.hostname }, 403);
+    }
+
+    const body = request.method !== 'GET' && request.method !== 'HEAD'
+      ? await request.text()
+      : null;
+
+    // Forward ONLY these 4 headers — nothing browser-like
+    const headers = new Headers();
+    const appKey = request.headers.get('X-Application');
+    const auth = request.headers.get('X-Authentication');
+    if (appKey) headers.set('X-Application', appKey);
+    if (auth) headers.set('X-Authentication', auth);
+    headers.set('Content-Type', 'application/json');
+    headers.set('Accept', 'application/json');
+
     try {
-      const response = await fetch(targetUrl, {
+      const upstream = await fetch(targetUrl, {
         method: request.method,
-        headers: request.headers,
-        body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
+        headers,
+        body,
       });
 
-      const newResponse = new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
+      const text = await upstream.text();
 
-      newResponse.headers.set('Access-Control-Allow-Origin', '*');
-      newResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      newResponse.headers.set('Access-Control-Allow-Headers', '*');
-
-      return newResponse;
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 502,
+      return new Response(text, {
+        status: upstream.status,
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': upstream.headers.get('Content-Type') || 'text/plain',
           'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, X-Application, X-Authentication',
         },
       });
+    } catch (err) {
+      return json({ error: err.message }, 502);
     }
   },
 };
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
