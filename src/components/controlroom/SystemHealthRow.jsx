@@ -4,36 +4,40 @@ import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildLiveWiringStatus } from '@/lib/wiringAudit';
 
+const statusConfig = {
+  healthy: { color: 'text-success', bg: 'bg-success/8', border: 'border-success/20', dot: 'bg-success', icon: CheckCircle2 },
+  warning: { color: 'text-warning', bg: 'bg-warning/8', border: 'border-warning/20', dot: 'bg-warning', icon: AlertTriangle },
+  error: { color: 'text-danger', bg: 'bg-danger/8', border: 'border-danger/20', dot: 'bg-danger', icon: XCircle },
+  disabled: { color: 'text-muted-foreground', bg: 'bg-muted/40', border: 'border-border', dot: 'bg-muted-foreground', icon: Clock },
+  stale: { color: 'text-warning', bg: 'bg-warning/8', border: 'border-warning/20', dot: 'bg-warning', icon: Clock },
+  not_tested: { color: 'text-muted-foreground', bg: 'bg-muted/30', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+  not_configured: { color: 'text-muted-foreground', bg: 'bg-muted/30', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+  unknown: { color: 'text-muted-foreground', bg: 'bg-muted/30', border: 'border-border-subtle', dot: 'bg-muted-foreground', icon: Clock },
+};
+
 function HealthCard({ name, status, lastCall, lastAttempt, error, records, usedByBot, icon: Icon }) {
-  const config = {
-    healthy: { color: 'text-chart-1', bg: 'bg-chart-1/10', border: 'border-chart-1/30', icon: CheckCircle2 },
-    warning: { color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', icon: AlertTriangle },
-    error: { color: 'text-chart-5', bg: 'bg-chart-5/10', border: 'border-chart-5/30', icon: XCircle },
-    disabled: { color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: Clock },
-    stale: { color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', icon: Clock },
-    not_tested: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
-    not_configured: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
-    unknown: { color: 'text-muted-foreground', bg: 'bg-muted/50', border: 'border-border', icon: Clock },
-  };
-  const c = config[status] || config.unknown;
+  const c = statusConfig[status] || statusConfig.unknown;
   const StatusIcon = c.icon;
 
   return (
-    <div className={cn('rounded-lg border p-3', c.border, c.bg)}>
+    <div className={cn('rounded-lg border p-3 transition-colors hover:border-border', c.border, c.bg)}>
       <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-1.5">
-          <Icon className={cn('h-3.5 w-3.5', c.color)} />
-          <span className="text-[10px] font-bold text-foreground truncate">{name}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Icon className={cn('h-3.5 w-3.5 shrink-0', c.color)} />
+          <span className="text-[11px] font-body font-semibold text-foreground truncate">{name}</span>
         </div>
-        <StatusIcon className={cn('h-3.5 w-3.5', c.color)} />
+        <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', c.color)} />
       </div>
-      <div className={cn('text-[10px] font-bold uppercase', c.color)}>{status}</div>
-      <div className="mt-1.5 space-y-0.5 text-[9px] text-muted-foreground">
-        {lastCall && <div>Last OK: {new Date(lastCall).toLocaleTimeString('en-AU')}</div>}
-        {lastAttempt && !lastCall && <div>Last attempt: {new Date(lastAttempt).toLocaleTimeString('en-AU')}</div>}
-        {records != null && <div>Records: {records}</div>}
-        {error && <div className="text-chart-5 truncate" title={error}>Err: {error}</div>}
-        <div className={usedByBot ? 'text-chart-1' : 'text-muted-foreground'}>{usedByBot ? '✓ Used by bot' : 'Not used'}</div>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <div className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+        <div className={cn('text-[9px] font-body font-semibold uppercase tracking-label', c.color)}>{status}</div>
+      </div>
+      <div className="space-y-0.5 text-[9px] text-muted-foreground font-body">
+        {lastCall && <div>Last OK: <span className="font-mono">{new Date(lastCall).toLocaleTimeString('en-AU')}</span></div>}
+        {lastAttempt && !lastCall && <div>Last attempt: <span className="font-mono">{new Date(lastAttempt).toLocaleTimeString('en-AU')}</span></div>}
+        {records != null && <div>Records: <span className="font-mono">{records}</span></div>}
+        {error && <div className="text-danger truncate" title={error}>Err: {error}</div>}
+        <div className={cn('font-medium', usedByBot ? 'text-success' : 'text-muted-foreground')}>{usedByBot ? '✓ Used by bot' : 'Not used'}</div>
       </div>
     </div>
   );
@@ -68,7 +72,7 @@ export default function SystemHealthRow() {
   };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
       {services.map(svc => (
         <HealthCard
           key={svc.serviceName}

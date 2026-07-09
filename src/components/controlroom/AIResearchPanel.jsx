@@ -19,47 +19,47 @@ export default function AIResearchPanel() {
   const aiError = aiStatusLog.find(s => s.status === 'ai_error');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* AI Status Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Featherless AI */}
-        <Panel title="Featherless AI">
-          <div className="p-4 space-y-3">
+        <Panel title="Featherless AI" subtitle="Probability estimation engine">
+          <div className="p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Brain className={cn('h-4 w-4', aiEnabled ? 'text-chart-2' : 'text-muted-foreground')} />
-                <span className="text-sm font-bold">Status</span>
+                <Brain className={cn('h-4 w-4', aiEnabled ? 'text-primary' : 'text-muted-foreground')} />
+                <span className="text-sm font-body font-semibold text-foreground">Status</span>
               </div>
               <StatusBadge status={aiEnabled ? 'ok' : 'neutral'}>
                 {aiEnabled ? 'ENABLED' : 'DISABLED'}
               </StatusBadge>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
               <Stat label="Model" value={featherlessSettings?.modelName || '—'} />
               <Stat label="Events with AI" value={aiDiag?.eventsWithAI || 0} />
               <Stat label="AI Calls" value={aiDiag?.aiCallsMade || 0} />
               <Stat label="Cache Hits" value={aiDiag?.aiCacheHits || 0} />
             </div>
             {aiError && (
-              <div className="text-xs text-chart-5 bg-chart-5/10 rounded p-2">
-                <span className="font-bold">Error:</span> {aiError.reason || 'Unknown error'}
+              <div className="text-[11px] text-danger bg-danger/8 border border-danger/20 rounded-md p-2.5 font-body">
+                <span className="font-semibold">Error:</span> {aiError.reason || 'Unknown error'}
               </div>
             )}
             {lastAI && (
-              <div className="text-xs space-y-1 border-t border-border pt-2">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase">Latest AI Decision</div>
+              <div className="text-xs space-y-1.5 border-t border-border-subtle pt-3">
+                <div className="text-[10px] font-body font-semibold text-muted-foreground uppercase tracking-label">Latest AI Decision</div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={lastAI.decision === 'BET' ? 'ok' : 'warning'}>{lastAI.decision}</StatusBadge>
-                  <span className="text-foreground">{lastAI.selectedRunner || '—'}</span>
+                  <span className="text-foreground font-body font-medium">{lastAI.selectedRunner || '—'}</span>
                 </div>
-                <div className="text-muted-foreground">
-                  Prob: {((lastAI.estimatedProbability || 0) * 100).toFixed(1)}% · Fair Odds: {lastAI.fairOdds?.toFixed(2) || '—'} · Edge: {(lastAI.valueEdge || 0).toFixed(1)}%
+                <div className="text-muted-foreground font-body">
+                  Prob: <span className="font-mono tabular-nums">{((lastAI.estimatedProbability || 0) * 100).toFixed(1)}%</span> · Fair Odds: <span className="font-mono">{lastAI.fairOdds?.toFixed(2) || '—'}</span> · Edge: <span className="font-mono">{(lastAI.valueEdge || 0).toFixed(1)}%</span>
                 </div>
-                <div className="text-muted-foreground text-[10px]">
-                  Confidence: {lastAI.confidence || 0} · Data Quality: {lastAI.dataQualityScore || 0}
+                <div className="text-muted-foreground text-[10px] font-body">
+                  Confidence: <span className="font-mono">{lastAI.confidence || 0}</span> · Data Quality: <span className="font-mono">{lastAI.dataQualityScore || 0}</span>
                 </div>
                 {lastAI.mainReason && (
-                  <div className="text-foreground text-[10px] mt-1">{lastAI.mainReason}</div>
+                  <div className="text-foreground text-[11px] mt-1 font-body">{lastAI.mainReason}</div>
                 )}
               </div>
             )}
@@ -73,35 +73,35 @@ export default function AIResearchPanel() {
               const decisionImpact = bestOpp?.decisionImpact;
               if (extEnabled && extDiag && extDiag.callsThisCycle > 0) {
                 return (
-                  <div className="text-xs border-t border-border pt-2 space-y-1">
-                    <div className="text-[10px] font-bold text-muted-foreground uppercase">OpenAI Search Impact (Latest Cycle)</div>
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="text-xs border-t border-border-subtle pt-3 space-y-1.5">
+                    <div className="text-[10px] font-body font-semibold text-muted-foreground uppercase tracking-label">OpenAI Search Impact (Latest Cycle)</div>
+                    <div className="grid grid-cols-2 gap-2.5">
                       <Stat label="Search Calls" value={extDiag.callsThisCycle || 0} />
                       <Stat label="Sources Found" value={extDiag.totalSourcesFound || 0} />
                       <Stat label="Cache Hits" value={extDiag.cacheHits || 0} />
-                      <Stat label="Errors" value={extDiag.errors || 0} iconColor={extDiag.errors > 0 ? 'text-chart-5' : 'text-chart-1'} />
+                      <Stat label="Errors" value={extDiag.errors || 0} iconColor={extDiag.errors > 0 ? 'text-danger' : 'text-success'} />
                     </div>
                     {preSearch != null && postSearch != null && (
-                      <div className="bg-muted/30 rounded p-2 space-y-0.5">
-                        <div className="flex justify-between"><span className="text-muted-foreground">Pre-search prob:</span><span className="font-mono">{(preSearch * 100).toFixed(1)}%</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Post-search prob:</span><span className="font-mono">{(postSearch * 100).toFixed(1)}%</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Delta:</span><span className={cn('font-mono font-bold', Math.abs(delta || 0) > 0.01 ? 'text-chart-4' : 'text-muted-foreground')}>{((delta || 0) * 100).toFixed(2)}%</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Decision impact:</span><span className="font-mono text-chart-3">{decisionImpact || 'no_effect'}</span></div>
+                      <div className="bg-muted/30 border border-border-subtle rounded-md p-2.5 space-y-0.5">
+                        <div className="flex justify-between"><span className="text-muted-foreground font-body">Pre-search prob:</span><span className="font-mono tabular-nums">{(preSearch * 100).toFixed(1)}%</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground font-body">Post-search prob:</span><span className="font-mono tabular-nums">{(postSearch * 100).toFixed(1)}%</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground font-body">Delta:</span><span className={cn('font-mono tabular-nums font-semibold', Math.abs(delta || 0) > 0.01 ? 'text-primary' : 'text-muted-foreground')}>{((delta || 0) * 100).toFixed(2)}%</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground font-body">Decision impact:</span><span className="font-mono text-info">{decisionImpact || 'no_effect'}</span></div>
                       </div>
                     )}
                   </div>
                 );
               } else if (extEnabled) {
                 return (
-                  <div className="text-xs border-t border-border pt-2">
-                    <div className="text-[10px] font-bold text-muted-foreground uppercase">OpenAI Search</div>
-                    <div className="text-muted-foreground">Enabled but not called this cycle (no qualifying markets or all cached).</div>
+                  <div className="text-xs border-t border-border-subtle pt-3">
+                    <div className="text-[10px] font-body font-semibold text-muted-foreground uppercase tracking-label">OpenAI Search</div>
+                    <div className="text-muted-foreground font-body text-[11px]">Enabled but not called this cycle (no qualifying markets or all cached).</div>
                   </div>
                 );
               }
               return null;
             })()}
-            <div className="text-[10px] text-muted-foreground bg-chart-2/5 border border-chart-2/20 rounded p-2">
+            <div className="text-[10px] text-muted-foreground bg-primary/5 border border-primary/15 rounded-md p-2.5 font-body leading-relaxed">
               AI provides probabilities only. EV, ROI, and BET/NO_BET are calculated deterministically by the exchange engine using live Betfair prices.
             </div>
           </div>
@@ -110,20 +110,21 @@ export default function AIResearchPanel() {
         {/* OpenAI Search */}
         <Panel
           title="OpenAI Web Search"
+          subtitle="External form data enrichment"
           action={
             <div className="flex items-center gap-2">
-              {extEnabled ? <Globe className="h-3.5 w-3.5 text-chart-3" /> : <Globe className="h-3.5 w-3.5 text-muted-foreground" />}
-              <span className="text-[10px] font-medium text-muted-foreground">{extEnabled ? 'ENABLED' : 'DISABLED'}</span>
+              {extEnabled ? <Globe className="h-3.5 w-3.5 text-info" /> : <Globe className="h-3.5 w-3.5 text-muted-foreground" />}
+              <span className="text-[10px] font-body font-semibold text-muted-foreground tracking-label">{extEnabled ? 'ENABLED' : 'DISABLED'}</span>
             </div>
           }
         >
-          <div className="p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <Stat label="API Key" value="Configured" icon={CheckCircle2} iconColor="text-chart-1" />
-              <Stat label="Web Search" value={extEnabled ? 'On' : 'Off'} icon={extEnabled ? CheckCircle2 : XCircle} iconColor={extEnabled ? 'text-chart-1' : 'text-muted-foreground'} />
+          <div className="p-5 space-y-3">
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <Stat label="API Key" value="Configured" icon={CheckCircle2} iconColor="text-success" />
+              <Stat label="Web Search" value={extEnabled ? 'On' : 'Off'} icon={extEnabled ? CheckCircle2 : XCircle} iconColor={extEnabled ? 'text-success' : 'text-muted-foreground'} />
             </div>
             {!extEnabled && (
-              <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2">
+              <div className="text-[10px] text-muted-foreground bg-muted/30 border border-border-subtle rounded-md p-2.5 font-body leading-relaxed">
                 OpenAI Web Search is disabled. Enable in Settings → AI & Research to use external search for probability adjustments.
               </div>
             )}
@@ -140,11 +141,11 @@ export default function AIResearchPanel() {
 
 function Stat({ label, value, icon: Icon, iconColor }) {
   return (
-    <div className="bg-muted/30 rounded p-2">
-      <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{label}</div>
+    <div className="bg-muted/30 border border-border-subtle rounded-md p-2.5">
+      <div className="text-[9px] font-body font-semibold text-muted-foreground uppercase tracking-label">{label}</div>
       <div className="flex items-center gap-1.5">
         {Icon && <Icon className={cn('h-3 w-3', iconColor || 'text-muted-foreground')} />}
-        <span className="text-xs font-mono font-semibold text-foreground truncate">{value}</span>
+        <span className="text-xs font-mono tabular-nums font-semibold text-foreground truncate">{value}</span>
       </div>
     </div>
   );

@@ -4,15 +4,16 @@ import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildSettingsWiringCheck } from '@/lib/wiringAudit';
 
+const toneStyles = {
+  danger: 'bg-danger/8 border-danger/25 text-danger',
+  warning: 'bg-warning/8 border-warning/25 text-warning',
+  info: 'bg-info/8 border-info/25 text-info',
+  success: 'bg-success/8 border-success/25 text-success',
+};
+
 function Banner({ icon: Icon, text, tone }) {
-  const tones = {
-    danger: 'bg-chart-5/15 border-chart-5/40 text-chart-5',
-    warning: 'bg-chart-4/15 border-chart-4/40 text-chart-4',
-    info: 'bg-chart-3/15 border-chart-3/40 text-chart-3',
-    success: 'bg-chart-1/15 border-chart-1/40 text-chart-1',
-  };
   return (
-    <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold', tones[tone])}>
+    <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-md border text-[11px] font-body font-semibold tracking-label', toneStyles[tone])}>
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span>{text}</span>
     </div>
@@ -24,23 +25,17 @@ export default function SafetyBanners() {
 
   const banners = [];
 
-  // Paper mode active
   banners.push(<Banner key="paper" icon={Shield} text="PAPER MODE ACTIVE" tone="success" />);
-
-  // Live betting disabled
   banners.push(<Banner key="live-off" icon={ShieldOff} text="LIVE BETTING DISABLED" tone="info" />);
 
-  // Price feed stale
   if (!apiConnected || betfairConnection.dataFresh === false) {
     banners.push(<Banner key="stale" icon={WifiOff} text="PRICE FEED STALE — Connect Betfair for live data" tone="warning" />);
   }
 
-  // Delayed API mode — stream not connected but API is (polling fallback)
   if (apiConnected && betfairConnection.streamConnectionStatus !== 'connected' && betfairConnection.streamConnectionStatus !== 'polling') {
     banners.push(<Banner key="delayed" icon={Clock} text={`DELAYED API MODE — Stream: ${betfairConnection.streamConnectionStatus}`} tone="warning" />);
   }
 
-  // OpenAI search not working
   if (featherlessSettings?.externalSearchEnabled) {
     const searchDiag = lastExchangeDiagnostics?.externalSearchDiagnostics;
     if (searchDiag && searchDiag.errors > 0) {
@@ -50,7 +45,6 @@ export default function SafetyBanners() {
     banners.push(<Banner key="openai-off" icon={Globe} text="OPENAI SEARCH NOT ENABLED" tone="warning" />);
   }
 
-  // Featherless AI not working
   if (!featherlessSettings?.enabled) {
     banners.push(<Banner key="ai-off" icon={Brain} text="FEATHERLESS AI NOT ENABLED" tone="warning" />);
   } else {
@@ -60,27 +54,23 @@ export default function SafetyBanners() {
     }
   }
 
-  // Result unknown
   const awaitingResult = paperOrders.filter(o => o.status === 'awaiting_result').length;
   if (awaitingResult > 0) {
     banners.push(<Banner key="result-unknown" icon={HelpCircle} text={`${awaitingResult} ORDER(S) AWAITING RESULT`} tone="warning" />);
   }
 
-  // LAY liability warning
   const layOrders = paperOrders.filter(o => o.side === 'LAY' && ['matched', 'partially_matched', 'pending', 'executable'].includes(o.status));
   if (layOrders.length > 0) {
     const totalLiability = layOrders.reduce((s, o) => s + (o.liability || 0), 0);
     banners.push(<Banner key="lay-liab" icon={DollarSign} text={`LAY LIABILITY ACTIVE: $${totalLiability.toFixed(2)} at risk`} tone="danger" />);
   }
 
-  // Settings mismatch — compare saved DB values with bot-used values
   const wiringRows = buildSettingsWiringCheck(settings, featherlessSettings, botSettings);
   const mismatchCount = wiringRows.filter(r => r.status === 'mismatch' || r.status === 'missing').length;
   if (mismatchCount > 0) {
     banners.push(<Banner key="mismatch" icon={Settings2} text={`SETTINGS MISMATCH — ${mismatchCount} setting(s) differ between saved and bot-used values`} tone="danger" />);
   }
 
-  // Risk limits disabled
   if (settings.riskLimitsDisabled) {
     banners.push(<Banner key="risk-off" icon={AlertTriangle} text="RISK LIMITS DISABLED — Testing mode active" tone="danger" />);
   }

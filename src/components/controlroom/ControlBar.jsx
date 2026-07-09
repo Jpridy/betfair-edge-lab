@@ -52,7 +52,6 @@ export default function ControlBar() {
     setExporting(true);
     try {
       const cycle = botCycles[0];
-      // 1. Latest cycle full row
       if (cycle) {
         exportToCSV(`latest-cycle.csv`, [{
           cycleNumber: cycle.cycleNumber, status: cycle.status, debugOnly: cycle.debugOnly || false,
@@ -66,7 +65,6 @@ export default function ControlBar() {
           notes: cycle.notes || '',
         }]);
       }
-      // 2. Latest opportunities
       const opps = exchangeOpportunities?.length > 0 ? exchangeOpportunities : (lastCycle?.scanSummary?.topOpportunities || []);
       if (opps.length > 0) {
         exportToCSV('latest-opportunities.csv', opps.map(o => ({
@@ -80,17 +78,14 @@ export default function ControlBar() {
           blocker: o.failedGate || o.mainBlocker || (o.blockers || []).join('; '), decision: o.decision || '',
         })));
       }
-      // 3. Latest loaded markets
       const loadedMarkets = lastExchangeDiagnostics?.loadedMarketsTable || [];
       if (loadedMarkets.length > 0) {
         exportToCSV('latest-loaded-markets.csv', loadedMarkets);
       }
-      // 4. Latest nearest markets (same as loaded but sorted by seconds to jump)
       const nearest = [...loadedMarkets].sort((a, b) => (a.secondsToJump ?? 99999) - (b.secondsToJump ?? 99999)).slice(0, 20);
       if (nearest.length > 0) {
         exportToCSV('latest-nearest-markets.csv', nearest);
       }
-      // 5. Latest paper orders
       if (paperOrders.length > 0) {
         exportToCSV('latest-paper-orders.csv', paperOrders.slice(0, 50).map(o => ({
           created_date: o.created_date || '', runnerName: o.runnerName || '', side: o.side || '',
@@ -102,7 +97,6 @@ export default function ControlBar() {
           resultSource: o.resultSource || '', resultConfidence: o.resultConfidence || '',
         })));
       }
-      // 6. Latest settlement status
       const settledOrAwaiting = paperOrders.filter(o => o.status === 'settled' || o.status === 'awaiting_result' || o.settlementStatus);
       if (settledOrAwaiting.length > 0) {
         exportToCSV('latest-settlement.csv', settledOrAwaiting.slice(0, 50).map(o => ({
@@ -119,11 +113,11 @@ export default function ControlBar() {
   };
 
   return (
-    <div className="sticky top-16 z-20 bg-card/95 backdrop-blur border border-border rounded-xl p-3 flex flex-wrap items-center gap-2 shadow-lg">
+    <div className="sticky top-14 z-20 glass-strong border border-border-subtle rounded-lg p-3 flex flex-wrap items-center gap-2 shadow-elevated">
       {/* Bot controls */}
       <div className="flex items-center gap-1.5">
         {!isRunning ? (
-          <Button size="sm" onClick={startBot} disabled={emergencyStop} className="gap-1.5 bg-chart-1 hover:bg-chart-1/90 text-background font-bold">
+          <Button size="sm" variant="success" onClick={startBot} disabled={emergencyStop} className="gap-1.5 font-body font-semibold">
             <Play className="h-4 w-4" /> START
           </Button>
         ) : (
@@ -136,59 +130,52 @@ export default function ControlBar() {
         </Button>
       </div>
 
-      {/* Mode badges */}
-      <div className="flex items-center gap-1.5">
-        <span className="px-2 py-1 rounded-md bg-chart-1/10 border border-chart-1/30 text-chart-1 text-[10px] font-bold">PAPER</span>
-        <span className="px-2 py-1 rounded-md bg-muted border border-border text-muted-foreground text-[10px] font-bold">LIVE DISABLED</span>
-      </div>
+      {/* Divider */}
+      <div className="h-6 w-px bg-border-subtle hidden md:block" />
 
       {/* Action buttons */}
       <div className="flex items-center gap-1.5">
         <Button size="sm" variant="outline" onClick={handleDebugScan} disabled={emergencyStop || debugRunning} className="gap-1.5" title="Read-only diagnostic — does NOT create orders">
           {debugRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-          {debugRunning ? 'Scanning...' : 'Force Debug Scan'}
+          {debugRunning ? 'Scanning...' : 'Debug Scan'}
         </Button>
         <Button size="sm" variant="outline" onClick={handleRefreshBetfair} disabled={!apiConnected || refreshRunning} className="gap-1.5" title={apiConnected ? 'Fetch latest market catalogue from Betfair' : 'Betfair not connected'}>
           {refreshRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          {refreshRunning ? 'Refreshing...' : 'Refresh Betfair'}
+          {refreshRunning ? 'Refreshing...' : 'Refresh Markets'}
         </Button>
         <Button size="sm" variant="outline" onClick={refreshMarketState} className="gap-1.5" title="Refresh local state timestamps only — does not call Betfair API">
-          <RefreshCw className="h-4 w-4" /> Refresh Local State
+          <RefreshCw className="h-4 w-4" /> Sync State
         </Button>
         <Button size="sm" variant="outline" onClick={handleExportDebugBundle} disabled={!lastCycle || exporting} className="gap-1.5">
           {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-          Export Debug Bundle
+          Export
         </Button>
       </div>
 
       {/* Emergency stop */}
       <Button
         size="sm"
+        variant={emergencyStop ? "outline" : "destructive"}
         onClick={emergencyStop ? clearEmergencyStop : triggerEmergencyStop}
-        className={cn(
-          'gap-1.5 font-bold ml-auto',
-          emergencyStop
-            ? 'bg-chart-1 hover:bg-chart-1/90 text-background'
-            : 'bg-destructive hover:bg-destructive/90 text-destructive-foreground border-2 border-destructive/50'
-        )}
+        className={cn('gap-1.5 font-body font-semibold ml-auto', !emergencyStop && 'border border-danger/40 hover:glow-red')}
       >
         <AlertOctagon className="h-4 w-4" /> {emergencyStop ? 'CLEAR STOP' : 'EMERGENCY STOP'}
       </Button>
 
-      {/* Status info */}
-      <div className="w-full flex items-center gap-4 pt-2 border-t border-border text-xs">
+      {/* Status info row */}
+      <div className="w-full flex items-center gap-4 pt-2.5 border-t border-border-subtle text-xs">
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">Last cycle:</span>
-          <span className="font-mono font-semibold text-foreground">
+          <span className="font-mono tabular-nums font-semibold text-foreground">
             {botState.lastCycleTime ? new Date(botState.lastCycleTime).toLocaleTimeString('en-AU') : 'Never'}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground">Latest decision:</span>
+          <span className="text-muted-foreground">Decision:</span>
           <span className={cn(
-            'px-2 py-0.5 rounded text-[10px] font-bold',
-            lastDecision === 'BET' ? 'bg-chart-1/10 text-chart-1' : 'bg-chart-4/10 text-chart-4'
+            'px-2 py-0.5 rounded-md text-[10px] font-body font-semibold border',
+            lastDecision === 'BET' ? 'bg-success/10 text-success border-success/25' : lastDecision === 'NO_BET' ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border'
           )}>
             {lastDecision}
           </span>
@@ -196,18 +183,17 @@ export default function ControlBar() {
         {isRunning && (
           <div className="flex items-center gap-1.5 ml-auto">
             <span className="text-muted-foreground">Next scan in:</span>
-            <span className="font-mono font-bold text-primary">{botState.nextScanCountdown}s</span>
+            <span className="font-mono tabular-nums font-bold text-primary">{botState.nextScanCountdown}s</span>
           </div>
         )}
-        {/* Last action result */}
         {lastAction && (
           <div className={cn(
             'flex items-center gap-1.5 ml-auto',
-            lastAction.success ? 'text-chart-1' : 'text-chart-5'
+            lastAction.success ? 'text-success' : 'text-danger'
           )}>
             {lastAction.success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
             <span className="text-[10px]">{lastAction.message}</span>
-            <span className="text-[10px] text-muted-foreground">{new Date(lastAction.time).toLocaleTimeString('en-AU')}</span>
+            <span className="text-[10px] text-muted-foreground font-mono">{new Date(lastAction.time).toLocaleTimeString('en-AU')}</span>
           </div>
         )}
       </div>

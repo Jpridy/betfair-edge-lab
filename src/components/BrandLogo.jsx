@@ -67,8 +67,8 @@ export function BrandLogo({ className, showText = true, size = 32 }) {
       <BrandIcon size={size} />
       {showText && (
         <div className="flex flex-col leading-none">
-          <span className="text-base font-extrabold text-foreground tracking-tight">BETFAIR</span>
-          <span className="text-xs font-bold tracking-brand text-gradient-brand">EDGE LAB</span>
+          <span className="text-base font-heading font-bold text-foreground tracking-tight-brand">BETFAIR</span>
+          <span className="text-[10px] font-heading font-semibold tracking-label text-gradient-brand">EDGE LAB</span>
         </div>
       )}
     </div>

@@ -15,90 +15,131 @@ import SettlementPanel from '@/components/controlroom/SettlementPanel';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
 import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
+import { ShieldCheck, ShieldOff, FlaskConical } from 'lucide-react';
 
 export default function BotControlCentre() {
-  const { dataLoading, settings, botSettings, featherlessSettings } = useApp();
+  const { dataLoading, settings, botSettings, featherlessSettings, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
 
   if (dataLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
+        <div className="w-7 h-7 border-[3px] border-border-subtle border-t-primary rounded-full animate-spin"></div>
       </div>
     );
   }
 
   const proofActive = isPaperProofModeActive(settings, botSettings, featherlessSettings);
+  const lastCycle = botCycles[0];
+  const openOrders = paperOrders.filter(o => ['pending', 'matched', 'partially_matched', 'executable'].includes(o.status)).length;
+  const awaitingSettlement = paperOrders.filter(o => o.status === 'awaiting_result').length;
+  const bestEV = exchangeOpportunities?.length > 0
+    ? Math.max(...exchangeOpportunities.map(o => o.ev || 0))
+    : lastCycle?.bestCandidate?.ev || 0;
+  const bestROI = exchangeOpportunities?.length > 0
+    ? Math.max(...exchangeOpportunities.map(o => (o.roi || o.expectedROI || 0) * 100))
+    : (lastCycle?.bestCandidate?.expectedROI || 0) * 100;
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Safety banners — always at top */}
+    <div className="space-y-5 animate-fade-in">
+      {/* Safety banners */}
       <SafetyBanners />
 
-      {/* Paper Proof Mode badge */}
+      {/* Paper Proof Mode banner */}
       {proofActive && (
-        <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg px-4 py-2 text-xs text-chart-4 font-bold flex items-center gap-2">
-          <span className="bg-chart-4 text-background px-2 py-0.5 rounded text-[10px]">PAPER PROOF MODE ACTIVE</span>
-          Filters relaxed to prove paper order creation and settlement. Not suitable for live betting.
+        <div className="bg-warning/10 border border-warning/25 rounded-lg px-4 py-2.5 flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-warning/15 text-warning px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border border-warning/30 tracking-label">
+            <FlaskConical className="h-3 w-3" />
+            PAPER PROOF MODE
+          </div>
+          <span className="text-[12px] text-warning/90 font-body">
+            Filters relaxed to prove paper order creation and settlement. Not suitable for live betting.
+          </span>
         </div>
       )}
+
+      {/* Mode badges */}
+      <div className="flex items-center gap-2">
+        <div className="inline-flex items-center gap-1.5 bg-success/10 text-success px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border border-success/25 tracking-label">
+          <ShieldCheck className="h-3 w-3" />
+          PAPER MODE
+        </div>
+        <div className="inline-flex items-center gap-1.5 bg-muted text-muted-foreground px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border border-border tracking-label">
+          <ShieldOff className="h-3 w-3" />
+          LIVE BETTING DISABLED
+        </div>
+      </div>
 
       {/* Sticky control bar */}
       <ControlBar />
 
-      {/* Paper Proof Panel — shown when proof mode is active */}
+      {/* Paper Proof Panel */}
       {proofActive && <PaperProofPanel />}
+
+      {/* Summary metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <SummaryMetric label="Markets" value={markets.length || 0} />
+        <SummaryMetric label="Opportunities" value={exchangeOpportunities?.length || lastCycle?.scanSummary?.totalOpportunities || 0} />
+        <SummaryMetric label="Best EV" value={`$${(bestEV || 0).toFixed(2)}`} accent="text-success" />
+        <SummaryMetric label="Best ROI" value={`${(bestROI || 0).toFixed(1)}%`} accent="text-success" />
+        <SummaryMetric label="Open Orders" value={openOrders} accent={openOrders > 0 ? 'text-info' : ''} />
+        <SummaryMetric label="Awaiting" value={awaitingSettlement} accent={awaitingSettlement > 0 ? 'text-warning' : ''} />
+      </div>
 
       {/* Tabbed sections */}
       <Tabs defaultValue="control">
-        <TabsList className="bg-card border border-border flex-wrap h-auto">
-          <TabsTrigger value="control" className="text-xs">Control</TabsTrigger>
-          <TabsTrigger value="markets" className="text-xs">Markets & Opportunities</TabsTrigger>
-          <TabsTrigger value="ai" className="text-xs">AI Research</TabsTrigger>
-          <TabsTrigger value="settings" className="text-xs">Settings Impact</TabsTrigger>
-          <TabsTrigger value="risk" className="text-xs">Risk & Orders</TabsTrigger>
-          <TabsTrigger value="proof" className="text-xs">Paper Proof</TabsTrigger>
-          <TabsTrigger value="debug" className="text-xs">Debug & Logs</TabsTrigger>
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="control">Control</TabsTrigger>
+          <TabsTrigger value="markets">Markets & Opportunities</TabsTrigger>
+          <TabsTrigger value="ai">AI Research</TabsTrigger>
+          <TabsTrigger value="settings">Settings Impact</TabsTrigger>
+          <TabsTrigger value="risk">Risk & Orders</TabsTrigger>
+          <TabsTrigger value="proof">Paper Proof</TabsTrigger>
+          <TabsTrigger value="debug">Debug & Logs</TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Control — system health, latest decision, timeline */}
-        <TabsContent value="control" className="space-y-4 mt-4">
+        <TabsContent value="control" className="space-y-5">
           <SystemHealthRow />
           <LatestDecision />
           <DecisionTimeline />
         </TabsContent>
 
-        {/* Tab 2: Markets & Opportunities */}
-        <TabsContent value="markets" className="space-y-4 mt-4">
+        <TabsContent value="markets" className="space-y-5">
           <MarketFeedPanel />
           <OpportunitiesPanel />
         </TabsContent>
 
-        {/* Tab 3: AI Research */}
-        <TabsContent value="ai" className="space-y-4 mt-4">
+        <TabsContent value="ai" className="space-y-5">
           <AIResearchPanel />
         </TabsContent>
 
-        {/* Tab 4: Settings Impact */}
-        <TabsContent value="settings" className="space-y-4 mt-4">
+        <TabsContent value="settings" className="space-y-5">
           <SettingsImpactPanel />
         </TabsContent>
 
-        {/* Tab 5: Risk & Orders */}
-        <TabsContent value="risk" className="space-y-4 mt-4">
+        <TabsContent value="risk" className="space-y-5">
           <RiskOrdersPanel />
           <SettlementPanel />
         </TabsContent>
 
-        {/* Tab 6: Paper Proof Mode */}
-        <TabsContent value="proof" className="space-y-4 mt-4">
+        <TabsContent value="proof" className="space-y-5">
           <PaperProofPanel />
         </TabsContent>
 
-        {/* Tab 7: Debug & Logs */}
-        <TabsContent value="debug" className="space-y-4 mt-4">
+        <TabsContent value="debug" className="space-y-5">
           <DecisionLogPanel />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value, accent }) {
+  return (
+    <div className="bg-card border border-border-subtle rounded-lg p-3.5 hover:border-border transition-colors">
+      <div className="text-[10px] font-body font-medium text-muted-foreground uppercase tracking-label mb-1">{label}</div>
+      <div className={`text-xl font-heading font-semibold tabular-nums tracking-tight-brand ${accent || 'text-foreground'}`}>
+        {value}
+      </div>
     </div>
   );
 }

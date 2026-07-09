@@ -5,9 +5,11 @@ module.exports = {
   theme: {
   	extend: {
   		borderRadius: {
-  			lg: 'var(--radius)',
-  			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
+  			sm: 'var(--radius-sm)',
+  			DEFAULT: 'var(--radius)',
+  			lg: 'var(--radius-lg)',
+  			md: 'calc(var(--radius) - 4px)',
+  			xl: 'var(--radius-lg)'
   		},
   		colors: {
   			background: 'hsl(var(--background))',
@@ -16,13 +18,17 @@ module.exports = {
   				DEFAULT: 'hsl(var(--card))',
   				foreground: 'hsl(var(--card-foreground))'
   			},
+  			elevated: 'hsl(var(--elevated))',
+  			hover: 'hsl(var(--hover))',
+  			selected: 'hsl(var(--selected))',
   			popover: {
   				DEFAULT: 'hsl(var(--popover))',
   				foreground: 'hsl(var(--popover-foreground))'
   			},
   			primary: {
   				DEFAULT: 'hsl(var(--primary))',
-  				foreground: 'hsl(var(--primary-foreground))'
+  				foreground: 'hsl(var(--primary-foreground))',
+  				muted: 'hsl(var(--primary-muted))'
   			},
   			secondary: {
   				DEFAULT: 'hsl(var(--secondary))',
@@ -40,7 +46,27 @@ module.exports = {
   				DEFAULT: 'hsl(var(--destructive))',
   				foreground: 'hsl(var(--destructive-foreground))'
   			},
-  			border: 'hsl(var(--border))',
+  			success: {
+  				DEFAULT: 'hsl(var(--success))',
+  				foreground: 'hsl(var(--success-foreground))'
+  			},
+  			warning: {
+  				DEFAULT: 'hsl(var(--warning))',
+  				foreground: 'hsl(var(--warning-foreground))'
+  			},
+  			info: {
+  				DEFAULT: 'hsl(var(--info))',
+  				foreground: 'hsl(var(--info-foreground))'
+  			},
+  			danger: {
+  				DEFAULT: 'hsl(var(--danger))',
+  				foreground: 'hsl(var(--danger-foreground))'
+  			},
+  			border: {
+  				DEFAULT: 'hsl(var(--border))',
+  				subtle: 'hsl(var(--border-subtle))',
+  				active: 'hsl(var(--border-active))'
+  			},
   			input: 'hsl(var(--input))',
   			ring: 'hsl(var(--ring))',
   			chart: {
@@ -68,6 +94,10 @@ module.exports = {
   			display: ['var(--font-display)'],
   			mono: ['var(--font-mono)']
   		},
+  		boxShadow: {
+  			'premium': '0 2px 8px -2px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+  			'elevated': '0 8px 32px -8px rgba(0,0,0,0.5), 0 2px 8px -4px rgba(0,0,0,0.3)',
+  		},
   		keyframes: {
   			'accordion-down': {
   				from: { height: '0' },
@@ -76,11 +106,16 @@ module.exports = {
   			'accordion-up': {
   				from: { height: 'var(--radix-accordion-content-height)' },
   				to: { height: '0' }
+  			},
+  			'fade-in': {
+  				from: { opacity: '0', transform: 'translateY(6px)' },
+  				to: { opacity: '1', transform: 'translateY(0)' }
   			}
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+  			'fade-in': 'fade-in 0.3s ease-out'
   		}
   	}
   },
