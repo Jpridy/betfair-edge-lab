@@ -186,7 +186,7 @@ export default function ExternalSearchTestButton() {
       </div>
 
       {error && (
-        <div className="px-4 py-3 text-sm text-chart-5 bg-chart-5/5">
+        <div className="px-4 py-3 text-sm text-danger bg-danger/5">
           {error}
         </div>
       )}
@@ -222,7 +222,7 @@ export default function ExternalSearchTestButton() {
           </div>
 
           {result.errorMessage && (
-            <div className="text-xs text-chart-5">{result.errorMessage}</div>
+            <div className="text-xs text-danger">{result.errorMessage}</div>
           )}
 
           {/* Race-level notes */}
@@ -243,7 +243,7 @@ export default function ExternalSearchTestButton() {
                     <ExternalLink className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div>
                       <div className="text-foreground">{s.title}</div>
-                      <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-chart-3 hover:underline text-[10px]">{s.domain || s.url}</a>
+                      <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-info hover:underline text-[10px]">{s.domain || s.url}</a>
                     </div>
                   </div>
                 ))}
@@ -263,10 +263,10 @@ export default function ExternalSearchTestButton() {
                     <span className="font-medium text-foreground flex-1 truncate">{rc.runnerName}</span>
                     <span className="font-mono text-muted-foreground">{(rc.preSearchProbability * 100).toFixed(1)}%</span>
                     <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                    <span className={`font-mono ${rc.probabilityDelta > 0 ? 'text-chart-1' : rc.probabilityDelta < 0 ? 'text-chart-5' : 'text-foreground'}`}>
+                    <span className={`font-mono ${rc.probabilityDelta > 0 ? 'text-success' : rc.probabilityDelta < 0 ? 'text-danger' : 'text-foreground'}`}>
                       {(rc.postSearchProbability * 100).toFixed(1)}%
                     </span>
-                    <span className={`font-mono text-[10px] ${rc.probabilityDelta > 0 ? 'text-chart-1' : rc.probabilityDelta < 0 ? 'text-chart-5' : 'text-muted-foreground'}`}>
+                    <span className={`font-mono text-[10px] ${rc.probabilityDelta > 0 ? 'text-success' : rc.probabilityDelta < 0 ? 'text-danger' : 'text-muted-foreground'}`}>
                       {rc.probabilityDelta > 0 ? '+' : ''}{(rc.probabilityDelta * 100).toFixed(2)}%
                     </span>
                     <StatusBadge status={
@@ -282,7 +282,7 @@ export default function ExternalSearchTestButton() {
           </div>
 
           {/* Best opportunity change */}
-          <div className={`px-3 py-2 rounded text-xs ${result.bestChanged ? 'bg-chart-2/10 text-chart-2' : 'bg-muted/30 text-muted-foreground'}`}>
+          <div className={`px-3 py-2 rounded text-xs ${result.bestChanged ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'}`}>
             {result.bestChanged ? (
               <>Best opportunity changed: <strong>{result.bestPreName}</strong> → <strong>{result.bestPostName}</strong></>
             ) : (
@@ -301,10 +301,10 @@ export default function ExternalSearchTestButton() {
                     <div key={i} className="text-xs">
                       <div className="font-medium text-foreground mb-1">{rc.runnerName}</div>
                       {rc.positiveSignals.length > 0 && (
-                        <div className="text-chart-1 ml-3">+ {rc.positiveSignals.join('; ')}</div>
+                        <div className="text-success ml-3">+ {rc.positiveSignals.join('; ')}</div>
                       )}
                       {rc.negativeSignals.length > 0 && (
-                        <div className="text-chart-5 ml-3">− {rc.negativeSignals.join('; ')}</div>
+                        <div className="text-danger ml-3">− {rc.negativeSignals.join('; ')}</div>
                       )}
                     </div>
                   ))}

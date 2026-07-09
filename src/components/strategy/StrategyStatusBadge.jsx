@@ -2,9 +2,9 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 const LIGHT_CONFIG = {
-  green: { bg: 'bg-chart-1/10', text: 'text-chart-1', border: 'border-chart-1/30', dot: 'bg-chart-1', label: 'Paper Validated' },
-  yellow: { bg: 'bg-chart-4/10', text: 'text-chart-4', border: 'border-chart-4/30', dot: 'bg-chart-4', label: 'Paper Testing' },
-  red: { bg: 'bg-chart-5/10', text: 'text-chart-5', border: 'border-chart-5/30', dot: 'bg-chart-5', label: 'Failing / Locked' },
+  green: { bg: 'bg-success/10', text: 'text-success', border: 'border-success/30', dot: 'bg-success', label: 'Paper Validated' },
+  yellow: { bg: 'bg-warning/10', text: 'text-warning', border: 'border-warning/30', dot: 'bg-warning', label: 'Paper Testing' },
+  red: { bg: 'bg-danger/10', text: 'text-danger', border: 'border-danger/30', dot: 'bg-danger', label: 'Failing / Locked' },
   grey: { bg: 'bg-muted/30', text: 'text-muted-foreground', border: 'border-border', dot: 'bg-muted-foreground', label: 'Archived' },
 };
 
@@ -24,12 +24,12 @@ export function StrategyStatusBadge({ light, label, size = 'sm' }) {
 
 export function DataQualityBadge({ status, label }) {
   const styles = {
-    clean: 'bg-chart-1/10 text-chart-1 border-chart-1/30',
-    needs_audit: 'bg-chart-4/10 text-chart-4 border-chart-4/30',
-    missing_clv: 'bg-chart-4/10 text-chart-4 border-chart-4/30',
-    missing_settlement: 'bg-chart-5/10 text-chart-5 border-chart-5/30',
-    commission_error: 'bg-chart-5/10 text-chart-5 border-chart-5/30',
-    sample_too_small: 'bg-chart-3/10 text-chart-3 border-chart-3/30',
+    clean: 'bg-success/10 text-success border-success/30',
+    needs_audit: 'bg-warning/10 text-warning border-warning/30',
+    missing_clv: 'bg-warning/10 text-warning border-warning/30',
+    missing_settlement: 'bg-danger/10 text-danger border-danger/30',
+    commission_error: 'bg-danger/10 text-danger border-danger/30',
+    sample_too_small: 'bg-info/10 text-info border-info/30',
     stale_data: 'bg-muted text-muted-foreground border-border',
   };
   return (
@@ -41,7 +41,7 @@ export function DataQualityBadge({ status, label }) {
 
 export function MetricWarningBadge() {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border bg-chart-5/10 text-chart-5 border-chart-5/30">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border bg-danger/10 text-danger border-danger/30">
       Metrics Require Audit
     </span>
   );

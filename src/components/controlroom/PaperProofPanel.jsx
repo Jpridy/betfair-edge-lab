@@ -125,7 +125,7 @@ export default function PaperProofPanel() {
       {/* Warning banner */}
       <div className={cn(
         'px-4 py-2.5 border-b border-border text-xs flex items-start gap-2',
-        proofActive ? 'bg-chart-4/10 text-chart-4' : 'bg-muted/20 text-muted-foreground'
+        proofActive ? 'bg-warning/10 text-warning' : 'bg-muted/20 text-muted-foreground'
       )}>
         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
         <span>
@@ -164,15 +164,15 @@ export default function PaperProofPanel() {
 
       {/* No proof order reason */}
       {!latestProofOrder && latestProofCycle?.noBetReason && (
-        <div className="px-4 py-2 border-b border-border text-xs text-chart-5">
+        <div className="px-4 py-2 border-b border-border text-xs text-danger">
           <span className="font-bold">No proof order created:</span> {latestProofCycle.noBetReason}
         </div>
       )}
 
       {/* Scan result */}
       {scanResult && !scanResult.error && (
-        <div className="px-4 py-2 border-b border-border text-xs bg-chart-1/5">
-          <div className="text-[10px] font-bold text-chart-1 uppercase mb-1">Proof Scan Result</div>
+        <div className="px-4 py-2 border-b border-border text-xs bg-success/5">
+          <div className="text-[10px] font-bold text-success uppercase mb-1">Proof Scan Result</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
             <div>Markets: <span className="font-mono font-bold">{scanResult.marketsLoaded}</span></div>
             <div>Eligible: <span className="font-mono font-bold">{scanResult.marketsEligible}</span></div>
@@ -190,12 +190,12 @@ export default function PaperProofPanel() {
 
       {/* Settlement result */}
       {settlementResult && !settlementResult.error && (
-        <div className="px-4 py-2 border-b border-border text-xs bg-chart-3/5">
-          <div className="text-[10px] font-bold text-chart-3 uppercase mb-1">Settlement Check Result</div>
+        <div className="px-4 py-2 border-b border-border text-xs bg-info/5">
+          <div className="text-[10px] font-bold text-info uppercase mb-1">Settlement Check Result</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
             <div>Awaiting Before: <span className="font-mono font-bold">{settlementResult.awaitingBefore}</span></div>
-            <div>Settled: <span className="font-mono font-bold text-chart-1">{settlementResult.settledThisRun}</span></div>
-            <div>Unknown: <span className="font-mono font-bold text-chart-4">{settlementResult.resultUnknownThisRun}</span></div>
+            <div>Settled: <span className="font-mono font-bold text-success">{settlementResult.settledThisRun}</span></div>
+            <div>Unknown: <span className="font-mono font-bold text-warning">{settlementResult.resultUnknownThisRun}</span></div>
             <div>Still Awaiting: <span className="font-mono font-bold">{settlementResult.stillAwaiting}</span></div>
             {settlementResult.latestResultSource && <div>Source: <span className="font-bold">{settlementResult.latestResultSource}</span></div>}
           </div>
@@ -243,8 +243,8 @@ export default function PaperProofPanel() {
       </div>
 
       {/* Live betting locked notice */}
-      <div className="px-4 py-2 bg-chart-1/5 border-t border-chart-1/20 text-[10px] text-muted-foreground flex items-center gap-2">
-        <CheckCircle2 className="h-3 w-3 text-chart-1" />
+      <div className="px-4 py-2 bg-success/5 border-t border-success/20 text-[10px] text-muted-foreground flex items-center gap-2">
+        <CheckCircle2 className="h-3 w-3 text-success" />
         Live betting is disabled and locked. All proof orders use LAPSE persistence. No real Betfair orders are placed.
       </div>
     </Panel>
@@ -252,7 +252,7 @@ export default function PaperProofPanel() {
 }
 
 function Metric({ label, value, tone }) {
-  const tones = { success: 'text-chart-1', warning: 'text-chart-4', danger: 'text-chart-5', default: 'text-foreground' };
+  const tones = { success: 'text-success', warning: 'text-warning', danger: 'text-danger', default: 'text-foreground' };
   return (
     <div className="bg-card p-2.5 text-center">
       <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{label}</div>

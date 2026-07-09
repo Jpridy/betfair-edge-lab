@@ -77,11 +77,11 @@ export default function RiskManager() {
       {/* Admin/Advanced — Disable All Risk Limits (hidden from normal workflow) */}
       <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3 mb-2">
         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Admin / Advanced Tools</div>
-      <div className={`rounded-lg border-2 p-5 ${settings.riskLimitsDisabled ? 'bg-chart-4/10 border-chart-4' : 'bg-card border-border'}`}>
+      <div className={`rounded-lg border-2 p-5 ${settings.riskLimitsDisabled ? 'bg-warning/10 border-warning' : 'bg-card border-border'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-full ${settings.riskLimitsDisabled ? 'bg-chart-4/20' : 'bg-muted'}`}>
-              <FlaskConical className={`h-6 w-6 ${settings.riskLimitsDisabled ? 'text-chart-4' : 'text-muted-foreground'}`} />
+            <div className={`p-3 rounded-full ${settings.riskLimitsDisabled ? 'bg-warning/20' : 'bg-muted'}`}>
+              <FlaskConical className={`h-6 w-6 ${settings.riskLimitsDisabled ? 'text-warning' : 'text-muted-foreground'}`} />
             </div>
             <div>
               <h2 className="text-base font-bold">Testing Mode — Disable All Risk Limits</h2>
@@ -95,8 +95,8 @@ export default function RiskManager() {
           <Switch checked={settings.riskLimitsDisabled || false} onCheckedChange={toggleRiskLimits} />
         </div>
         {showConfirm && !settings.riskLimitsDisabled && (
-          <div className="mt-4 rounded-lg border border-chart-4/40 bg-chart-4/5 p-4 space-y-3">
-            <div className="text-xs font-bold text-chart-4 flex items-center gap-2">
+          <div className="mt-4 rounded-lg border border-warning/40 bg-warning/5 p-4 space-y-3">
+            <div className="text-xs font-bold text-warning flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" /> Type Confirmation Required
             </div>
             <p className="text-xs text-muted-foreground">
@@ -128,11 +128,11 @@ export default function RiskManager() {
       </div>
 
       {/* Emergency Stop Banner */}
-      <div className={`rounded-lg border-2 p-6 ${emergencyStop ? 'bg-chart-5/10 border-chart-5' : 'bg-card border-border'}`}>
+      <div className={`rounded-lg border-2 p-6 ${emergencyStop ? 'bg-danger/10 border-danger' : 'bg-card border-border'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className={`p-4 rounded-full ${emergencyStop ? 'bg-chart-5/20' : 'bg-muted'}`}>
-              <AlertOctagon className={`h-8 w-8 ${emergencyStop ? 'text-chart-5 animate-pulse' : 'text-muted-foreground'}`} />
+            <div className={`p-4 rounded-full ${emergencyStop ? 'bg-danger/20' : 'bg-muted'}`}>
+              <AlertOctagon className={`h-8 w-8 ${emergencyStop ? 'text-danger animate-pulse-dot' : 'text-muted-foreground'}`} />
             </div>
             <div>
               <h2 className="text-lg font-bold">Emergency Stop</h2>
@@ -145,7 +145,7 @@ export default function RiskManager() {
           </div>
           <Button
             onClick={emergencyStop ? clearEmergencyStop : triggerEmergencyStop}
-            className={`px-8 py-6 text-base font-bold ${emergencyStop ? 'bg-muted text-foreground hover:bg-muted/80' : 'bg-chart-5 hover:bg-chart-5/90 text-white'}`}
+            className={`px-8 py-6 text-base font-bold ${emergencyStop ? 'bg-muted text-foreground hover:bg-muted/80' : 'bg-danger hover:bg-danger/90 text-white'}`}
           >
             {emergencyStop ? 'CLEAR EMERGENCY STOP' : 'ACTIVATE EMERGENCY STOP'}
           </Button>
@@ -154,16 +154,16 @@ export default function RiskManager() {
 
       {/* Emergency Action Buttons */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Button variant="outline" onClick={handleCancelUnmatched} disabled={unmatchedPaper === 0} className="h-auto py-4 flex flex-col items-start gap-1 border-chart-4/50">
-          <div className="flex items-center gap-2 text-chart-4"><AlertTriangle className="h-4 w-4" /><span className="text-sm font-bold">Cancel Unmatched</span></div>
+        <Button variant="outline" onClick={handleCancelUnmatched} disabled={unmatchedPaper === 0} className="h-auto py-4 flex flex-col items-start gap-1 border-warning/50">
+          <div className="flex items-center gap-2 text-warning"><AlertTriangle className="h-4 w-4" /><span className="text-sm font-bold">Cancel Unmatched</span></div>
           <span className="text-xs text-muted-foreground">{unmatchedPaper} unmatched/partial orders</span>
         </Button>
-        <Button variant="outline" onClick={handleDisableLive} disabled={!settings.liveTradingEnabled} className="h-auto py-4 flex flex-col items-start gap-1 border-chart-5/50">
-          <div className="flex items-center gap-2 text-chart-5"><Shield className="h-4 w-4" /><span className="text-sm font-bold">Disable Live Trading</span></div>
+        <Button variant="outline" onClick={handleDisableLive} disabled={!settings.liveTradingEnabled} className="h-auto py-4 flex flex-col items-start gap-1 border-danger/50">
+          <div className="flex items-center gap-2 text-danger"><Shield className="h-4 w-4" /><span className="text-sm font-bold">Disable Live Trading</span></div>
           <span className="text-xs text-muted-foreground">{settings.liveTradingEnabled ? 'Live trading is ON' : 'Already disabled'}</span>
         </Button>
-        <Button variant="outline" onClick={handleForcePaperOnly} disabled={settings.forcedPaperOnlyMode} className="h-auto py-4 flex flex-col items-start gap-1 border-chart-4/50">
-          <div className="flex items-center gap-2 text-chart-4"><AlertOctagon className="h-4 w-4" /><span className="text-sm font-bold">Force Paper-Only</span></div>
+        <Button variant="outline" onClick={handleForcePaperOnly} disabled={settings.forcedPaperOnlyMode} className="h-auto py-4 flex flex-col items-start gap-1 border-warning/50">
+          <div className="flex items-center gap-2 text-warning"><AlertOctagon className="h-4 w-4" /><span className="text-sm font-bold">Force Paper-Only</span></div>
           <span className="text-xs text-muted-foreground">{settings.forcedPaperOnlyMode ? 'Paper-only active' : 'Lock to paper mode'}</span>
         </Button>
       </div>
@@ -174,7 +174,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Paper Exposure</span>
-              <span className="font-mono font-bold text-chart-4">${(paperExposure || 0).toFixed(2)}</span>
+              <span className="font-mono font-bold text-warning">${(paperExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Unmatched Paper Orders</span>
@@ -193,7 +193,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Simulated Exposure</span>
-              <span className="font-mono font-bold text-chart-5">${(liveExposure || 0).toFixed(2)}</span>
+              <span className="font-mono font-bold text-danger">${(liveExposure || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Future Live Review</span>
@@ -220,7 +220,7 @@ export default function RiskManager() {
         <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(riskStatus).map(([key, check]) => (
             <div key={key} className="bg-muted/50 rounded-lg p-3 flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-chart-1 shrink-0" />
+              <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
               <div>
                 <div className="text-xs text-muted-foreground">{check.label}</div>
                 <div className="text-sm font-bold font-mono">{check.value}{typeof check.value === 'number' && check.value < 100 ? '%' : ''}</div>
@@ -262,9 +262,9 @@ export default function RiskManager() {
               <div key={rule.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                 <div className="flex items-center gap-3">
                   {disabled ? <XCircle className="h-4 w-4 text-muted-foreground" /> :
-                   status === 'danger' ? <XCircle className="h-4 w-4 text-chart-5" /> :
-                   status === 'warning' ? <AlertTriangle className="h-4 w-4 text-chart-4" /> :
-                   <CheckCircle2 className="h-4 w-4 text-chart-1" />}
+                   status === 'danger' ? <XCircle className="h-4 w-4 text-danger" /> :
+                   status === 'warning' ? <AlertTriangle className="h-4 w-4 text-warning" /> :
+                   <CheckCircle2 className="h-4 w-4 text-success" />}
                   <span className={`text-sm ${disabled ? 'text-muted-foreground' : ''}`}>{rule.label}</span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -287,11 +287,11 @@ export default function RiskManager() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Open Exposure</span>
-              <span className="font-mono font-bold text-chart-4">${((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)).toFixed(2)}</span>
+              <span className="font-mono font-bold text-warning">${((bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0)).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Available</span>
-              <span className="font-mono font-bold text-chart-1">${(bankrollStats.available || 0).toFixed(2)}</span>
+              <span className="font-mono font-bold text-success">${(bankrollStats.available || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between pt-2 border-t border-border">
               <span className="text-muted-foreground">Exposure %</span>
@@ -308,7 +308,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Current Drawdown</span>
-              <span className="font-mono font-bold text-chart-5">${(bankrollStats.maxDrawdown || 0).toFixed(2)}</span>
+              <span className="font-mono font-bold text-danger">${(bankrollStats.maxDrawdown || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Drawdown Limit</span>
@@ -330,7 +330,7 @@ export default function RiskManager() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Strategy Drawdown</span>
-              <span className="font-mono font-bold text-chart-5">${((settings.bankroll || 0) * 0.1).toFixed(2)}</span>
+              <span className="font-mono font-bold text-danger">${((settings.bankroll || 0) * 0.1).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Losing Streak</span>
@@ -340,10 +340,8 @@ export default function RiskManager() {
               <span className="text-muted-foreground">Min Paper Trades</span>
               <span className="font-mono font-bold">200</span>
             </div>
-            <div className="pt-2 border-t border-border">
-              <Link to="/strategy-library" className="text-xs text-chart-3 hover:underline flex items-center gap-1">
-                View Strategy Status <ArrowRight className="h-3 w-3" />
-              </Link>
+            <div className="pt-2 border-t border-border text-xs text-muted-foreground">
+              See Strategy Library in Advanced Debug for per-strategy drawdown limits.
             </div>
           </div>
         </Panel>

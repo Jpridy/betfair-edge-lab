@@ -85,23 +85,23 @@ export default function StrategyLibrary() {
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Paper Validated</span>
-            <CheckCircle2 className="h-4 w-4 text-chart-1" />
+            <CheckCircle2 className="h-4 w-4 text-success" />
           </div>
-          <div className="text-2xl font-bold font-mono text-chart-1">{counts.green}</div>
+          <div className="text-2xl font-bold font-mono text-success">{counts.green}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Paper Testing</span>
-            <Clock className="h-4 w-4 text-chart-4" />
+            <Clock className="h-4 w-4 text-warning" />
           </div>
-          <div className="text-2xl font-bold font-mono text-chart-4">{counts.yellow}</div>
+          <div className="text-2xl font-bold font-mono text-warning">{counts.yellow}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Failing / Locked</span>
-            <XCircle className="h-4 w-4 text-chart-5" />
+            <XCircle className="h-4 w-4 text-danger" />
           </div>
-          <div className="text-2xl font-bold font-mono text-chart-5">{counts.red}</div>
+          <div className="text-2xl font-bold font-mono text-danger">{counts.red}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-1.5">
@@ -138,7 +138,7 @@ export default function StrategyLibrary() {
           </Button>
           {showResetConfirm ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-chart-5 font-medium hidden sm:inline">Reset all strategy stats, signals & AI decisions?</span>
+              <span className="text-xs text-danger font-medium hidden sm:inline">Reset all strategy stats, signals & AI decisions?</span>
               <Button variant="destructive" size="sm" onClick={handleResetStrategyData}>
                 <CheckCircle2 className="h-3 w-3" /> Confirm
               </Button>
@@ -173,8 +173,8 @@ export default function StrategyLibrary() {
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/strategy/${s.id}`)}>
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${s.status === 'active' ? 'bg-chart-1/10' : 'bg-muted/20'}`}>
-                        <CatIcon className={`h-5 w-5 ${s.status === 'active' ? 'text-chart-1' : 'text-muted-foreground'}`} />
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${s.status === 'active' ? 'bg-success/10' : 'bg-muted/20'}`}>
+                        <CatIcon className={`h-5 w-5 ${s.status === 'active' ? 'text-success' : 'text-muted-foreground'}`} />
                       </div>
                       <div>
                         <div className="text-sm font-bold text-foreground hover:text-primary transition-colors">{s.name}</div>
@@ -195,7 +195,7 @@ export default function StrategyLibrary() {
                       </div>
                       <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${s.progress.percent >= 100 ? 'bg-chart-1' : 'bg-chart-4'}`}
+                          className={`h-full rounded-full ${s.progress.percent >= 100 ? 'bg-success' : 'bg-warning'}`}
                           style={{ width: `${s.progress.percent}%` }}
                         />
                       </div>
@@ -210,13 +210,13 @@ export default function StrategyLibrary() {
                         <div className="text-[9px] text-muted-foreground uppercase">Strike</div>
                       </div>
                       <div className="bg-background/50 border border-border rounded p-2 text-center">
-                        <div className={`text-sm font-bold font-mono ${s.audit.netProfit >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+                        <div className={`text-sm font-bold font-mono ${s.audit.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
                           {s.audit.netProfit >= 0 ? '+' : ''}${s.audit.netProfit.toFixed(0)}
                         </div>
                         <div className="text-[9px] text-muted-foreground uppercase">Net P/L</div>
                       </div>
                       <div className="bg-background/50 border border-border rounded p-2 text-center">
-                        <div className={`text-sm font-bold font-mono ${s.audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+                        <div className={`text-sm font-bold font-mono ${s.audit.roi >= 0 ? 'text-success' : 'text-danger'}`}>
                           {s.audit.roi.toFixed(1)}%
                         </div>
                         <div className="text-[9px] text-muted-foreground uppercase">ROI</div>
@@ -229,7 +229,7 @@ export default function StrategyLibrary() {
                     <DataQualityBadge status={s.dataQuality.status} label={s.dataQuality.label} />
                     {!s.reconValid && <MetricWarningBadge />}
                     {s.audit?.closingLineValue < 0 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border bg-chart-5/10 text-chart-5 border-chart-5/30">Negative CLV</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border bg-danger/10 text-danger border-danger/30">Negative CLV</span>
                     )}
                   </div>
 
@@ -276,8 +276,8 @@ export default function StrategyLibrary() {
                   <TableCell className="text-xs text-right font-mono">{s.audit ? `${s.progress.current}/${s.progress.target}` : '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{s.audit ? `${s.audit.strikeRate.toFixed(0)}%` : '—'}</TableCell>
                   <TableCell className="text-xs text-right">{s.audit ? <PLValue value={s.audit.netProfit} /> : '—'}</TableCell>
-                  <TableCell className={`text-xs text-right font-mono ${s.audit && s.audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{s.audit ? `${s.audit.roi.toFixed(1)}%` : '—'}</TableCell>
-                  <TableCell className={`text-xs text-right font-mono ${s.audit && s.audit.closingLineValue >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{s.audit ? `${s.audit.closingLineValue.toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell className={`text-xs text-right font-mono ${s.audit && s.audit.roi >= 0 ? 'text-success' : 'text-danger'}`}>{s.audit ? `${s.audit.roi.toFixed(1)}%` : '—'}</TableCell>
+                  <TableCell className={`text-xs text-right font-mono ${s.audit && s.audit.closingLineValue >= 0 ? 'text-success' : 'text-danger'}`}>{s.audit ? `${s.audit.closingLineValue.toFixed(1)}%` : '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{s.audit?.profitFactor?.toFixed(2) ?? '—'}</TableCell>
                   <TableCell><ChevronRight className="h-3 w-3 text-muted-foreground" /></TableCell>
                 </TableRow>

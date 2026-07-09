@@ -15,7 +15,7 @@ export function Metric({ label, value, delta, deltaPositive, icon: Icon }) {
       </div>
       <div className="text-2xl font-bold font-mono text-foreground">{value}</div>
       {delta !== undefined && (
-        <div className={cn('text-xs font-medium', deltaPositive === true && 'text-chart-1', deltaPositive === false && 'text-chart-5', deltaPositive === null && 'text-muted-foreground')}>
+        <div className={cn('text-xs font-medium', deltaPositive === true && 'text-success', deltaPositive === false && 'text-danger', deltaPositive === null && 'text-muted-foreground')}>
           {delta}
         </div>
       )}
@@ -75,10 +75,10 @@ export function Divider({ label }) {
  */
 export function InfoBox({ type = 'info', children }) {
   const styles = {
-    info: 'bg-chart-3/5 border-chart-3/20 text-chart-3',
-    success: 'bg-chart-1/5 border-chart-1/20 text-chart-1',
-    warning: 'bg-chart-4/5 border-chart-4/20 text-chart-4',
-    error: 'bg-chart-5/5 border-chart-5/20 text-chart-5',
+    info: 'bg-info/5 border-info/20 text-info',
+    success: 'bg-success/5 border-success/20 text-success',
+    warning: 'bg-warning/5 border-warning/20 text-warning',
+    error: 'bg-danger/5 border-danger/20 text-danger',
   };
   return (
     <div className={cn('border rounded-lg p-3 text-xs', styles[type])}>

@@ -65,10 +65,10 @@ export default function FormDataCoverage() {
     <Panel title="Form Data Coverage" action={
       <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
         coverage.marketOnlyPct === 100
-          ? 'bg-chart-4/10 text-chart-4 border-chart-4/30'
+          ? 'bg-warning/10 text-warning border-warning/30'
           : coverage.marketOnlyPct > 80
-            ? 'bg-chart-4/10 text-chart-4 border-chart-4/30'
-            : 'bg-chart-1/10 text-chart-1 border-chart-1/30'
+            ? 'bg-warning/10 text-warning border-warning/30'
+            : 'bg-success/10 text-success border-success/30'
       }`}>
         {coverage.marketOnlyPct}% Market Only
       </span>
@@ -91,29 +91,29 @@ export default function FormDataCoverage() {
           <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Data Source Breakdown</div>
           <div className="flex items-center gap-2 text-xs">
             <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden flex">
-              <div className="bg-chart-4/60 h-full flex items-center justify-center text-[9px] font-bold"
+              <div className="bg-warning/60 h-full flex items-center justify-center text-[9px] font-bold"
                    style={{ width: `${coverage.totalRunners > 0 ? (coverage.marketOnly / coverage.totalRunners) * 100 : 0}%` }}>
                 {coverage.marketOnly > 0 && `${coverage.marketOnly}`}
               </div>
-              <div className="bg-chart-3/60 h-full flex items-center justify-center text-[9px] font-bold"
+              <div className="bg-info/60 h-full flex items-center justify-center text-[9px] font-bold"
                    style={{ width: `${coverage.totalRunners > 0 ? (coverage.partialMetadata / coverage.totalRunners) * 100 : 0}%` }}>
                 {coverage.partialMetadata > 0 && `${coverage.partialMetadata}`}
               </div>
-              <div className="bg-chart-1/60 h-full flex items-center justify-center text-[9px] font-bold"
+              <div className="bg-success/60 h-full flex items-center justify-center text-[9px] font-bold"
                    style={{ width: `${coverage.totalRunners > 0 ? (coverage.fullExternalForm / coverage.totalRunners) * 100 : 0}%` }}>
                 {coverage.fullExternalForm > 0 && `${coverage.fullExternalForm}`}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-chart-4/60"></span> Market Only</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-chart-3/60"></span> Betfair Metadata</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-chart-1/60"></span> Full Form</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning/60"></span> Market Only</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-info/60"></span> Betfair Metadata</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success/60"></span> Full Form</span>
           </div>
         </div>
 
         {coverage.marketOnlyPct === 100 && coverage.totalRunners > 0 && (
-          <div className="mt-3 text-[10px] text-chart-4 bg-chart-4/10 border border-chart-4/30 rounded p-2">
+          <div className="mt-3 text-[10px] text-warning bg-warning/10 border border-warning/30 rounded p-2">
             All runners are using market-only analysis. No Betfair runner metadata or external form data is available.
             Probability estimates are derived from Betfair exchange prices, volume, and order book microstructure — not horse racing form.
           </div>

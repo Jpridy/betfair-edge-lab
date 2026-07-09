@@ -121,15 +121,15 @@ export default function BetfairConnection() {
             {/* Session Token Method — recommended */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <KeyRound className="h-3.5 w-3.5 text-chart-1" />
+                <KeyRound className="h-3.5 w-3.5 text-success" />
                 Session Token (Recommended)
               </div>
 
-              <div className="bg-chart-1/5 border border-chart-1/20 rounded-lg p-3 text-xs text-muted-foreground space-y-2">
+              <div className="bg-success/5 border border-success/20 rounded-lg p-3 text-xs text-muted-foreground space-y-2">
                 <div className="font-semibold text-foreground">How to get your session token:</div>
                 <ol className="list-decimal list-inside space-y-1">
-                  <li>Log into <a href="https://www.betfair.com.au" target="_blank" rel="noopener noreferrer" className="text-chart-3 underline inline-flex items-center gap-0.5">betfair.com.au <ExternalLink className="h-3 w-3" /></a> in your browser</li>
-                  <li>After logging in, open a new tab and visit <a href="https://identitysso.betfair.com/api/keepAlive" target="_blank" rel="noopener noreferrer" className="text-chart-3 underline inline-flex items-center gap-0.5">this link <ExternalLink className="h-3 w-3" /></a></li>
+                  <li>Log into <a href="https://www.betfair.com.au" target="_blank" rel="noopener noreferrer" className="text-info underline inline-flex items-center gap-0.5">betfair.com.au <ExternalLink className="h-3 w-3" /></a> in your browser</li>
+                  <li>After logging in, open a new tab and visit <a href="https://identitysso.betfair.com/api/keepAlive" target="_blank" rel="noopener noreferrer" className="text-info underline inline-flex items-center gap-0.5">this link <ExternalLink className="h-3 w-3" /></a></li>
                   <li>Copy the <span className="font-mono text-foreground">token</span> value from the JSON response</li>
                   <li>Paste it below</li>
                 </ol>
@@ -173,7 +173,7 @@ export default function BetfairConnection() {
 
             <div className="bg-muted/20 border border-border rounded-lg p-3 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-chart-4" />
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-warning" />
                 <div>
                   Betfair blocks automated login from serverless/cloud IPs. The session token method is the most reliable — it uses your browser's authenticated session. Session tokens expire periodically; just grab a fresh one from the link above when that happens.
                 </div>
@@ -184,7 +184,7 @@ export default function BetfairConnection() {
           <>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-chart-1" />
+                <CheckCircle2 className="h-5 w-5 text-success" />
                 <div>
                   <div className="text-sm font-semibold text-foreground">Betfair Account Connected</div>
                   <div className="text-xs text-muted-foreground">Logged in as {betfairAccount?.username || 'Betfair user'}{betfairAccount?.firstName ? ` — ${betfairAccount.firstName} ${betfairAccount.lastName}` : ''}</div>
@@ -198,9 +198,9 @@ export default function BetfairConnection() {
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Stream Status</div>
                 <div className="text-lg font-bold font-mono mt-1 flex items-center gap-1.5">
                   {betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling' ? (
-                    <><span className="h-2 w-2 rounded-full bg-chart-1 animate-pulse" /><span className="text-chart-1">DATA</span></>
+                    <><span className="h-2 w-2 rounded-full bg-success animate-pulse" /><span className="text-success">DATA</span></>
                   ) : betfairConnection.streamConnectionStatus === 'connecting' || betfairConnection.streamConnectionStatus === 'authenticating' || betfairConnection.streamConnectionStatus === 'subscribing' ? (
-                    <><Loader2 className="h-3.5 w-3.5 animate-spin text-chart-4" /><span className="text-chart-4">{betfairConnection.streamConnectionStatus}</span></>
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin text-warning" /><span className="text-warning">{betfairConnection.streamConnectionStatus}</span></>
                   ) : (
                     <span className="text-muted-foreground">{betfairConnection.streamConnectionStatus || '—'}</span>
                   )}
@@ -208,11 +208,11 @@ export default function BetfairConnection() {
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Markets Streaming</div>
-                <div className="text-lg font-bold font-mono text-chart-1 mt-1">{markets.length}</div>
+                <div className="text-lg font-bold font-mono text-success mt-1">{markets.length}</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Runners Tracked</div>
-                <div className="text-lg font-bold font-mono text-chart-1 mt-1">{runners.length}</div>
+                <div className="text-lg font-bold font-mono text-success mt-1">{runners.length}</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Refresh</div>
@@ -223,7 +223,7 @@ export default function BetfairConnection() {
               <div className="bg-background/50 border border-border rounded-lg p-3">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Data Fresh</div>
                 <div className="text-lg font-bold font-mono mt-1">
-                  {betfairConnection.dataFresh ? <span className="text-chart-1">✓ Yes</span> : <span className="text-chart-5">✗ Stale</span>}
+                  {betfairConnection.dataFresh ? <span className="text-success">✓ Yes</span> : <span className="text-danger">✗ Stale</span>}
                 </div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3">

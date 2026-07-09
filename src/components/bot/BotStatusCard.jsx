@@ -14,8 +14,8 @@ export default function BotStatusCard() {
   const watchedMarkets = markets.filter(m => m.watched).length;
 
   const statusLabel = emergencyStop ? 'Emergency Stop' : isRunning ? 'Running' : isPaused ? 'Paused' : 'Stopped';
-  const statusColor = emergencyStop ? 'text-chart-5' : isRunning ? 'text-chart-1' : isPaused ? 'text-chart-4' : 'text-muted-foreground';
-  const statusBg = emergencyStop ? 'bg-chart-5/10' : isRunning ? 'bg-chart-1/10' : isPaused ? 'bg-chart-4/10' : 'bg-muted/20';
+  const statusColor = emergencyStop ? 'text-danger' : isRunning ? 'text-success' : isPaused ? 'text-warning' : 'text-muted-foreground';
+  const statusBg = emergencyStop ? 'bg-danger/10' : isRunning ? 'bg-success/10' : isPaused ? 'bg-warning/10' : 'bg-muted/20';
 
   const stats = [
     { label: 'Scan Interval', value: `${botSettings.scanIntervalSeconds}s`, icon: Clock },
@@ -62,10 +62,10 @@ export default function BotStatusCard() {
         </div>
 
         {lastBlockedCycle && (
-          <div className="bg-chart-5/10 border border-chart-5/20 rounded-lg p-3 flex items-start gap-2 mb-3">
-            <AlertTriangle className="h-4 w-4 text-chart-5 shrink-0 mt-0.5" />
+          <div className="bg-danger/10 border border-danger/20 rounded-lg p-3 flex items-start gap-2 mb-3">
+            <AlertTriangle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
             <div>
-              <div className="text-xs font-bold text-chart-5">Last Block Reason</div>
+              <div className="text-xs font-bold text-danger">Last Block Reason</div>
               <div className="text-xs text-muted-foreground mt-0.5">{lastBlockedCycle.notes}</div>
             </div>
           </div>

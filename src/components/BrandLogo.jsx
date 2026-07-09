@@ -79,13 +79,13 @@ export function BrandTagline({ className }) {
   return (
     <div className={cn('flex flex-col items-center gap-1.5', className)}>
       <span className="text-xs font-bold tracking-brand">
-        <span className="text-chart-3">ANALYZE</span>
+        <span className="text-info">ANALYZE</span>
         <span className="text-muted-foreground"> • </span>
-        <span className="text-chart-4">SIMULATE</span>
+        <span className="text-warning">SIMULATE</span>
         <span className="text-muted-foreground"> • </span>
-        <span className="text-chart-2">EXECUTE</span>
+        <span className="text-primary">EXECUTE</span>
         <span className="text-muted-foreground"> • </span>
-        <span className="text-chart-1">WIN</span>
+        <span className="text-success">WIN</span>
       </span>
     </div>
   );

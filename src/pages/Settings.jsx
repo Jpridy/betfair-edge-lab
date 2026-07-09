@@ -6,14 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, FileDown, Network, FlaskConical } from 'lucide-react';
+import { Download, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, FileDown, FlaskConical } from 'lucide-react';
 import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
 import { getCommissionWarnings } from '@/lib/betfairMapping';
 import { exportToCSV } from '@/lib/csvExport';
-import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 export default function Settings() {
@@ -82,7 +81,7 @@ export default function Settings() {
       {/* Paper Proof Mode banner */}
       <div className={cn(
         'border rounded-lg p-3 text-xs flex items-start gap-2',
-        proofActive ? 'bg-chart-4/10 border-chart-4/30 text-chart-4' : 'bg-muted/20 border-border text-muted-foreground'
+        proofActive ? 'bg-warning/10 border-warning/30 text-warning' : 'bg-muted/20 border-border text-muted-foreground'
       )}>
         <FlaskConical className="h-4 w-4 shrink-0 mt-0.5" />
         <div className="flex-1">
@@ -144,8 +143,8 @@ export default function Settings() {
                 <ToggleRow label="Debug Scan Mode — scan all markets regardless of time window (for testing)" checked={featherlessSettings?.debugScanMode || false} onChange={v => updateFeatherlessSettings({ debugScanMode: v })} />
                 <ToggleRow label="Live Trading — DISABLED (forced off)" checked={false} onChange={() => {}} />
               </div>
-              <div className="bg-chart-1/10 border border-chart-1/30 rounded-lg p-3 text-xs text-muted-foreground">
-                <span className="text-chart-1 font-bold">Paper Mode:</span> The bot only creates simulated paper orders. No real bets are placed. Live trading is disabled and locked.
+              <div className="bg-success/10 border border-success/30 rounded-lg p-3 text-xs text-muted-foreground">
+                <span className="text-success font-bold">Paper Mode:</span> The bot only creates simulated paper orders. No real bets are placed. Live trading is disabled and locked.
               </div>
               <div className="flex justify-end pt-4 border-t border-border">
                 <Button size="sm" onClick={() => handleSave('bot')}>
@@ -201,8 +200,8 @@ export default function Settings() {
         <TabsContent value="risk">
           <Panel title="Risk Management">
             <div className="p-4 space-y-4">
-              <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
-                <ShieldAlert className="h-4 w-4 text-chart-4 shrink-0 mt-0.5" />
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
+                <ShieldAlert className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <span>These settings control financial safety limits. Changing them affects how much the bot can stake and lose in paper trading.</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -302,8 +301,8 @@ export default function Settings() {
         <TabsContent value="settlement">
           <Panel title="Settlement Configuration">
             <div className="p-4 space-y-4">
-              <div className="bg-chart-1/10 border border-chart-1/30 rounded-lg p-3 text-xs text-muted-foreground">
-                <span className="text-chart-1 font-bold">Real Settlement Only:</span> Settlement uses real Betfair stream results. No random or simulated settlement. When a market closes, the stream provides winner and placed runner data, which is used to settle paper orders.
+              <div className="bg-success/10 border border-success/30 rounded-lg p-3 text-xs text-muted-foreground">
+                <span className="text-success font-bold">Real Settlement Only:</span> Settlement uses real Betfair stream results. No random or simulated settlement. When a market closes, the stream provides winner and placed runner data, which is used to settle paper orders.
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between py-1.5 border-b border-border">
@@ -347,18 +346,7 @@ export default function Settings() {
                   <Trash2 className="h-4 w-4 mr-2" /> Clear Audit Logs
                 </Button>
               </div>
-              <div className="pt-3 border-t border-border space-y-2">
-                <Link to="/wiring-audit">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <Network className="h-4 w-4 mr-2" /> Open Full Wiring Audit
-                  </Button>
-                </Link>
-                <Link to="/">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <FlaskConical className="h-4 w-4 mr-2" /> Go to Bot Control Centre (Run OpenAI Search Test)
-                  </Button>
-                </Link>
-              </div>
+
               <div className="pt-3 border-t border-border">
                 <Button variant="destructive" size="sm" onClick={() => {
                   if (window.confirm('This will permanently delete ALL paper orders, signals, bot cycles, and reset bankroll. Continue?')) {
@@ -405,7 +393,7 @@ function StatusField({ label, value, ok }) {
 
 function TestResult({ label, passed }) {
   return (
-    <div className={`flex items-center gap-2 text-xs p-2 rounded ${passed ? 'bg-chart-1/10 text-chart-1' : 'bg-chart-5/10 text-chart-5'}`}>
+    <div className={`flex items-center gap-2 text-xs p-2 rounded ${passed ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
       {passed ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
       {label}: {passed ? '✓' : '✗'}
     </div>

@@ -23,7 +23,7 @@ export default function PaperProgress() {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-foreground">Paper Testing Progress</h3>
-        <Link to="/strategy-library" className="text-xs font-medium text-chart-3 hover:underline flex items-center gap-1">
+        <Link to="/strategy-library" className="text-xs font-medium text-info hover:underline flex items-center gap-1">
           View Library <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
@@ -43,7 +43,7 @@ export default function PaperProgress() {
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${s.progress.percent >= 100 ? 'bg-chart-1' : 'bg-chart-4'}`}
+                className={`h-full rounded-full transition-all ${s.progress.percent >= 100 ? 'bg-success' : 'bg-warning'}`}
                 style={{ width: `${s.progress.percent}%` }}
               />
             </div>

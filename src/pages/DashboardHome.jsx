@@ -11,11 +11,11 @@ import { Link } from 'react-router-dom';
 import { Bot, Radar, BarChart3, TrendingUp, ArrowRight, Shield } from 'lucide-react';
 
 const QUICK_ACCENTS = {
-  purple: 'bg-chart-2/10 text-chart-2',
-  blue: 'bg-chart-3/10 text-chart-3',
-  green: 'bg-chart-1/10 text-chart-1',
-  yellow: 'bg-chart-4/10 text-chart-4',
-  red: 'bg-chart-5/10 text-chart-5'
+  purple: 'bg-primary/10 text-primary',
+  blue: 'bg-info/10 text-info',
+  green: 'bg-success/10 text-success',
+  yellow: 'bg-warning/10 text-warning',
+  red: 'bg-danger/10 text-danger'
 };
 
 function QuickAction({ to, icon: Icon, label, sub, accent }) {
@@ -74,12 +74,12 @@ export default function DashboardHome() {
       {nextAction &&
       <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
           <div className="flex items-center gap-2.5">
-            <ArrowRight className="h-4 w-4 text-chart-3 shrink-0" />
+            <ArrowRight className="h-4 w-4 text-info shrink-0" />
             <span className="text-xs text-foreground">{nextAction.text}</span>
           </div>
           {nextAction.link &&
-        <Link to={nextAction.link} className="text-xs font-bold text-chart-3 hover:underline shrink-0 flex items-center gap-1">
-              {nextAction.linkText} <ArrowRight className="h-3 w-3" />
+        <Link to={nextAction.link} className="text-xs font-bold text-info hover:underline shrink-0 flex items-center gap-1">
+               {nextAction.linkText} <ArrowRight className="h-3 w-3" />
             </Link>
         }
         </div>
@@ -121,23 +121,23 @@ export default function DashboardHome() {
         <h3 className="text-sm font-bold text-foreground mb-3">Paper Trading Workflow</h3>
         <div className="space-y-2 text-xs">
           <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-chart-3/20 text-chart-3 font-bold flex items-center justify-center text-[10px]">1</span>
-            <Link to="/settings" className="text-chart-3 hover:underline">Connect Betfair market data</Link>
+            <span className="w-5 h-5 rounded-full bg-info/20 text-info font-bold flex items-center justify-center text-[10px]">1</span>
+            <Link to="/settings" className="text-info hover:underline">Connect Betfair market data</Link>
             <span className="text-muted-foreground">— link your Betfair account in Settings to stream live prices</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-chart-3/20 text-chart-3 font-bold flex items-center justify-center text-[10px]">2</span>
-            <Link to="/settings" className="text-chart-3 hover:underline">Check paper bankroll and risk limits</Link>
+            <span className="w-5 h-5 rounded-full bg-info/20 text-info font-bold flex items-center justify-center text-[10px]">2</span>
+            <Link to="/settings" className="text-info hover:underline">Check paper bankroll and risk limits</Link>
             <span className="text-muted-foreground">— review your paper bankroll, daily loss limit, and exposure rules</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-chart-3/20 text-chart-3 font-bold flex items-center justify-center text-[10px]">3</span>
-            <Link to="/bot-control" className="text-chart-3 hover:underline">Start the paper bot</Link>
+            <span className="w-5 h-5 rounded-full bg-info/20 text-info font-bold flex items-center justify-center text-[10px]">3</span>
+            <Link to="/" className="text-info hover:underline">Start the paper bot</Link>
             <span className="text-muted-foreground">— the bot scans markets, runs AI analysis, and places paper orders automatically</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-chart-3/20 text-chart-3 font-bold flex items-center justify-center text-[10px]">4</span>
-            <Link to="/paper-trading" className="text-chart-3 hover:underline">Review paper orders and analytics</Link>
+            <span className="w-5 h-5 rounded-full bg-info/20 text-info font-bold flex items-center justify-center text-[10px]">4</span>
+            <Link to="/paper-trading" className="text-info hover:underline">Review paper orders and analytics</Link>
             <span className="text-muted-foreground">— track settled P/L, win rate, CLV, and strategy performance</span>
           </div>
         </div>

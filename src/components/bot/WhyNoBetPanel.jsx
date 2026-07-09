@@ -14,8 +14,8 @@ export default function WhyNoBetPanel({ diagnostics }) {
     <Panel title="Why no paper bet?">
       <div className="p-4 space-y-4">
         {/* Main reason banner */}
-        <div className="flex items-start gap-3 bg-chart-4/10 border border-chart-4/30 rounded-lg p-3">
-          <HelpCircle className="h-5 w-5 text-chart-4 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 bg-warning/10 border border-warning/30 rounded-lg p-3">
+          <HelpCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
           <div className="text-xs text-foreground">{noBetReason}</div>
         </div>
 
@@ -45,7 +45,7 @@ export default function WhyNoBetPanel({ diagnostics }) {
             </div>
 
             {bestCandidate.mainBlocker && (
-              <div className="flex items-center gap-2 text-xs text-chart-5 bg-chart-5/10 rounded p-2">
+              <div className="flex items-center gap-2 text-xs text-danger bg-danger/10 rounded p-2">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 <span className="font-medium">Main blocker:</span> {bestCandidate.mainBlocker}
               </div>
@@ -53,7 +53,7 @@ export default function WhyNoBetPanel({ diagnostics }) {
 
             {/* Data source label */}
             {bestCandidate.dataSource === 'MARKET_ONLY' && (
-              <div className="text-[10px] text-chart-3 bg-chart-3/5 rounded p-1.5">
+              <div className="text-[10px] text-info bg-info/5 rounded p-1.5">
                 Market-only paper signal — no external form data used.
               </div>
             )}
@@ -84,8 +84,8 @@ export default function WhyNoBetPanel({ diagnostics }) {
                     <TableRow key={i}>
                       <TableCell className="text-xs px-2 py-1 font-medium truncate max-w-[120px]">{r.runnerName}</TableCell>
                       <TableCell className="text-xs px-2 py-1 text-right font-mono">{r.odds?.toFixed(2)}</TableCell>
-                      <TableCell className={`text-xs px-2 py-1 text-right font-mono ${r.edge > 0 ? 'text-chart-1' : 'text-chart-5'}`}>{fmtPct(r.edge)}</TableCell>
-                      <TableCell className={`text-xs px-2 py-1 text-right font-mono ${r.expectedROI > 0 ? 'text-chart-1' : 'text-chart-5'}`}>{fmtPct(r.expectedROI)}</TableCell>
+                      <TableCell className={`text-xs px-2 py-1 text-right font-mono ${r.edge > 0 ? 'text-success' : 'text-danger'}`}>{fmtPct(r.edge)}</TableCell>
+                      <TableCell className={`text-xs px-2 py-1 text-right font-mono ${r.expectedROI > 0 ? 'text-success' : 'text-danger'}`}>{fmtPct(r.expectedROI)}</TableCell>
                       <TableCell className="text-xs px-2 py-1 text-right font-mono">{fmtPct(r.confidence)}</TableCell>
                       <TableCell className="text-xs px-2 py-1">
                         <StatusBadge status={r.status === 'pass' ? 'ok' : 'danger'}>{r.status === 'pass' ? 'PASS' : 'FAIL'}</StatusBadge>

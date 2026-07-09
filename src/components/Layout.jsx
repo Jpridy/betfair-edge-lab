@@ -8,20 +8,15 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 
 const PAGE_TITLES = {
-  '/': { title: 'Bot Control Centre', subtitle: 'Single-screen control room — bot status, system health, decisions, opportunities, risk, and settlement' },
-  '/dashboard': { title: 'Dashboard Summary', subtitle: 'Real-time P/L, strategy health, and system activity across all paper trading' },
+  '/': { title: 'Control Centre', subtitle: 'Bot status, system health, decisions, opportunities, risk, and settlement' },
+  '/dashboard': { title: 'Dashboard Summary (Legacy)', subtitle: 'Older dashboard view — use Control Centre for daily operations' },
   '/setup-wizard': { title: 'Setup Wizard', subtitle: 'Test all connections and configuration before running the bot' },
-  '/scanner': { title: 'Market Scanner', subtitle: 'Browse live Australian racing markets with liquidity and eligibility filters' },
-  '/strategy-library': { title: 'Strategy Library', subtitle: 'Compare all strategies by status, performance, and live approval readiness' },
-  '/runner': { title: 'Runner View', subtitle: 'Back/lay prices, edge, CLV estimate, and strategy suitability per runner' },
-  '/strategy': { title: 'Strategy Research Hub', subtitle: 'Strategy modules and signal generation' },
-  '/paper-trading': { title: 'Decision Logs', subtitle: 'Bot cycle decision history with full reasoning and diagnostic detail' },
-  '/backtesting': { title: 'Synthetic Backtest', subtitle: 'Replay simulated historical races to validate strategy performance before paper trading' },
-  '/performance-analytics': { title: 'Performance Analytics', subtitle: 'Equity curves, drawdown, CLV trends, and profit breakdowns by strategy and market' },
-  '/orders': { title: 'Orders & Settlement', subtitle: 'Complete paper order history with full audit trail and filtering' },
-  '/risk': { title: 'Risk Manager', subtitle: 'Global risk state, loss limits, exposure, and emergency controls for all trading' },
-  '/settings': { title: 'Settings Hub', subtitle: 'Bot mode, market filters, opportunity rules, risk management, AI, Betfair, and settlement configuration' },
-  '/logs': { title: 'Logs / Audit', subtitle: 'Complete audit trail of every strategy, bot, order, and risk action' },
+  '/scanner': { title: 'Markets', subtitle: 'Loaded Betfair markets, price data, and market type detection' },
+  '/exchange-opportunities': { title: 'Exchange Opportunities', subtitle: 'WIN, PLACE & H2H value scanner — BACK and LAY with EV, ROI, and blockers' },
+  '/orders': { title: 'Orders & Settlement', subtitle: 'Paper order lifecycle, settlement status, and full audit trail' },
+  '/paper-trading': { title: 'Decision Logs', subtitle: 'Bot cycle decision history with reasoning and diagnostic detail' },
+  '/risk': { title: 'Risk Manager', subtitle: 'Bankroll, exposure, liability, loss limits, and safety controls' },
+  '/settings': { title: 'Settings Hub', subtitle: 'Bot mode, market filters, opportunity rules, risk, AI, Betfair, and settlement' },
 };
 
 export default function Layout() {

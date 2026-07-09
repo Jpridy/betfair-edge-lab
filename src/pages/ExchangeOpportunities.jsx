@@ -56,14 +56,6 @@ export default function ExchangeOpportunities() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      {/* Paper mode warning */}
-      <div className="flex items-center gap-3 bg-chart-4/10 border border-chart-4/30 rounded-lg p-3">
-        <AlertTriangle className="h-5 w-5 text-chart-4 flex-shrink-0" />
-        <p className="text-sm text-chart-4 font-medium">
-          Exchange engine is in paper mode. Live execution disabled until settlement and exposure checks are verified.
-        </p>
-      </div>
-
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold font-heading">Exchange Opportunities</h1>
@@ -83,10 +75,10 @@ export default function ExchangeOpportunities() {
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Markets Scanned" value={diagnostics?.marketsScanned || eligibleMarkets.length} icon={Target} accent="text-chart-3" />
-        <StatCard label="Events Found" value={diagnostics?.eventsScanned || eventClusters.length} icon={Zap} accent="text-chart-2" />
-        <StatCard label="Opportunities" value={opportunities.length} icon={TrendingUp} accent="text-chart-3" />
-        <StatCard label="Positive EV" value={betOpportunities.length} icon={Shield} accent={betOpportunities.length > 0 ? 'text-chart-1' : 'text-muted-foreground'} />
+        <StatCard label="Markets Scanned" value={diagnostics?.marketsScanned || eligibleMarkets.length} icon={Target} accent="text-info" />
+        <StatCard label="Events Found" value={diagnostics?.eventsScanned || eventClusters.length} icon={Zap} accent="text-primary" />
+        <StatCard label="Opportunities" value={opportunities.length} icon={TrendingUp} accent="text-info" />
+        <StatCard label="Positive EV" value={betOpportunities.length} icon={Shield} accent={betOpportunities.length > 0 ? 'text-success' : 'text-muted-foreground'} />
       </div>
 
       {/* Exchange Engine Debug Panel */}
@@ -107,7 +99,7 @@ export default function ExchangeOpportunities() {
           ].map(({ key, label }) => {
             const opp = bestByCategory[key];
             return (
-              <div key={key} className={`border rounded-lg p-3 ${opp ? 'border-chart-1/30 bg-chart-1/5' : 'border-border bg-muted/30'}`}>
+              <div key={key} className={`border rounded-lg p-3 ${opp ? 'border-success/30 bg-success/5' : 'border-border bg-muted/30'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-muted-foreground uppercase">{label}</span>
                   {opp && <SideBadge side={opp.side} />}
@@ -118,8 +110,8 @@ export default function ExchangeOpportunities() {
                     <div className="text-xs text-muted-foreground">{opp.marketName}</div>
                     <div className="grid grid-cols-2 gap-1 text-xs mt-2">
                       <div><span className="text-muted-foreground">Odds:</span> <span className="font-mono">{opp.odds.toFixed(2)}</span></div>
-                      <div><span className="text-muted-foreground">EV:</span> <span className="font-mono text-chart-1">${opp.ev.toFixed(2)}</span></div>
-                      <div><span className="text-muted-foreground">ROI:</span> <span className="font-mono text-chart-1">{(opp.roi * 100).toFixed(2)}%</span></div>
+                      <div><span className="text-muted-foreground">EV:</span> <span className="font-mono text-success">${opp.ev.toFixed(2)}</span></div>
+                      <div><span className="text-muted-foreground">ROI:</span> <span className="font-mono text-success">{(opp.roi * 100).toFixed(2)}%</span></div>
                       <div><span className="text-muted-foreground">Edge:</span> <span className="font-mono">{(opp.edge * 100).toFixed(2)}%</span></div>
                       <div><span className="text-muted-foreground">Prob:</span> <span className="font-mono">{(opp.modelProbability * 100).toFixed(1)}%</span></div>
                       <div><span className="text-muted-foreground">Fair:</span> <span className="font-mono">{opp.fairOdds.toFixed(2)}</span></div>
@@ -194,8 +186,8 @@ export default function ExchangeOpportunities() {
                   <TableCell className="text-right font-mono text-sm">{opp.odds.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-mono text-xs">{(opp.modelProbability * 100).toFixed(1)}%</TableCell>
                   <TableCell className="text-right font-mono text-xs">{opp.fairOdds.toFixed(2)}</TableCell>
-                  <TableCell className="text-right font-mono text-sm text-chart-1">${opp.ev.toFixed(2)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs text-chart-1">{(opp.roi * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right font-mono text-sm text-success">${opp.ev.toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-success">{(opp.roi * 100).toFixed(1)}%</TableCell>
                   <TableCell className="text-right font-mono text-xs">{(opp.edge * 100).toFixed(2)}%</TableCell>
                   <TableCell className="text-right font-mono text-xs">${opp.liability.toFixed(0)}</TableCell>
                   <TableCell className="text-right font-mono text-xs">{(opp.commissionRate * 100).toFixed(1)}%</TableCell>
@@ -229,7 +221,7 @@ export default function ExchangeOpportunities() {
                     <TableCell className="font-medium text-sm">{opp.runnerName}</TableCell>
                     <TableCell><SideBadge side={opp.side} /></TableCell>
                     <TableCell className="text-xs">{opp.marketType}</TableCell>
-                    <TableCell className="text-xs text-chart-5">{opp.blockers[0]}</TableCell>
+                    <TableCell className="text-xs text-danger">{opp.blockers[0]}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

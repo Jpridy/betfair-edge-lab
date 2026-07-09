@@ -33,7 +33,7 @@ export default function BotSyncControls() {
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {apiConnected ? <Wifi className="h-5 w-5 text-chart-1" /> : <WifiOff className="h-5 w-5 text-chart-5" />}
+            {apiConnected ? <Wifi className="h-5 w-5 text-success" /> : <WifiOff className="h-5 w-5 text-danger" />}
             <div>
               <div className="text-sm font-bold">{apiConnected ? 'Connected' : 'Disconnected'}</div>
               <div className="text-xs text-muted-foreground">{passedChecks}/{connectionChecks.length} checks passed</div>
@@ -48,7 +48,7 @@ export default function BotSyncControls() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {connectionChecks.map(c => (
             <div key={c.label} className="flex items-center gap-2 text-xs bg-muted/50 rounded p-2">
-              <div className={`h-2 w-2 rounded-full ${c.ok ? 'bg-chart-1' : 'bg-chart-5'}`} />
+              <div className={`h-2 w-2 rounded-full ${c.ok ? 'bg-success' : 'bg-danger'}`} />
               <span className="text-muted-foreground">{c.label}</span>
             </div>
           ))}

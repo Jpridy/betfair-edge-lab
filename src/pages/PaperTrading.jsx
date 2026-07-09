@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { useApp } from '@/lib/AppContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Plus, XCircle, RefreshCw, Download, ArrowRight, AlertTriangle, Inbox, TrendingUp } from 'lucide-react';
+import { Plus, XCircle, RefreshCw, Download, AlertTriangle, Inbox, TrendingUp } from 'lucide-react';
 import PaperProgress from '@/components/paper/PaperProgress';
 import { exportToCSV } from '@/lib/csvExport';
 import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
@@ -119,15 +118,15 @@ export default function PaperTrading() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Paper P/L</span>
-          <div className={`text-xl font-bold font-mono mt-1 ${bankrollStats.totalPL >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{bankrollStats.totalPL >= 0 ? '+' : ''}${bankrollStats.totalPL.toFixed(2)}</div>
+          <div className={`text-xl font-bold font-mono mt-1 ${bankrollStats.totalPL >= 0 ? 'text-success' : 'text-danger'}`}>{bankrollStats.totalPL >= 0 ? '+' : ''}${bankrollStats.totalPL.toFixed(2)}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Paper ROI</span>
-          <div className={`text-xl font-bold font-mono mt-1 ${bankrollStats.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{bankrollStats.roi}%</div>
+          <div className={`text-xl font-bold font-mono mt-1 ${bankrollStats.roi >= 0 ? 'text-success' : 'text-danger'}`}>{bankrollStats.roi}%</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Open Orders</span>
-          <div className="text-xl font-bold font-mono text-chart-4 mt-1">{openOrders.length}</div>
+          <div className="text-xl font-bold font-mono text-warning mt-1">{openOrders.length}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Settled Orders</span>
@@ -135,7 +134,7 @@ export default function PaperTrading() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Drawdown</span>
-          <div className="text-xl font-bold font-mono text-chart-5 mt-1">${bankrollStats.maxDrawdown.toFixed(2)}</div>
+          <div className="text-xl font-bold font-mono text-danger mt-1">${bankrollStats.maxDrawdown.toFixed(2)}</div>
         </div>
       </div>
 
@@ -153,11 +152,7 @@ export default function PaperTrading() {
         <Button size="sm" variant="outline" onClick={handleExportCSV}>
           <Download className="h-4 w-4" /> Export CSV
         </Button>
-        <Link to="/orders" className="ml-auto">
-          <Button size="sm" variant="ghost">
-            View All Orders <ArrowRight className="h-3 w-3" />
-          </Button>
-        </Link>
+
       </div>
 
       {/* Paper Progress Per Strategy */}
@@ -244,15 +239,15 @@ export default function PaperTrading() {
             </div>
             {selectedRunner && (
               <div className="md:col-span-3 text-xs text-muted-foreground bg-muted/50 rounded p-2">
-                Best Back: <span className="font-mono text-chart-3">{selectedRunner.bestBackPrice.toFixed(2)}</span> ·
-                Best Lay: <span className="font-mono text-chart-5">{selectedRunner.bestLayPrice.toFixed(2)}</span> ·
+                Best Back: <span className="font-mono text-info">{selectedRunner.bestBackPrice.toFixed(2)}</span> ·
+                Best Lay: <span className="font-mono text-danger">{selectedRunner.bestLayPrice.toFixed(2)}</span> ·
                 Implied Prob: <span className="font-mono">{selectedRunner.impliedProbability.toFixed(1)}%</span> ·
                 Spread: <span className="font-mono">{selectedRunner.spreadTicks || '—'} ticks</span> ·
                 MBR: <span className="font-mono">{((markets.find(m => m.id === form.marketId)?.marketBaseRate || 0) * 100).toFixed(1)}%</span>
               </div>
             )}
             {form.persistenceType === 'PERSIST' && (
-              <div className="md:col-span-3 text-xs text-chart-5 flex items-center gap-1 bg-chart-5/5 rounded p-2">
+              <div className="md:col-span-3 text-xs text-danger flex items-center gap-1 bg-danger/5 rounded p-2">
                 <AlertTriangle className="h-3 w-3" /> PERSIST keeps unmatched bets active in-play — dangerous in paper mode. {settings.persistApproved ? 'Approved.' : 'Not approved — bot never uses PERSIST.'}
               </div>
             )}
@@ -324,7 +319,7 @@ export default function PaperTrading() {
                 <TableCell>
                   <StatusBadge status={o.result === 'won' ? 'ok' : o.result === 'lost' ? 'danger' : 'neutral'}>{o.result}</StatusBadge>
                 </TableCell>
-                <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{o.clv ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
+                <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-success' : 'text-danger'}`}>{o.clv ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
                 <TableCell className="text-xs text-right"><PLValue value={o.netProfit} /></TableCell>
               </TableRow>
             ))}

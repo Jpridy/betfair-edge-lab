@@ -98,8 +98,8 @@ export default function Backtesting() {
       {/* Configuration */}
       <Panel title="Synthetic Backtest Configuration">
         <div className="p-4 space-y-4">
-          <div className="bg-chart-3/10 border border-chart-3/30 rounded-lg p-3 text-xs text-muted-foreground">
-            <span className="text-chart-3 font-medium">How it works:</span> Select your active strategies, choose how many synthetic races to simulate, and the engine will generate probability-weighted synthetic race samples — generating signals, running risk checks, placing simulated orders, and settling them using probability-weighted synthetic settlement. Results include equity curve, drawdown, profit factor, and CLV.
+          <div className="bg-info/10 border border-info/30 rounded-lg p-3 text-xs text-muted-foreground">
+            <span className="text-info font-medium">How it works:</span> Select your active strategies, choose how many synthetic races to simulate, and the engine will generate probability-weighted synthetic race samples — generating signals, running risk checks, placing simulated orders, and settling them using probability-weighted synthetic settlement. Results include equity curve, drawdown, profit factor, and CLV.
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -166,10 +166,10 @@ export default function Backtesting() {
             </div>
           </div>
 
-          <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
-            <ShieldAlert className="h-4 w-4 text-chart-4 shrink-0 mt-0.5" />
+          <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-muted-foreground flex items-start gap-2">
+            <ShieldAlert className="h-4 w-4 text-warning shrink-0 mt-0.5" />
             <div>
-              <span className="text-chart-4 font-medium">Warning:</span> Backtest results are synthetic. Strategy must still pass paper trading validation (200+ settled trades, positive CLV, profit factor &gt; 1.20). No real bets are placed.
+              <span className="text-warning font-medium">Warning:</span> Backtest results are synthetic. Strategy must still pass paper trading validation (200+ settled trades, positive CLV, profit factor &gt; 1.20). No real bets are placed.
             </div>
           </div>
 
@@ -182,8 +182,8 @@ export default function Backtesting() {
                   onClick={() => toggleStrategy(name)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                     selectedStrategies.includes(name)
-                      ? 'bg-chart-2/20 text-chart-2 border-chart-2/40'
-                      : 'bg-muted/30 text-muted-foreground border-border hover:border-chart-2/30'
+                      ? 'bg-primary/20 text-primary border-primary/40'
+                      : 'bg-muted/30 text-muted-foreground border-border hover:border-primary/30'
                   }`}
                 >
                   {selectedStrategies.includes(name) ? '✓ ' : ''}{name}
@@ -202,7 +202,7 @@ export default function Backtesting() {
                 step={15}
                 value={daysBack}
                 onChange={e => setDaysBack(+e.target.value)}
-                className="w-full mt-2 accent-chart-2"
+                className="w-full mt-2 accent-primary"
               />
             </div>
             <Button onClick={handleRun} disabled={running || selectedStrategies.length === 0} className="h-10 px-6">
@@ -212,7 +212,7 @@ export default function Backtesting() {
 
           {running && (
             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-chart-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
             </div>
           )}
         </div>
@@ -301,16 +301,16 @@ export default function Backtesting() {
                       <TableCell className="text-xs">{t.strategy}</TableCell>
                       <TableCell className="text-xs font-medium">{t.runner}</TableCell>
                       <TableCell>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${t.side === 'BACK' ? 'bg-chart-3/10 text-chart-3' : 'bg-chart-5/10 text-chart-5'}`}>{t.side}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${t.side === 'BACK' ? 'bg-info/10 text-info' : 'bg-danger/10 text-danger'}`}>{t.side}</span>
                       </TableCell>
                       <TableCell className="text-xs text-right font-mono">{t.odds.toFixed(2)}</TableCell>
                       <TableCell className="text-xs text-right font-mono">${t.stake}</TableCell>
-                      <TableCell className="text-xs text-right font-mono text-chart-1">{t.edge.toFixed(2)}%</TableCell>
-                      <TableCell className={`text-xs text-right font-mono ${t.clv >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{t.clv >= 0 ? '+' : ''}{t.clv.toFixed(2)}%</TableCell>
+                      <TableCell className="text-xs text-right font-mono text-success">{t.edge.toFixed(2)}%</TableCell>
+                      <TableCell className={`text-xs text-right font-mono ${t.clv >= 0 ? 'text-success' : 'text-danger'}`}>{t.clv >= 0 ? '+' : ''}{t.clv.toFixed(2)}%</TableCell>
                       <TableCell>
                         {t.result === 'won'
-                          ? <span className="text-[10px] font-bold text-chart-1 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Won</span>
-                          : <span className="text-[10px] font-bold text-chart-5 flex items-center gap-1"><XCircle className="h-3 w-3" /> Lost</span>}
+                          ? <span className="text-[10px] font-bold text-success flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Won</span>
+                          : <span className="text-[10px] font-bold text-danger flex items-center gap-1"><XCircle className="h-3 w-3" /> Lost</span>}
                       </TableCell>
                       <TableCell className="text-xs text-right"><PLValue value={t.netProfit} /></TableCell>
                     </TableRow>
@@ -327,7 +327,7 @@ export default function Backtesting() {
 
           {/* Blocked Trades */}
           {result.blockedTrades.length > 0 && (
-            <Panel title={`Blocked Trades — ${result.blockedTrades.length}`} action={<AlertTriangle className="h-4 w-4 text-chart-4" />}>
+            <Panel title={`Blocked Trades — ${result.blockedTrades.length}`} action={<AlertTriangle className="h-4 w-4 text-warning" />}>
               <Table>
                 <TableHeader>
                   <TableRow className="border-border hover:bg-transparent">
@@ -345,7 +345,7 @@ export default function Backtesting() {
                       <TableCell className="text-xs font-medium">{t.runner}</TableCell>
                       <TableCell className="text-xs text-right font-mono">{t.odds.toFixed(2)}</TableCell>
                       <TableCell className="text-xs text-right font-mono">${t.stake}</TableCell>
-                      <TableCell className="text-xs text-chart-5">{t.reason}</TableCell>
+                      <TableCell className="text-xs text-danger">{t.reason}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -379,9 +379,9 @@ export default function Backtesting() {
                   <TableCell className="text-xs text-right font-mono">{r.totalBets}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{r.strikeRate}%</TableCell>
                   <TableCell className="text-xs text-right"><PLValue value={r.netProfit} /></TableCell>
-                  <TableCell className={`text-xs text-right font-mono ${r.roi > 0 ? 'text-chart-1' : 'text-chart-5'}`}>{r.roi}%</TableCell>
+                  <TableCell className={`text-xs text-right font-mono ${r.roi > 0 ? 'text-success' : 'text-danger'}`}>{r.roi}%</TableCell>
                   <TableCell className="text-xs text-right font-mono">{r.profitFactor}</TableCell>
-                  <TableCell className="text-xs text-right font-mono text-chart-5">${r.maxDrawdown}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-danger">${r.maxDrawdown}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -401,7 +401,7 @@ function Param({ label, value }) {
 }
 
 function ResultCard({ label, value, positive }) {
-  const color = positive === true ? 'text-chart-1' : positive === false ? 'text-chart-5' : 'text-foreground';
+  const color = positive === true ? 'text-success' : positive === false ? 'text-danger' : 'text-foreground';
   return (
     <div className="bg-card border border-border rounded-lg p-3">
       <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{label}</div>

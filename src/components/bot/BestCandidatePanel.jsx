@@ -17,8 +17,8 @@ export default function BestCandidatePanel({ bestCandidate }) {
       <div className="p-4 space-y-3">
         <div className="flex items-center gap-3">
           {passed
-            ? <CheckCircle2 className="h-5 w-5 text-chart-1 shrink-0" />
-            : <Target className="h-5 w-5 text-chart-4 shrink-0" />
+            ? <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+            : <Target className="h-5 w-5 text-warning shrink-0" />
           }
           <div className="flex-1 min-w-0">
             <div className="text-sm font-bold text-foreground">{bestCandidate.runnerName}</div>
@@ -50,7 +50,7 @@ export default function BestCandidatePanel({ bestCandidate }) {
               {bestCandidate.marketMovement.label}
             </StatusBadge>
             {bestCandidate.dataSource === 'MARKET_ONLY' && (
-              <span className="text-[10px] text-chart-3">Market-only signal</span>
+              <span className="text-[10px] text-info">Market-only signal</span>
             )}
           </div>
         )}
@@ -60,7 +60,7 @@ export default function BestCandidatePanel({ bestCandidate }) {
           <div className="space-y-1">
             <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Failed Thresholds</div>
             {bestCandidate.failedThresholds.map((ft, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[10px] text-chart-5">
+              <div key={i} className="flex items-start gap-1.5 text-[10px] text-danger">
                 <XCircle className="h-3 w-3 shrink-0 mt-0.5" />
                 {ft.reason}
               </div>
@@ -77,7 +77,7 @@ function Stat({ label, value, positive }) {
     <div className="bg-muted/30 rounded p-2 text-center">
       <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</div>
       <div className={`text-sm font-bold font-mono mt-0.5 ${
-        positive === true ? 'text-chart-1' : positive === false ? 'text-chart-5' : 'text-foreground'
+        positive === true ? 'text-success' : positive === false ? 'text-danger' : 'text-foreground'
       }`}>{value}</div>
     </div>
   );

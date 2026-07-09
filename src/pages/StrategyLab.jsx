@@ -139,8 +139,8 @@ export default function StrategyLab() {
                 <div>• Daily stop loss enforced</div>
               </div>
             </div>
-            <div className="bg-chart-5/10 border border-chart-5/30 rounded-lg p-3 mt-3">
-              <div className="text-xs text-chart-5 font-bold">Paper-only mode</div>
+            <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 mt-3">
+              <div className="text-xs text-danger font-bold">Paper-only mode</div>
               <div className="text-xs text-muted-foreground mt-1">Featherless AI decides only. The app executes paper trades only after all validation passes. Advanced review is disabled. No real bets are placed.</div>
             </div>
           </div>

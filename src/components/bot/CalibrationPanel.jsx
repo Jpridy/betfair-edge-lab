@@ -20,15 +20,15 @@ export default function CalibrationPanel() {
       <div className="p-4 space-y-4">
         {/* Warning banner */}
         {calibration.warning && (
-          <div className="flex items-start gap-2 text-xs bg-chart-4/10 border border-chart-4/30 rounded-lg p-3">
-            <AlertTriangle className="h-4 w-4 text-chart-4 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2 text-xs bg-warning/10 border border-warning/30 rounded-lg p-3">
+            <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
             <span className="text-foreground">{calibration.warning}</span>
           </div>
         )}
 
         {calibration.isCalibrated && (
-          <div className="flex items-center gap-2 text-xs bg-chart-1/10 border border-chart-1/30 rounded-lg p-3">
-            <CheckCircle2 className="h-4 w-4 text-chart-1 shrink-0" />
+          <div className="flex items-center gap-2 text-xs bg-success/10 border border-success/30 rounded-lg p-3">
+            <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
             <span className="text-foreground">Calibration active — {calibration.sampleSize} settled paper bets analysed.</span>
           </div>
         )}
@@ -80,7 +80,7 @@ function CalibStat({ label, value, positive }) {
     <div className="bg-muted/30 border border-border rounded-lg p-3 text-center">
       <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</div>
       <div className={`text-lg font-bold font-mono mt-1 ${
-        positive === true ? 'text-chart-1' : positive === false ? 'text-chart-5' : 'text-foreground'
+        positive === true ? 'text-success' : positive === false ? 'text-danger' : 'text-foreground'
       }`}>{value}</div>
     </div>
   );

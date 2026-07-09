@@ -57,14 +57,14 @@ export default function PerformanceAnalytics() {
     : '—';
 
   const kpiCards = [
-    { label: 'Settled Net P/L', value: `${settledNetPL >= 0 ? '+' : ''}$${settledNetPL.toFixed(2)}`, icon: DollarSign, trend: settledNetPL >= 0 ? 'up' : 'down', color: settledNetPL >= 0 ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Win/Loss Ratio', value: winLossRatio, icon: Target, trend: totalWins > totalLosses ? 'up' : 'down', color: totalWins > totalLosses ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Avg ROI', value: `${avgROI.toFixed(2)}%`, icon: Percent, trend: avgROI > 0 ? 'up' : 'down', color: avgROI > 0 ? 'text-chart-1' : 'text-chart-5' },
+    { label: 'Settled Net P/L', value: `${settledNetPL >= 0 ? '+' : ''}$${settledNetPL.toFixed(2)}`, icon: DollarSign, trend: settledNetPL >= 0 ? 'up' : 'down', color: settledNetPL >= 0 ? 'text-success' : 'text-danger' },
+    { label: 'Win/Loss Ratio', value: winLossRatio, icon: Target, trend: totalWins > totalLosses ? 'up' : 'down', color: totalWins > totalLosses ? 'text-success' : 'text-danger' },
+    { label: 'Avg ROI', value: `${avgROI.toFixed(2)}%`, icon: Percent, trend: avgROI > 0 ? 'up' : 'down', color: avgROI > 0 ? 'text-success' : 'text-danger' },
     { label: 'Settled Bets', value: settledOrders.length, icon: Activity, trend: 'neutral', color: 'text-foreground' },
-    { label: 'Strike Rate', value: `${settledOrders.length > 0 ? ((settledWins / settledOrders.length) * 100).toFixed(1) : 0}%`, icon: TrendingUp, trend: 'up', color: 'text-chart-3' },
-    { label: 'Avg CLV', value: `${avgCLV >= 0 ? '+' : ''}${avgCLV.toFixed(2)}%`, icon: Target, trend: avgCLV >= 0 ? 'up' : 'down', color: avgCLV >= 0 ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Avg Slippage', value: `${avgSlippage.toFixed(2)}%`, icon: BarChart3, trend: avgSlippage <= 0 ? 'up' : 'down', color: avgSlippage <= 0 ? 'text-chart-1' : 'text-chart-5' },
-    { label: 'Commission Paid', value: `$${settledCommission.toFixed(2)}`, icon: DollarSign, trend: 'neutral', color: 'text-chart-4' },
+    { label: 'Strike Rate', value: `${settledOrders.length > 0 ? ((settledWins / settledOrders.length) * 100).toFixed(1) : 0}%`, icon: TrendingUp, trend: 'up', color: 'text-info' },
+    { label: 'Avg CLV', value: `${avgCLV >= 0 ? '+' : ''}${avgCLV.toFixed(2)}%`, icon: Target, trend: avgCLV >= 0 ? 'up' : 'down', color: avgCLV >= 0 ? 'text-success' : 'text-danger' },
+    { label: 'Avg Slippage', value: `${avgSlippage.toFixed(2)}%`, icon: BarChart3, trend: avgSlippage <= 0 ? 'up' : 'down', color: avgSlippage <= 0 ? 'text-success' : 'text-danger' },
+    { label: 'Commission Paid', value: `$${settledCommission.toFixed(2)}`, icon: DollarSign, trend: 'neutral', color: 'text-warning' },
   ];
 
   const tooltipStyle = {
@@ -87,7 +87,7 @@ export default function PerformanceAnalytics() {
     <div className="space-y-5">
       {/* Settled Orders Notice */}
       <div className="bg-card border border-border rounded-lg p-3 text-xs text-muted-foreground">
-        <span className="text-chart-3 font-semibold">Metrics based on settled orders only.</span> {settledOrders.length} settled out of {(paperOrders || []).length} total. Pending and voided orders are excluded from performance calculations. Gross P/L: <span className="font-mono">${settledGrossPL.toFixed(2)}</span> · Commission: <span className="font-mono">${settledCommission.toFixed(2)}</span> · Net: <span className="font-mono">${settledNetPL.toFixed(2)}</span>
+        <span className="text-info font-semibold">Metrics based on settled orders only.</span> {settledOrders.length} settled out of {(paperOrders || []).length} total. Pending and voided orders are excluded from performance calculations. Gross P/L: <span className="font-mono">${settledGrossPL.toFixed(2)}</span> · Commission: <span className="font-mono">${settledCommission.toFixed(2)}</span> · Net: <span className="font-mono">${settledNetPL.toFixed(2)}</span>
       </div>
 
       {/* KPI Cards */}
@@ -152,11 +152,11 @@ export default function PerformanceAnalytics() {
                       <div className="text-[10px] text-muted-foreground mt-1">Current Bankroll</div>
                     </div>
                     <div className="text-center">
-                      <div className={`text-lg font-bold font-mono ${totalGrowth >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{totalGrowth >= 0 ? '+' : ''}${totalGrowth.toFixed(2)}</div>
+                      <div className={`text-lg font-bold font-mono ${totalGrowth >= 0 ? 'text-success' : 'text-danger'}`}>{totalGrowth >= 0 ? '+' : ''}${totalGrowth.toFixed(2)}</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Total Growth</div>
                     </div>
                     <div className="text-center">
-                      <div className={`text-lg font-bold font-mono ${totalGrowthPct >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{totalGrowthPct >= 0 ? '+' : ''}{totalGrowthPct.toFixed(2)}%</div>
+                      <div className={`text-lg font-bold font-mono ${totalGrowthPct >= 0 ? 'text-success' : 'text-danger'}`}>{totalGrowthPct >= 0 ? '+' : ''}{totalGrowthPct.toFixed(2)}%</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Total ROI</div>
                     </div>
                   </div>
@@ -190,19 +190,19 @@ export default function PerformanceAnalytics() {
                   </ResponsiveContainer>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-1">{positiveMonths}</div>
+                      <div className="text-lg font-bold font-mono text-success">{positiveMonths}</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Profitable Months</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-5">{negativeMonths}</div>
+                      <div className="text-lg font-bold font-mono text-danger">{negativeMonths}</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Losing Months</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-1">{monthlyGrowth.length > 0 ? ((positiveMonths / monthlyGrowth.length) * 100).toFixed(0) : 0}%</div>
+                      <div className="text-lg font-bold font-mono text-success">{monthlyGrowth.length > 0 ? ((positiveMonths / monthlyGrowth.length) * 100).toFixed(0) : 0}%</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Consistency Rate</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-1">{bestMonth ? `+${bestMonth.growth}%` : '—'}</div>
+                      <div className="text-lg font-bold font-mono text-success">{bestMonth ? `+${bestMonth.growth}%` : '—'}</div>
                       <div className="text-[10px] text-muted-foreground mt-1">{bestMonth ? `Best Month (${bestMonth.month})` : 'Best Month'}</div>
                     </div>
                   </div>
@@ -257,15 +257,15 @@ export default function PerformanceAnalytics() {
           <Panel title="Win/Loss Summary" className="mt-5">
             <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-background/50 border border-border rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-mono text-chart-1">{totalWins}</div>
+                <div className="text-2xl font-bold font-mono text-success">{totalWins}</div>
                 <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider">Total Wins</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-mono text-chart-5">{totalLosses}</div>
+                <div className="text-2xl font-bold font-mono text-danger">{totalLosses}</div>
                 <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider">Total Losses</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold font-mono text-chart-3">{winLossRatio}</div>
+                <div className="text-2xl font-bold font-mono text-info">{winLossRatio}</div>
                 <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider">Win/Loss Ratio</div>
               </div>
               <div className="bg-background/50 border border-border rounded-lg p-3 text-center">
@@ -302,11 +302,11 @@ export default function PerformanceAnalytics() {
                   </ResponsiveContainer>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-5">${Math.abs(maxDrawdownVal).toFixed(2)}</div>
+                      <div className="text-lg font-bold font-mono text-danger">${Math.abs(maxDrawdownVal).toFixed(2)}</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Max Drawdown</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-5">{startingBank > 0 ? (Math.abs(maxDrawdownVal) / startingBank * 100).toFixed(2) : 0}%</div>
+                      <div className="text-lg font-bold font-mono text-danger">{startingBank > 0 ? (Math.abs(maxDrawdownVal) / startingBank * 100).toFixed(2) : 0}%</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Max DD %</div>
                     </div>
                     <div className="text-center">
@@ -314,7 +314,7 @@ export default function PerformanceAnalytics() {
                       <div className="text-[10px] text-muted-foreground mt-1">Avg Drawdown</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold font-mono text-chart-1">{Math.abs(currentDDPct).toFixed(2)}%</div>
+                      <div className="text-lg font-bold font-mono text-success">{Math.abs(currentDDPct).toFixed(2)}%</div>
                       <div className="text-[10px] text-muted-foreground mt-1">Current DD %</div>
                     </div>
                   </div>
@@ -496,15 +496,15 @@ export default function PerformanceAnalytics() {
                     <TableCell className="text-xs font-semibold">{s.strategyName}</TableCell>
                     <TableCell className="text-xs text-right font-mono">{s.totalSignals}</TableCell>
                     <TableCell className="text-xs text-right font-mono">{s.totalPaperOrders}</TableCell>
-                    <TableCell className="text-xs text-right font-mono text-chart-1">{s.wins}</TableCell>
-                    <TableCell className="text-xs text-right font-mono text-chart-5">{s.losses}</TableCell>
+                    <TableCell className="text-xs text-right font-mono text-success">{s.wins}</TableCell>
+                    <TableCell className="text-xs text-right font-mono text-danger">{s.losses}</TableCell>
                     <TableCell className="text-xs text-right font-mono">{s.strikeRate.toFixed(1)}%</TableCell>
                     <TableCell className="text-xs text-right"><PLValue value={s.netProfit} /></TableCell>
-                    <TableCell className={`text-xs text-right font-mono ${s.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{s.roi.toFixed(2)}%</TableCell>
-                    <TableCell className={`text-xs text-right font-mono ${s.profitFactor >= 1 ? 'text-chart-1' : 'text-chart-5'}`}>{s.profitFactor.toFixed(2)}</TableCell>
-                    <TableCell className="text-xs text-right font-mono text-chart-5">${s.maxDrawdown.toFixed(0)}</TableCell>
+                    <TableCell className={`text-xs text-right font-mono ${s.roi >= 0 ? 'text-success' : 'text-danger'}`}>{s.roi.toFixed(2)}%</TableCell>
+                    <TableCell className={`text-xs text-right font-mono ${s.profitFactor >= 1 ? 'text-success' : 'text-danger'}`}>{s.profitFactor.toFixed(2)}</TableCell>
+                    <TableCell className="text-xs text-right font-mono text-danger">${s.maxDrawdown.toFixed(0)}</TableCell>
                     <TableCell className="text-xs text-right font-mono">{s.averageEdge.toFixed(2)}%</TableCell>
-                    <TableCell className={`text-xs text-right font-mono ${s.closingLineValue >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{s.closingLineValue >= 0 ? '+' : ''}{s.closingLineValue.toFixed(2)}%</TableCell>
+                    <TableCell className={`text-xs text-right font-mono ${s.closingLineValue >= 0 ? 'text-success' : 'text-danger'}`}>{s.closingLineValue >= 0 ? '+' : ''}{s.closingLineValue.toFixed(2)}%</TableCell>
                     <TableCell><StatusBadge status={s.statusLabel === 'promising' ? 'ok' : s.statusLabel === 'failing' ? 'danger' : s.statusLabel === 'needs_more_data' ? 'info' : 'warning'}>{s.statusLabel.replace(/_/g, ' ')}</StatusBadge></TableCell>
                   </TableRow>
                 ))}

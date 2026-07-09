@@ -19,7 +19,7 @@ export function Panel({ children, className, title, action, subtitle }) {
 }
 
 export function StatCard({ label, value, sublabel, trend, icon: Icon, accent }) {
-  const trendColor = trend === 'up' ? 'text-chart-1' : trend === 'down' ? 'text-chart-5' : 'text-foreground';
+  const trendColor = trend === 'up' ? 'text-success' : trend === 'down' ? 'text-danger' : 'text-foreground';
   return (
     <div className="bg-card border border-border-subtle rounded-lg p-4 hover:border-border transition-colors">
       <div className="flex items-center justify-between mb-2">
@@ -41,7 +41,7 @@ const badgeStyles = {
   info: 'bg-info/10 text-info border-info/25',
   neutral: 'bg-muted text-muted-foreground border-border',
   proof: 'bg-primary/10 text-primary border-primary/25',
-  debug: 'bg-chart-6/10 text-chart-6 border-chart-6/25',
+  debug: 'bg-primary/10 text-primary border-primary/25',
 };
 
 export function StatusBadge({ status, children }) {

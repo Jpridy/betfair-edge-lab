@@ -83,11 +83,11 @@ export default function GlobalStopRules() {
             <div
               key={rule.key}
               className={`flex items-center justify-between gap-4 rounded-lg border p-3 transition-colors ${
-                active ? 'border-chart-5/50 bg-chart-5/5' : 'border-border bg-muted/30'
+                active ? 'border-danger/50 bg-danger/5' : 'border-border bg-muted/30'
               }`}
             >
               <div className="flex items-start gap-3 min-w-0">
-                <div className={`mt-0.5 shrink-0 ${active ? 'text-chart-5' : rule.enabled ? 'text-chart-1' : 'text-muted-foreground'}`}>
+                <div className={`mt-0.5 shrink-0 ${active ? 'text-danger' : rule.enabled ? 'text-success' : 'text-muted-foreground'}`}>
                   {active ? <AlertTriangle className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
                 </div>
                 <div className="min-w-0">

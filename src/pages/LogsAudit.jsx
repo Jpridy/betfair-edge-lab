@@ -45,19 +45,19 @@ export default function LogsAudit() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Info</span>
-          <div className="text-xl font-bold font-mono text-chart-3 mt-1">{auditLogs.filter(l => l.severity === 'info').length}</div>
+          <div className="text-xl font-bold font-mono text-info mt-1">{auditLogs.filter(l => l.severity === 'info').length}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Warnings</span>
-          <div className="text-xl font-bold font-mono text-chart-4 mt-1">{auditLogs.filter(l => l.severity === 'warning').length}</div>
+          <div className="text-xl font-bold font-mono text-warning mt-1">{auditLogs.filter(l => l.severity === 'warning').length}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Errors</span>
-          <div className="text-xl font-bold font-mono text-chart-5 mt-1">{auditLogs.filter(l => l.severity === 'error').length}</div>
+          <div className="text-xl font-bold font-mono text-danger mt-1">{auditLogs.filter(l => l.severity === 'error').length}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Critical</span>
-          <div className="text-xl font-bold font-mono text-chart-5 mt-1">{auditLogs.filter(l => l.severity === 'critical').length}</div>
+          <div className="text-xl font-bold font-mono text-danger mt-1">{auditLogs.filter(l => l.severity === 'critical').length}</div>
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export default function LogsAudit() {
           <div className="ml-auto">
             {showClearConfirm ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-chart-5 font-medium hidden sm:inline">Clear all logs?</span>
+                <span className="text-xs text-danger font-medium hidden sm:inline">Clear all logs?</span>
                 <Button variant="destructive" size="sm" onClick={() => { clearLogs(); setShowClearConfirm(false); }}>
                   <CheckCircle2 className="h-3 w-3" /> Confirm
                 </Button>

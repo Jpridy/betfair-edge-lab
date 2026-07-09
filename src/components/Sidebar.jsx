@@ -1,31 +1,31 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bot, Settings, ScrollText, FileText, Wrench, ChevronDown, ChevronRight, AlertOctagon, X, Radar, Layers, Footprints, FlaskConical, History, BarChart3, ShieldAlert, BookOpen, Network, Zap, LayoutDashboard } from 'lucide-react';
+import { Bot, Settings, ScrollText, FileText, Wrench, ChevronDown, ChevronRight, AlertOctagon, X, Radar, Layers, Footprints, FlaskConical, History, BarChart3, ShieldAlert, BookOpen, Network, Zap, LayoutDashboard, TrendingUp } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/BrandLogo';
 
 const mainNav = [
-  { label: 'Bot Control Centre', path: '/', icon: Bot },
-  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Settings Hub', path: '/settings', icon: Settings },
+  { label: 'Control Centre', path: '/', icon: Bot },
+  { label: 'Markets', path: '/scanner', icon: Radar },
+  { label: 'Exchange Opportunities', path: '/exchange-opportunities', icon: Layers },
   { label: 'Orders & Settlement', path: '/orders', icon: ScrollText },
   { label: 'Decision Logs', path: '/paper-trading', icon: FileText },
-  { label: 'Setup Wizard', path: '/setup-wizard', icon: Zap },
+  { label: 'Risk Manager', path: '/risk', icon: ShieldAlert },
+  { label: 'Settings', path: '/settings', icon: Settings },
+  { label: 'Setup', path: '/setup-wizard', icon: Zap },
 ];
 
 const debugNav = [
-  { label: 'Markets', path: '/scanner', icon: Radar },
-  { label: 'Exchange Ops', path: '/exchange-opportunities', icon: Layers },
+  { label: 'Wiring Audit', path: '/wiring-audit', icon: Network },
+  { label: 'Logs & Audit', path: '/logs', icon: FileText },
   { label: 'Runners', path: '/runner', icon: Footprints },
+  { label: 'Analytics', path: '/performance-analytics', icon: BarChart3 },
   { label: 'Strategy Lab', path: '/strategy', icon: FlaskConical },
   { label: 'Strategy Library', path: '/strategy-library', icon: BookOpen },
   { label: 'Backtesting', path: '/backtesting', icon: History },
-  { label: 'Risk Manager', path: '/risk', icon: ShieldAlert },
-  { label: 'Wiring Audit', path: '/wiring-audit', icon: Network },
-  { label: 'Logs & Audit', path: '/logs', icon: FileText },
-  { label: 'Analytics', path: '/performance-analytics', icon: BarChart3 },
+  { label: 'Old Dashboard', path: '/dashboard', icon: LayoutDashboard },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {

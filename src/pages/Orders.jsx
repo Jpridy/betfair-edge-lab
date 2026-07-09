@@ -101,7 +101,7 @@ export default function Orders() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Matched</span>
-          <div className="text-xl font-bold font-mono text-chart-1 mt-1">{matched}</div>
+          <div className="text-xl font-bold font-mono text-success mt-1">{matched}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Matched Stake</span>
@@ -109,11 +109,11 @@ export default function Orders() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Unmatched Stake</span>
-          <div className="text-xl font-bold font-mono text-chart-4 mt-1">${totalUnmatched.toFixed(2)}</div>
+          <div className="text-xl font-bold font-mono text-warning mt-1">${totalUnmatched.toFixed(2)}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Net P/L</span>
-          <div className={`text-xl font-bold font-mono mt-1 ${totalPL > 0 ? 'text-chart-1' : 'text-chart-5'}`}>{totalPL > 0 ? '+' : ''}${totalPL.toFixed(2)}</div>
+          <div className={`text-xl font-bold font-mono mt-1 ${totalPL > 0 ? 'text-success' : 'text-danger'}`}>{totalPL > 0 ? '+' : ''}${totalPL.toFixed(2)}</div>
         </div>
       </div>
 
@@ -186,7 +186,7 @@ export default function Orders() {
           </div>
           <Input placeholder="Search runner, market, ref..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-64 text-xs" />
           <div className="flex items-center gap-2">
-            <input type="checkbox" id="warningOnly" checked={warningOnly} onChange={e => setWarningOnly(e.target.checked)} className="accent-chart-4" />
+            <input type="checkbox" id="warningOnly" checked={warningOnly} onChange={e => setWarningOnly(e.target.checked)} className="accent-warning" />
             <label htmlFor="warningOnly" className="text-xs text-muted-foreground cursor-pointer">Warnings only</label>
           </div>
           <div className="flex-1" />
@@ -264,8 +264,8 @@ export default function Orders() {
                 <TableCell className="text-xs text-right font-mono">{o.requestedOdds?.toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono">{o.matchedOdds?.toFixed(2) || '—'}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${(o.requestedStake || 0).toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right font-mono text-chart-1">${(o.matchedStake || 0).toFixed(2)}</TableCell>
-                <TableCell className="text-xs text-right font-mono text-chart-4">${((o.requestedStake || 0) - (o.matchedStake || 0)).toFixed(2)}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-success">${(o.matchedStake || 0).toFixed(2)}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-warning">${((o.requestedStake || 0) - (o.matchedStake || 0)).toFixed(2)}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">
                   ${(o.side === 'LAY' ? ((o.matchedStake || o.requestedStake || 0) * ((o.matchedOdds || o.requestedOdds || 0) - 1)) : (o.matchedStake || o.requestedStake || 0)).toFixed(2)}
                 </TableCell>
@@ -288,17 +288,17 @@ export default function Orders() {
                   <StatusBadge status={o.result === 'won' ? 'ok' : o.result === 'lost' ? 'danger' : 'neutral'}>{o.result}</StatusBadge>
                 </TableCell>
                 <TableCell className="text-[10px] text-muted-foreground">{o.resultSource || '—'}</TableCell>
-                <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{o.clv != null ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
+                <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-success' : 'text-danger'}`}>{o.clv != null ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
                 <TableCell className="text-xs text-right font-mono">${o.grossProfit?.toFixed(2) || '0.00'}</TableCell>
                 <TableCell className="text-xs text-right font-mono text-muted-foreground">${o.commission?.toFixed(2) || '0.00'}</TableCell>
                 <TableCell className="text-xs text-right"><PLValue value={o.netProfit || 0} /></TableCell>
                 <TableCell className="text-xs">
                   {o.warningFlags?.length > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-chart-4" title={o.warningFlags.join('; ')}>
+                    <span className="inline-flex items-center gap-1 text-warning" title={o.warningFlags.join('; ')}>
                       <AlertTriangle className="h-3 w-3" />{o.warningFlags.length}
                     </span>
                   ) : o.rejection_reason ? (
-                    <span className="inline-flex items-center gap-1 text-chart-5" title={o.rejection_reason}>
+                    <span className="inline-flex items-center gap-1 text-danger" title={o.rejection_reason}>
                       <AlertTriangle className="h-3 w-3" />!
                     </span>
                   ) : '—'}

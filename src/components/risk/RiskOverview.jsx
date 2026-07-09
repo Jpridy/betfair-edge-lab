@@ -29,20 +29,20 @@ export default function RiskOverview() {
     <div className="space-y-4">
       {/* Global Risk State */}
       <div className={`rounded-lg border-2 p-4 ${
-        globalState.status === 'danger' ? 'border-chart-5 bg-chart-5/10' :
-        globalState.status === 'warning' ? 'border-chart-4 bg-chart-4/10' :
-        'border-chart-1 bg-chart-1/5'
+        globalState.status === 'danger' ? 'border-danger bg-danger/10' :
+        globalState.status === 'warning' ? 'border-warning bg-warning/10' :
+        'border-success bg-success/5'
       }`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ShieldCheck className={`h-6 w-6 ${
-              globalState.status === 'danger' ? 'text-chart-5' :
-              globalState.status === 'warning' ? 'text-chart-4' : 'text-chart-1'
+              globalState.status === 'danger' ? 'text-danger' :
+              globalState.status === 'warning' ? 'text-warning' : 'text-success'
             }`} />
             <div>
               <div className={`text-sm font-bold ${
-                globalState.status === 'danger' ? 'text-chart-5' :
-                globalState.status === 'warning' ? 'text-chart-4' : 'text-chart-1'
+                globalState.status === 'danger' ? 'text-danger' :
+                globalState.status === 'warning' ? 'text-warning' : 'text-success'
               }`}>{globalState.label}</div>
               <div className="text-xs text-muted-foreground">{globalState.desc}</div>
             </div>
@@ -55,25 +55,25 @@ export default function RiskOverview() {
       <Panel title="System Connections">
         <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex items-center gap-3">
-            {apiConnected ? <Wifi className="h-5 w-5 text-chart-1" /> : <WifiOff className="h-5 w-5 text-chart-4" />}
+            {apiConnected ? <Wifi className="h-5 w-5 text-success" /> : <WifiOff className="h-5 w-5 text-warning" />}
             <div>
               <div className="text-xs text-muted-foreground">Betfair Data</div>
-              <div className={`text-sm font-bold ${apiConnected ? 'text-chart-1' : 'text-chart-4'}`}>
+              <div className={`text-sm font-bold ${apiConnected ? 'text-success' : 'text-warning'}`}>
                 {apiConnected ? 'Connected' : appMode === 'paper' ? 'Paper (No Data)' : 'Disconnected'}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Database className={`h-5 w-5 ${apiConnected ? 'text-chart-1' : 'text-chart-4'}`} />
+            <Database className={`h-5 w-5 ${apiConnected ? 'text-success' : 'text-warning'}`} />
             <div>
               <div className="text-xs text-muted-foreground">Data Feed</div>
-              <div className={`text-sm font-bold ${apiConnected ? 'text-chart-1' : 'text-chart-4'}`}>
+              <div className={`text-sm font-bold ${apiConnected ? 'text-success' : 'text-warning'}`}>
                 {apiConnected ? 'Data connection OK' : 'Stale (Demo)'}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Globe className="h-5 w-5 text-chart-3" />
+            <Globe className="h-5 w-5 text-info" />
             <div>
               <div className="text-xs text-muted-foreground">Jurisdiction</div>
               <div className="text-sm font-bold text-foreground">Australia (AU)</div>
@@ -88,20 +88,20 @@ export default function RiskOverview() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Today's P/L</span>
-              <span className={`font-mono font-bold ${bankrollStats.todayPL >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+              <span className={`font-mono font-bold ${bankrollStats.todayPL >= 0 ? 'text-success' : 'text-danger'}`}>
                 {bankrollStats.todayPL >= 0 ? '+' : ''}${bankrollStats.todayPL.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Daily Loss Limit</span>
-              <span className="font-mono font-bold text-chart-5">-${settings.dailyLossLimit}</span>
+              <span className="font-mono font-bold text-danger">-${settings.dailyLossLimit}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Loss Used</span>
               <span className="font-mono font-bold">{dailyLossUsed > 0 ? `${((dailyLossUsed / settings.dailyLossLimit) * 100).toFixed(1)}%` : '0%'}</span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${dailyLossUsed / settings.dailyLossLimit > 0.8 ? 'bg-chart-5' : 'bg-chart-4'}`}
+              <div className={`h-full rounded-full ${dailyLossUsed / settings.dailyLossLimit > 0.8 ? 'bg-danger' : 'bg-warning'}`}
                 style={{ width: `${Math.min((dailyLossUsed / settings.dailyLossLimit) * 100, 100)}%` }} />
             </div>
             <div className="pt-2 border-t border-border">
@@ -116,20 +116,20 @@ export default function RiskOverview() {
           <div className="p-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Weekly P/L (est.)</span>
-              <span className={`font-mono font-bold ${weeklyPL >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+              <span className={`font-mono font-bold ${weeklyPL >= 0 ? 'text-success' : 'text-danger'}`}>
                 {weeklyPL >= 0 ? '+' : ''}${weeklyPL.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Weekly Loss Limit</span>
-              <span className="font-mono font-bold text-chart-5">-${weeklyLossLimit}</span>
+              <span className="font-mono font-bold text-danger">-${weeklyLossLimit}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Loss Used</span>
               <span className="font-mono font-bold">{weeklyLossUsed > 0 ? `${((weeklyLossUsed / weeklyLossLimit) * 100).toFixed(1)}%` : '0%'}</span>
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${weeklyLossUsed / weeklyLossLimit > 0.8 ? 'bg-chart-5' : 'bg-chart-4'}`}
+              <div className={`h-full rounded-full ${weeklyLossUsed / weeklyLossLimit > 0.8 ? 'bg-danger' : 'bg-warning'}`}
                 style={{ width: `${Math.min((weeklyLossUsed / weeklyLossLimit) * 100, 100)}%` }} />
             </div>
             <div className="pt-2 border-t border-border">

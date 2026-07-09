@@ -9,7 +9,7 @@ function MetricRow({ label, value, isPL, isPercent }) {
     if (isPL) {
       const positive = value > 0;
       const zero = value === 0;
-      const color = zero ? 'text-muted-foreground' : positive ? 'text-chart-1' : 'text-chart-5';
+      const color = zero ? 'text-muted-foreground' : positive ? 'text-success' : 'text-danger';
       return <span className={`font-mono font-semibold ${color}`}>{zero ? '$0.00' : `${positive ? '+' : '-'}$${Math.abs(value).toFixed(2)}`}</span>;
     }
     if (isPercent) return <span className="font-mono font-semibold">{value.toFixed(2)}%</span>;
@@ -74,11 +74,11 @@ export default function AuditPanel({ audit }) {
       </div>
 
       {!recon.valid && (
-        <div className="mx-4 mb-4 p-3 rounded-lg border border-chart-5/30 bg-chart-5/5">
-          <div className="text-xs font-bold text-chart-5 mb-2">⚠ Metric Reconciliation Errors</div>
+        <div className="mx-4 mb-4 p-3 rounded-lg border border-danger/30 bg-danger/5">
+          <div className="text-xs font-bold text-danger mb-2">⚠ Metric Reconciliation Errors</div>
           <ul className="space-y-1">
             {recon.errors.map((err, i) => (
-              <li key={i} className="text-xs text-chart-5/80">• {err}</li>
+              <li key={i} className="text-xs text-danger/80">• {err}</li>
             ))}
           </ul>
         </div>

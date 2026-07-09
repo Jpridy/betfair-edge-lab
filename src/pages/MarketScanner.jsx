@@ -270,33 +270,33 @@ export default function MarketScanner() {
                   <TableCell className="text-xs max-w-[200px] truncate">{m.marketName}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{m.numberOfRunners}</TableCell>
                   <TableCell className="text-xs text-right font-mono text-muted-foreground">{m.numberOfActiveRunners || m.numberOfRunners}</TableCell>
-                  <TableCell className="text-xs text-right font-mono text-chart-3">{rd.bestBack?.toFixed(2) || '—'}</TableCell>
-                  <TableCell className="text-xs text-right font-mono text-chart-5">{rd.bestLay?.toFixed(2) || '—'}</TableCell>
-                  <TableCell className="text-xs text-right font-mono text-chart-2">{rd.favourite?.bestBackPrice?.toFixed(2) || '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-info">{rd.bestBack?.toFixed(2) || '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-danger">{rd.bestLay?.toFixed(2) || '—'}</TableCell>
+                  <TableCell className="text-xs text-right font-mono text-primary">{rd.favourite?.bestBackPrice?.toFixed(2) || '—'}</TableCell>
                   <TableCell className="text-xs text-right font-mono">{rd.spreadTicks || 0}</TableCell>
                   <TableCell className="text-xs text-right font-mono">${(m.totalMatched / 1000).toFixed(1)}k</TableCell>
                   <TableCell className="text-xs text-right font-mono">
-                    {m.marketBaseRate != null ? `${(m.marketBaseRate * 100).toFixed(1)}%` : <span className="text-chart-5">Missing</span>}
+                    {m.marketBaseRate != null ? `${(m.marketBaseRate * 100).toFixed(1)}%` : <span className="text-danger">Missing</span>}
                   </TableCell>
                   <TableCell className="text-xs text-right font-mono">{m.betDelay || 0}s</TableCell>
                   <TableCell className="text-xs">{m.bspMarket ? <StatusBadge status="ok">BSP</StatusBadge> : <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell><StatusBadge status={m.status === 'OPEN' ? 'ok' : m.status === 'SUSPENDED' ? 'warning' : 'danger'}>{m.status}</StatusBadge></TableCell>
-                  <TableCell className="text-xs">{m.inPlay ? <span className="text-chart-5 font-bold">YES</span> : <span className="text-muted-foreground">No</span>}</TableCell>
+                  <TableCell className="text-xs">{m.inPlay ? <span className="text-danger font-bold">YES</span> : <span className="text-muted-foreground">No</span>}</TableCell>
                   <TableCell className="text-xs text-right font-mono whitespace-nowrap">{getTimeToStart(m.startTime)}</TableCell>
                   <TableCell className="text-xs">
                     <div className="flex flex-wrap gap-1">
                       {eligible.length === 0 ? <span className="text-muted-foreground">—</span> : eligible.map(s => (
-                        <span key={s} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-chart-2/10 text-chart-2 border border-chart-2/20">{s}</span>
+                        <span key={s} className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-primary/10 text-primary border border-primary/20">{s}</span>
                       ))}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
                     {warnings.length === 0 ? (
-                      <span className="text-chart-1">✓</span>
+                      <span className="text-success">✓</span>
                     ) : (
                       <div className="flex flex-col gap-0.5">
                         {warnings.map((w, i) => (
-                          <span key={i} className="text-[9px] text-chart-4 flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />{w}</span>
+                          <span key={i} className="text-[9px] text-warning flex items-center gap-0.5"><AlertTriangle className="h-2.5 w-2.5" />{w}</span>
                         ))}
                       </div>
                     )}
@@ -306,7 +306,7 @@ export default function MarketScanner() {
                       {m.watched ? <Eye className="h-3.5 w-3.5 text-primary" /> : <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
                     </Button>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => navigate(`/runner?market=${m.id}`)}>
-                      <ExternalLink className="h-3.5 w-3.5 text-chart-3" />
+                      <ExternalLink className="h-3.5 w-3.5 text-info" />
                     </Button>
                   </TableCell>
                 </TableRow>

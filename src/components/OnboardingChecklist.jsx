@@ -54,12 +54,12 @@ export default function OnboardingChecklist() {
     return (
       <div className="bg-card border border-border rounded-lg p-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-chart-1" />
+          <CheckCircle2 className="h-4 w-4 text-success" />
           <span className="text-xs font-medium text-muted-foreground">
             {allDone ? 'Setup complete — your bot is ready to trade.' : `Setup progress: ${completed} of ${steps.length} steps done`}
           </span>
         </div>
-        <button onClick={() => setCollapsed(!collapsed)} className="text-xs text-chart-3 hover:underline flex items-center gap-1">
+        <button onClick={() => setCollapsed(!collapsed)} className="text-xs text-info hover:underline flex items-center gap-1">
           {collapsed ? 'Show' : 'Hide'} <ChevronDown className={cn('h-3 w-3 transition-transform', !collapsed && 'rotate-180')} />
         </button>
       </div>
@@ -79,18 +79,18 @@ export default function OnboardingChecklist() {
       </div>
       <div className="p-4">
         <div className="w-full h-1.5 bg-muted rounded-full mb-4 overflow-hidden">
-          <div className="h-full bg-chart-1 rounded-full transition-all" style={{ width: `${(completed / steps.length) * 100}%` }} />
+          <div className="h-full bg-success rounded-full transition-all" style={{ width: `${(completed / steps.length) * 100}%` }} />
         </div>
         <div className="space-y-2">
           {steps.map((step, i) => (
-            <div key={i} className={cn('flex items-center gap-3 p-2 rounded-md', step.done ? 'bg-chart-1/5' : 'bg-background/50')}>
-              {step.done ? <CheckCircle2 className="h-4 w-4 text-chart-1 shrink-0" /> : <Circle className="h-4 w-4 text-muted-foreground shrink-0" />}
+            <div key={i} className={cn('flex items-center gap-3 p-2 rounded-md', step.done ? 'bg-success/5' : 'bg-background/50')}>
+              {step.done ? <CheckCircle2 className="h-4 w-4 text-success shrink-0" /> : <Circle className="h-4 w-4 text-muted-foreground shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className={cn('text-xs font-medium', step.done ? 'text-muted-foreground line-through' : 'text-foreground')}>{step.label}</div>
                 <div className="text-[10px] text-muted-foreground">{step.detail}</div>
               </div>
               {!step.done && step.link && (
-                <Link to={step.link} className="text-[10px] text-chart-3 hover:underline font-medium shrink-0">Go →</Link>
+                <Link to={step.link} className="text-[10px] text-info hover:underline font-medium shrink-0">Go →</Link>
               )}
             </div>
           ))}

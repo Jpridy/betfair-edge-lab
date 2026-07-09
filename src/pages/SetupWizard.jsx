@@ -235,9 +235,9 @@ export default function SetupWizard() {
       </div>
 
       <div className="flex items-center gap-4 text-xs">
-        <span className="text-chart-1 font-bold">{passedCount} passed</span>
-        <span className="text-chart-4 font-bold">{warningCount} warnings</span>
-        <span className="text-chart-5 font-bold">{failedCount} failed</span>
+        <span className="text-success font-bold">{passedCount} passed</span>
+        <span className="text-warning font-bold">{warningCount} warnings</span>
+        <span className="text-danger font-bold">{failedCount} failed</span>
         <span className="text-muted-foreground">{STEPS.length - passedCount - warningCount - failedCount} not tested</span>
       </div>
 
@@ -254,9 +254,9 @@ export default function SetupWizard() {
                   {result && (
                     <div className={cn(
                       'text-xs mt-0.5',
-                      result.status === 'passed' && 'text-chart-1',
-                      result.status === 'failed' && 'text-chart-5',
-                      result.status === 'warning' && 'text-chart-4',
+                      result.status === 'passed' && 'text-success',
+                      result.status === 'failed' && 'text-danger',
+                      result.status === 'warning' && 'text-warning',
                       result.status === 'skipped' && 'text-muted-foreground'
                     )}>
                       {result.message}
@@ -284,7 +284,7 @@ export default function SetupWizard() {
 
       <Panel>
         <div className="p-4 flex items-center gap-3">
-          <ShieldCheck className="h-5 w-5 text-chart-1 shrink-0" />
+          <ShieldCheck className="h-5 w-5 text-success shrink-0" />
           <div className="text-xs">
             <div className="font-bold text-foreground">Paper Mode Only</div>
             <div className="text-muted-foreground">This app is paper-only. No real bets are placed. All orders are simulated. Live betting is disabled and locked.</div>

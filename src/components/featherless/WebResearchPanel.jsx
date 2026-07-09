@@ -5,8 +5,8 @@ import { Globe, ExternalLink, RefreshCw } from 'lucide-react';
 export default function WebResearchPanel({ research, loading }) {
   if (loading) {
     return (
-      <div className="rounded-lg border border-chart-3/30 bg-chart-3/5 p-4">
-        <div className="flex items-center gap-2 text-xs font-bold text-chart-3 mb-2">
+      <div className="rounded-lg border border-info/30 bg-info/5 p-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-info mb-2">
           <RefreshCw className="h-4 w-4 animate-spin" />
           Searching the web for race-day information...
         </div>
@@ -22,9 +22,9 @@ export default function WebResearchPanel({ research, loading }) {
   const sources = research.source_links || [];
 
   return (
-    <div className="rounded-lg border border-chart-3/30 bg-chart-3/5 p-4 space-y-3">
+    <div className="rounded-lg border border-info/30 bg-info/5 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-bold text-chart-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-info">
           <Globe className="h-4 w-4" />
           Web Research Summary
         </div>
@@ -47,7 +47,7 @@ export default function WebResearchPanel({ research, loading }) {
           <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Scratchings</div>
           <div className="flex flex-wrap gap-1">
             {research.scratchings.map((s, i) => (
-              <span key={i} className="text-xs bg-chart-5/10 text-chart-5 border border-chart-5/30 rounded px-1.5 py-0.5">{s}</span>
+              <span key={i} className="text-xs bg-danger/10 text-danger border border-danger/30 rounded px-1.5 py-0.5">{s}</span>
             ))}
           </div>
         </div>
@@ -103,7 +103,7 @@ export default function WebResearchPanel({ research, loading }) {
           <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Risk Warnings</div>
           <div className="space-y-0.5">
             {research.risk_warnings.map((r, i) => (
-              <div key={i} className="text-xs text-chart-4">⚠ {r}</div>
+              <div key={i} className="text-xs text-warning">⚠ {r}</div>
             ))}
           </div>
         </div>
@@ -114,7 +114,7 @@ export default function WebResearchPanel({ research, loading }) {
           <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Source Links</div>
           <div className="space-y-0.5">
             {sources.slice(0, 10).map((s, i) => (
-              <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="text-xs text-chart-3 hover:underline flex items-center gap-1">
+              <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="text-xs text-info hover:underline flex items-center gap-1">
                 <ExternalLink className="h-3 w-3 shrink-0" /> {s.title || s.url}
               </a>
             ))}

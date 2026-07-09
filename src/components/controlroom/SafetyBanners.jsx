@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, ShieldOff, Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2 } from 'lucide-react';
+import { ShieldOff, Globe, Brain, WifiOff, HelpCircle, AlertTriangle, DollarSign, Clock, Settings2 } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { cn } from '@/lib/utils';
 import { buildSettingsWiringCheck } from '@/lib/wiringAudit';
@@ -25,9 +25,7 @@ export default function SafetyBanners() {
 
   const banners = [];
 
-  banners.push(<Banner key="paper" icon={Shield} text="PAPER MODE ACTIVE" tone="success" />);
-  banners.push(<Banner key="live-off" icon={ShieldOff} text="LIVE BETTING DISABLED" tone="info" />);
-
+  // Only show critical/actionable warnings here — paper mode and live-disabled are in TopBar/StatusStrip
   if (!apiConnected || betfairConnection.dataFresh === false) {
     banners.push(<Banner key="stale" icon={WifiOff} text="PRICE FEED STALE — Connect Betfair for live data" tone="warning" />);
   }
@@ -41,13 +39,9 @@ export default function SafetyBanners() {
     if (searchDiag && searchDiag.errors > 0) {
       banners.push(<Banner key="openai-err" icon={Globe} text={`OPENAI SEARCH ERRORS (${searchDiag.errors} this cycle)`} tone="danger" />);
     }
-  } else if (!featherlessSettings?.externalSearchEnabled) {
-    banners.push(<Banner key="openai-off" icon={Globe} text="OPENAI SEARCH NOT ENABLED" tone="warning" />);
   }
 
-  if (!featherlessSettings?.enabled) {
-    banners.push(<Banner key="ai-off" icon={Brain} text="FEATHERLESS AI NOT ENABLED" tone="warning" />);
-  } else {
+  if (featherlessSettings?.enabled) {
     const aiError = lastExchangeDiagnostics?.aiStatusLog?.find(s => s.status === 'ai_error');
     if (aiError) {
       banners.push(<Banner key="ai-err" icon={Brain} text={`FEATHERLESS AI ERROR: ${aiError.reason || 'Unknown'}`} tone="danger" />);
@@ -74,6 +68,8 @@ export default function SafetyBanners() {
   if (settings.riskLimitsDisabled) {
     banners.push(<Banner key="risk-off" icon={AlertTriangle} text="RISK LIMITS DISABLED — Testing mode active" tone="danger" />);
   }
+
+  if (banners.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2">

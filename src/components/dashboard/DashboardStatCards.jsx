@@ -61,7 +61,7 @@ export default function DashboardStatCards() {
         value={`${totalNetProfit >= 0 ? '+' : ''}$${Math.abs(totalNetProfit).toFixed(2)}`}
         sublabel="All strategies"
         icon={DollarSign}
-        color={totalNetProfit >= 0 ? 'text-chart-1' : 'text-chart-5'}
+        color={totalNetProfit >= 0 ? 'text-success' : 'text-danger'}
       />
       <StatCard
         to="/performance-analytics"
@@ -69,7 +69,7 @@ export default function DashboardStatCards() {
         value={`${totalROI >= 0 ? '+' : ''}${totalROI.toFixed(2)}%`}
         sublabel="On total stake"
         icon={Percent}
-        color={totalROI >= 0 ? 'text-chart-1' : 'text-chart-5'}
+        color={totalROI >= 0 ? 'text-success' : 'text-danger'}
       />
       <StatCard
         to="/settings"
@@ -85,7 +85,7 @@ export default function DashboardStatCards() {
         value={`${positive ? '+' : '-'}$${Math.abs(dailyPL).toFixed(2)}`}
         sublabel="Today's result"
         icon={positive ? TrendingUp : TrendingDown}
-        color={positive ? 'text-chart-1' : 'text-chart-5'}
+        color={positive ? 'text-success' : 'text-danger'}
       />
       <StatCard
         to="/performance-analytics"
@@ -93,7 +93,7 @@ export default function DashboardStatCards() {
         value={`${weeklyPL >= 0 ? '+' : '-'}$${Math.abs(weeklyPL).toFixed(2)}`}
         sublabel="Last 7 days"
         icon={weeklyPL >= 0 ? TrendingUp : TrendingDown}
-        color={weeklyPL >= 0 ? 'text-chart-1' : 'text-chart-5'}
+        color={weeklyPL >= 0 ? 'text-success' : 'text-danger'}
       />
       <StatCard
         to="/settings"
@@ -101,7 +101,7 @@ export default function DashboardStatCards() {
         value={`$${Math.abs(drawdown).toFixed(2)}`}
         sublabel={currentBankroll > 0 ? `${(Math.abs(drawdown) / currentBankroll * 100).toFixed(2)}% of bank` : '—'}
         icon={TrendingDown}
-        color="text-chart-5"
+        color="text-danger"
       />
       <StatCard
         to="/settings"
@@ -109,7 +109,7 @@ export default function DashboardStatCards() {
         value={`$${openExposure.toFixed(2)}`}
         sublabel={currentBankroll > 0 ? `${(openExposure / currentBankroll * 100).toFixed(1)}% of bank` : '—'}
         icon={ShieldAlert}
-        color="text-chart-4"
+        color="text-warning"
       />
       <StatCard
         to="/settings"
@@ -117,7 +117,7 @@ export default function DashboardStatCards() {
         value={activePaper}
         sublabel="Strategies testing"
         icon={Target}
-        color="text-chart-4"
+        color="text-warning"
       />
       <StatCard
         to="/settings"
@@ -125,7 +125,7 @@ export default function DashboardStatCards() {
         value={liveApproved}
         sublabel="Research Passed"
         icon={CheckCircle2}
-        color="text-chart-1"
+        color="text-success"
       />
       <StatCard
         to="/settings"
@@ -133,7 +133,7 @@ export default function DashboardStatCards() {
         value={locked}
         sublabel="Failing / archived"
         icon={Lock}
-        color="text-chart-5"
+        color="text-danger"
       />
       <StatCard
         to="/settings"
@@ -141,7 +141,7 @@ export default function DashboardStatCards() {
         value={warnings}
         sublabel="Requires attention"
         icon={AlertTriangle}
-        color="text-chart-4"
+        color="text-warning"
       />
     </div>
   );

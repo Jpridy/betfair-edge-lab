@@ -6,10 +6,10 @@ import { cn } from '@/lib/utils';
 
 const STEP_CONFIG = {
   waiting: { icon: Clock, color: 'text-muted-foreground', bg: 'bg-muted/20', border: 'border-border', label: 'Waiting' },
-  running: { icon: Loader2, color: 'text-chart-4', bg: 'bg-chart-4/10', border: 'border-chart-4/30', label: 'Running' },
-  passed: { icon: CheckCircle2, color: 'text-chart-1', bg: 'bg-chart-1/10', border: 'border-chart-1/30', label: 'Passed' },
-  blocked: { icon: XCircle, color: 'text-chart-5', bg: 'bg-chart-5/10', border: 'border-chart-5/30', label: 'Blocked' },
-  failed: { icon: AlertTriangle, color: 'text-chart-5', bg: 'bg-chart-5/10', border: 'border-chart-5/30', label: 'Failed' },
+  running: { icon: Loader2, color: 'text-warning', bg: 'bg-warning/10', border: 'border-warning/30', label: 'Running' },
+  passed: { icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10', border: 'border-success/30', label: 'Passed' },
+  blocked: { icon: XCircle, color: 'text-danger', bg: 'bg-danger/10', border: 'border-danger/30', label: 'Blocked' },
+  failed: { icon: AlertTriangle, color: 'text-danger', bg: 'bg-danger/10', border: 'border-danger/30', label: 'Failed' },
 };
 
 export default function BotLoopDisplay() {
@@ -38,7 +38,7 @@ export default function BotLoopDisplay() {
                       <span className="text-xs font-medium text-foreground">{step.name}</span>
                     </div>
                     {step.reason && (step.status === 'blocked' || step.status === 'failed') && (
-                      <div className="text-[11px] text-chart-5 mt-0.5 font-medium">
+                      <div className="text-[11px] text-danger mt-0.5 font-medium">
                         {step.reason}
                       </div>
                     )}

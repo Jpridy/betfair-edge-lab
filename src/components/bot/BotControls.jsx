@@ -5,10 +5,10 @@ import { Play, Pause, Square, AlertOctagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const colorMap = {
-  'chart-1': { bg: 'bg-chart-1/10', text: 'text-chart-1', border: 'border-chart-1/20' },
-  'chart-4': { bg: 'bg-chart-4/10', text: 'text-chart-4', border: 'border-chart-4/20' },
+  'success': { bg: 'bg-success/10', text: 'text-success', border: 'border-success/20' },
+  'warning': { bg: 'bg-warning/10', text: 'text-warning', border: 'border-warning/20' },
   'foreground': { bg: '', text: 'text-foreground', border: 'border-border' },
-  'chart-5': { bg: 'bg-chart-5/10', text: 'text-chart-5', border: 'border-chart-5/20' },
+  'danger': { bg: 'bg-danger/10', text: 'text-danger', border: 'border-danger/20' },
 };
 
 export default function BotControls() {
@@ -22,7 +22,7 @@ export default function BotControls() {
       icon: Play,
       onClick: startBot,
       disabled: emergencyStop || (botState.running && !botState.paused),
-      color: 'chart-1',
+      color: 'success',
     },
     {
       label: 'Pause Paper Bot',
@@ -30,7 +30,7 @@ export default function BotControls() {
       icon: Pause,
       onClick: pauseBot,
       disabled: emergencyStop || !botState.running || botState.paused,
-      color: 'chart-4',
+      color: 'warning',
     },
     {
       label: 'Stop Paper Bot',
@@ -46,7 +46,7 @@ export default function BotControls() {
       icon: AlertOctagon,
       onClick: triggerEmergencyStop,
       disabled: emergencyStop,
-      color: 'chart-5',
+      color: 'danger',
     },
   ];
 
@@ -79,9 +79,9 @@ export default function BotControls() {
       <div className="px-4 pb-4">
         <div className={cn(
           'text-xs font-medium px-3 py-2 rounded-md border',
-          emergencyStop ? 'bg-chart-5/10 border-chart-5/30 text-chart-5'
-          : isRunning ? 'bg-chart-1/10 border-chart-1/30 text-chart-1'
-          : botState.paused ? 'bg-chart-4/10 border-chart-4/30 text-chart-4'
+          emergencyStop ? 'bg-danger/10 border-danger/30 text-danger'
+          : isRunning ? 'bg-success/10 border-success/30 text-success'
+          : botState.paused ? 'bg-warning/10 border-warning/30 text-warning'
           : 'bg-muted border-border text-muted-foreground'
         )}>
           {emergencyStop && '⚠ Emergency stop is active. All bot activity halted. Clear the emergency stop to resume.'}

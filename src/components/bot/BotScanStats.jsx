@@ -26,10 +26,10 @@ export default function BotScanStats() {
     .map(l => l.details);
 
   const stats = [
-    { label: 'Markets Scanned Today', value: marketsScannedToday, icon: Radar, color: 'text-chart-3' },
-    { label: 'Signals Generated Today', value: signalsToday, icon: Zap, color: 'text-chart-4' },
-    { label: 'Orders Created Today', value: ordersToday, icon: FileText, color: 'text-chart-1' },
-    { label: 'Rejected Signals Today', value: rejectedToday, icon: Ban, color: 'text-chart-5' },
+    { label: 'Markets Scanned Today', value: marketsScannedToday, icon: Radar, color: 'text-info' },
+    { label: 'Signals Generated Today', value: signalsToday, icon: Zap, color: 'text-warning' },
+    { label: 'Orders Created Today', value: ordersToday, icon: FileText, color: 'text-success' },
+    { label: 'Rejected Signals Today', value: rejectedToday, icon: Ban, color: 'text-danger' },
   ];
 
   return (
@@ -70,7 +70,7 @@ export default function BotScanStats() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bot P/L Today</span>
-              <span className={`font-mono text-xs font-bold ${botState.botPLToday >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+              <span className={`font-mono text-xs font-bold ${botState.botPLToday >= 0 ? 'text-success' : 'text-danger'}`}>
                 {botState.botPLToday >= 0 ? '+' : ''}${botState.botPLToday.toFixed(2)}
               </span>
             </div>
@@ -85,7 +85,7 @@ export default function BotScanStats() {
               <div className="space-y-2">
                 {rejectionReasons.map((r, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
-                    <Ban className="h-3 w-3 text-chart-5 shrink-0 mt-0.5" />
+                    <Ban className="h-3 w-3 text-danger shrink-0 mt-0.5" />
                     <span className="text-muted-foreground">{r}</span>
                   </div>
                 ))}

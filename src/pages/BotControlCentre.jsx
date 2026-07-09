@@ -15,7 +15,7 @@ import SettlementPanel from '@/components/controlroom/SettlementPanel';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
 import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
-import { ShieldCheck, ShieldOff, FlaskConical } from 'lucide-react';
+import { FlaskConical } from 'lucide-react';
 
 export default function BotControlCentre() {
   const { dataLoading, settings, botSettings, featherlessSettings, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
@@ -41,39 +41,19 @@ export default function BotControlCentre() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Safety banners */}
+      {/* Critical safety banners only */}
       <SafetyBanners />
 
-      {/* Paper Proof Mode banner */}
+      {/* Paper Proof Mode pill */}
       {proofActive && (
-        <div className="bg-warning/10 border border-warning/25 rounded-lg px-4 py-2.5 flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-warning/15 text-warning px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border border-warning/30 tracking-label">
-            <FlaskConical className="h-3 w-3" />
-            PAPER PROOF MODE
-          </div>
-          <span className="text-[12px] text-warning/90 font-body">
-            Filters relaxed to prove paper order creation and settlement. Not suitable for live betting.
-          </span>
+        <div className="inline-flex items-center gap-2 bg-warning/10 text-warning px-3 py-1.5 rounded-md text-[11px] font-body font-semibold border border-warning/25 tracking-label">
+          <FlaskConical className="h-3.5 w-3.5" />
+          PAPER PROOF MODE — filters relaxed for pipeline testing
         </div>
       )}
 
-      {/* Mode badges */}
-      <div className="flex items-center gap-2">
-        <div className="inline-flex items-center gap-1.5 bg-success/10 text-success px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border border-success/25 tracking-label">
-          <ShieldCheck className="h-3 w-3" />
-          PAPER MODE
-        </div>
-        <div className="inline-flex items-center gap-1.5 bg-muted text-muted-foreground px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border border-border tracking-label">
-          <ShieldOff className="h-3 w-3" />
-          LIVE BETTING DISABLED
-        </div>
-      </div>
-
       {/* Sticky control bar */}
       <ControlBar />
-
-      {/* Paper Proof Panel */}
-      {proofActive && <PaperProofPanel />}
 
       {/* Summary metrics */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

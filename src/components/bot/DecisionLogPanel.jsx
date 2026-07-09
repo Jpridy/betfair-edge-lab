@@ -534,7 +534,7 @@ export default function DecisionLogPanel() {
       }
     >
       {debugScanMode && (
-        <div className="px-4 py-2 bg-chart-4/10 border-b border-chart-4/30 text-[10px] text-chart-4 font-medium">
+        <div className="px-4 py-2 bg-warning/10 border-b border-warning/30 text-[10px] text-warning font-medium">
           DEBUG SCAN MODE ACTIVE — Time window ignored, NO orders will be placed. Diagnostic opportunities only.
         </div>
       )}
@@ -664,7 +664,7 @@ export default function DecisionLogPanel() {
                       {bc.runnerName || '—'}
                     </TableCell>
                     <TableCell className="text-xs px-2 py-1.5 text-right font-mono">{bc.odds != null ? bc.odds.toFixed(2) : '—'}</TableCell>
-                    <TableCell className={`text-xs px-2 py-1.5 text-right font-mono ${bc.ev > 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+                    <TableCell className={`text-xs px-2 py-1.5 text-right font-mono ${bc.ev > 0 ? 'text-success' : 'text-danger'}`}>
                       {bc.ev != null ? `$${bc.ev.toFixed(2)}` : '—'}
                     </TableCell>
                     <TableCell className="text-[10px] px-2 py-1.5 text-right font-mono text-muted-foreground">{aiLabel}</TableCell>

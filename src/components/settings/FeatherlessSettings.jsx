@@ -92,7 +92,7 @@ export default function FeatherlessSettings({ settings, onSave }) {
           </Button>
         </div>
         {testResult && (
-          <div className={`flex items-center gap-2 text-xs p-2 rounded ${testResult.connected ? 'bg-chart-1/10 text-chart-1' : 'bg-chart-5/10 text-chart-5'}`}>
+          <div className={`flex items-center gap-2 text-xs p-2 rounded ${testResult.connected ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
             {testResult.connected ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
             {testResult.connected ? 'Connection successful — API key valid' : `Connection failed: ${testResult.error || 'Unknown error'}`}
           </div>
@@ -186,8 +186,8 @@ export default function FeatherlessSettings({ settings, onSave }) {
                 }}
                 className={`text-xs font-medium rounded-lg p-2 border transition-all ${
                   local.targetPaperBetsPerDay === opt.key
-                    ? 'bg-chart-3/15 border-chart-3 text-chart-3'
-                    : 'bg-card border-border text-muted-foreground hover:border-chart-3/30'
+                    ? 'bg-info/15 border-info text-info'
+                    : 'bg-card border-border text-muted-foreground hover:border-info/30'
                 }`}
               >
                 <div className="font-bold">{opt.label}</div>
@@ -195,7 +195,7 @@ export default function FeatherlessSettings({ settings, onSave }) {
               </button>
             ))}
           </div>
-          <div className="text-[10px] text-chart-4 bg-chart-4/5 rounded p-1.5">
+          <div className="text-[10px] text-warning bg-warning/5 rounded p-1.5">
             Higher frequency is for data collection only.
           </div>
         </div>

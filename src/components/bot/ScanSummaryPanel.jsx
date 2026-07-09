@@ -6,14 +6,14 @@ export default function ScanSummaryPanel({ scanSummary }) {
   if (!scanSummary) return null;
 
   const steps = [
-    { label: 'Markets Scanned', value: scanSummary.marketsScanned, icon: Radar, color: 'text-chart-3' },
-    { label: 'Runners Assessed', value: scanSummary.runnersAssessed, icon: Users, color: 'text-chart-3' },
-    { label: 'Passed Liquidity', value: scanSummary.candidatesPassedLiquidity, icon: Filter, color: 'text-chart-4' },
-    { label: 'Passed Odds', value: scanSummary.candidatesPassedOddsRange, icon: Filter, color: 'text-chart-4' },
-    { label: 'Passed Edge', value: scanSummary.candidatesPassedEdge, icon: TrendingUp, color: 'text-chart-2' },
-    { label: 'Passed ROI', value: scanSummary.candidatesPassedROI, icon: TrendingUp, color: 'text-chart-2' },
-    { label: 'Passed Confidence', value: scanSummary.candidatesPassedConfidence, icon: CheckCircle2, color: 'text-chart-1' },
-    { label: 'Paper Bets', value: scanSummary.paperBetsCreated, icon: FileText, color: 'text-chart-1' },
+    { label: 'Markets Scanned', value: scanSummary.marketsScanned, icon: Radar, color: 'text-info' },
+    { label: 'Runners Assessed', value: scanSummary.runnersAssessed, icon: Users, color: 'text-info' },
+    { label: 'Passed Liquidity', value: scanSummary.candidatesPassedLiquidity, icon: Filter, color: 'text-warning' },
+    { label: 'Passed Odds', value: scanSummary.candidatesPassedOddsRange, icon: Filter, color: 'text-warning' },
+    { label: 'Passed Edge', value: scanSummary.candidatesPassedEdge, icon: TrendingUp, color: 'text-primary' },
+    { label: 'Passed ROI', value: scanSummary.candidatesPassedROI, icon: TrendingUp, color: 'text-primary' },
+    { label: 'Passed Confidence', value: scanSummary.candidatesPassedConfidence, icon: CheckCircle2, color: 'text-success' },
+    { label: 'Paper Bets', value: scanSummary.paperBetsCreated, icon: FileText, color: 'text-success' },
   ];
 
   return (
@@ -35,7 +35,7 @@ export default function ScanSummaryPanel({ scanSummary }) {
         </div>
 
         {scanSummary.noBetReason && scanSummary.paperBetsCreated === 0 && (
-          <div className="mt-3 text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-2">
+          <div className="mt-3 text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg p-2">
             {scanSummary.noBetReason}
           </div>
         )}

@@ -19,10 +19,10 @@ export default function LiveBotLockPanel() {
   return (
     <Panel title="Live Bot Lock Panel">
       <div className="p-4 space-y-4">
-        <div className="flex items-center gap-3 bg-chart-5/10 border border-chart-5/30 rounded-lg p-3">
-          <Lock className="h-6 w-6 text-chart-5 shrink-0" />
+        <div className="flex items-center gap-3 bg-danger/10 border border-danger/30 rounded-lg p-3">
+          <Lock className="h-6 w-6 text-danger shrink-0" />
           <div>
-            <div className="text-sm font-bold text-chart-5">Live Bot Mode: LOCKED</div>
+            <div className="text-sm font-bold text-danger">Live Bot Mode: LOCKED</div>
             <div className="text-xs text-muted-foreground">Real betting is disabled. This mode will be enabled in a future version only.</div>
           </div>
         </div>
@@ -32,7 +32,7 @@ export default function LiveBotLockPanel() {
           {requirements.map(req => (
             <div key={req.label} className="flex items-center justify-between text-xs py-1.5 border-b border-border/50">
               <div className="flex items-center gap-2">
-                {req.met ? <CheckCircle2 className="h-4 w-4 text-chart-1" /> : <XCircle className="h-4 w-4 text-chart-5" />}
+                {req.met ? <CheckCircle2 className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-danger" />}
                 <span className="text-foreground">{req.label}</span>
               </div>
               <span className="text-muted-foreground text-[10px]">{req.detail}</span>
@@ -40,10 +40,10 @@ export default function LiveBotLockPanel() {
           ))}
         </div>
 
-        <div className="bg-chart-4/10 border border-chart-4/30 rounded-lg p-3">
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-chart-4 shrink-0" />
-            <span className="text-xs font-bold text-chart-4">Live trading will NOT be enabled in this version.</span>
+            <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
+            <span className="text-xs font-bold text-warning">Live trading will NOT be enabled in this version.</span>
           </div>
           <div className="text-xs text-muted-foreground mt-1.5">
             Live mode requires all safety settings complete, all risk checks passing, fresh data, API health OK,

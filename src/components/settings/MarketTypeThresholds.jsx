@@ -39,8 +39,8 @@ export default function MarketTypeThresholds() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-chart-3/10 border border-chart-3/30 rounded-lg p-3 text-xs text-muted-foreground">
-        <span className="text-chart-3 font-medium">Market-Type Thresholds:</span> These thresholds are used by the exchange engine to filter opportunities for each market type. The engine calls <span className="font-mono">resolveMarketTypeThresholds()</span> to get the active values for WIN, PLACE, and H2H markets.
+      <div className="bg-info/10 border border-info/30 rounded-lg p-3 text-xs text-muted-foreground">
+        <span className="text-info font-medium">Market-Type Thresholds:</span> These thresholds are used by the exchange engine to filter opportunities for each market type. The engine calls <span className="font-mono">resolveMarketTypeThresholds()</span> to get the active values for WIN, PLACE, and H2H markets.
       </div>
 
       {MARKET_TYPES.map(mt => (

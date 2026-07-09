@@ -40,10 +40,10 @@ export default function OpenAISearchDebugPanel() {
 
   const statusIcon = (status) => {
     switch (status) {
-      case 'success': return <CheckCircle2 className="h-3.5 w-3.5 text-chart-1" />;
-      case 'timeout': return <AlertTriangle className="h-3.5 w-3.5 text-chart-4" />;
-      case 'error': return <XCircle className="h-3.5 w-3.5 text-chart-5" />;
-      case 'no_results': return <AlertTriangle className="h-3.5 w-3.5 text-chart-4" />;
+      case 'success': return <CheckCircle2 className="h-3.5 w-3.5 text-success" />;
+      case 'timeout': return <AlertTriangle className="h-3.5 w-3.5 text-warning" />;
+      case 'error': return <XCircle className="h-3.5 w-3.5 text-danger" />;
+      case 'no_results': return <AlertTriangle className="h-3.5 w-3.5 text-warning" />;
       default: return <XCircle className="h-3.5 w-3.5 text-muted-foreground" />;
     }
   };
@@ -59,11 +59,11 @@ export default function OpenAISearchDebugPanel() {
       action={
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            {openaiConnected ? <CheckCircle2 className="h-3.5 w-3.5 text-chart-1" /> : <XCircle className="h-3.5 w-3.5 text-chart-5" />}
+            {openaiConnected ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <XCircle className="h-3.5 w-3.5 text-danger" />}
             <span className="text-[10px] font-medium text-muted-foreground">API {openaiConnected ? 'Connected' : 'Disabled'}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            {webSearchEnabled ? <Globe className="h-3.5 w-3.5 text-chart-3" /> : <Globe className="h-3.5 w-3.5 text-muted-foreground" />}
+            {webSearchEnabled ? <Globe className="h-3.5 w-3.5 text-info" /> : <Globe className="h-3.5 w-3.5 text-muted-foreground" />}
             <span className="text-[10px] font-medium text-muted-foreground">Web Search {webSearchEnabled ? 'On' : 'Off'}</span>
           </div>
         </div>
@@ -73,13 +73,13 @@ export default function OpenAISearchDebugPanel() {
       <div className="grid grid-cols-4 md:grid-cols-8 gap-px bg-border">
         {[
           { label: 'Calls', value: callsThisCycle, color: 'text-foreground' },
-          { label: 'Cache Hits', value: cacheHits, color: 'text-chart-3' },
-          { label: 'Cache Miss', value: cacheMisses, color: 'text-chart-4' },
-          { label: 'Timeouts', value: timeouts, color: 'text-chart-4' },
-          { label: 'Errors', value: errors, color: 'text-chart-5' },
-          { label: 'Sources', value: totalSourcesFound, color: 'text-chart-1' },
+          { label: 'Cache Hits', value: cacheHits, color: 'text-info' },
+          { label: 'Cache Miss', value: cacheMisses, color: 'text-warning' },
+          { label: 'Timeouts', value: timeouts, color: 'text-warning' },
+          { label: 'Errors', value: errors, color: 'text-danger' },
+          { label: 'Sources', value: totalSourcesFound, color: 'text-success' },
           { label: 'Runners', value: runnersAffected, color: 'text-foreground' },
-          { label: 'Decisions', value: decisionChanges.length, color: 'text-chart-2' },
+          { label: 'Decisions', value: decisionChanges.length, color: 'text-primary' },
         ].map(s => (
           <div key={s.label} className="bg-card p-2 text-center">
             <div className={`text-lg font-bold font-mono ${s.color}`}>{s.value}</div>
@@ -161,7 +161,7 @@ export default function OpenAISearchDebugPanel() {
                     <TableCell className="text-[10px] px-2 py-1 truncate max-w-[120px]">{pc.runnerName}</TableCell>
                     <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{(pc.preSearchProbability * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{(pc.postSearchProbability * 100).toFixed(1)}%</TableCell>
-                    <TableCell className={`text-[10px] px-2 py-1 text-right font-mono ${pc.probabilityDelta > 0 ? 'text-chart-1' : pc.probabilityDelta < 0 ? 'text-chart-5' : 'text-muted-foreground'}`}>
+                    <TableCell className={`text-[10px] px-2 py-1 text-right font-mono ${pc.probabilityDelta > 0 ? 'text-success' : pc.probabilityDelta < 0 ? 'text-danger' : 'text-muted-foreground'}`}>
                       {pc.probabilityDelta > 0 ? '+' : ''}{(pc.probabilityDelta * 100).toFixed(2)}%
                     </TableCell>
                     <TableCell className="text-[10px] px-2 py-1">
@@ -204,7 +204,7 @@ export default function OpenAISearchDebugPanel() {
       )}
 
       {/* Authority notice */}
-      <div className="px-4 py-2 bg-chart-2/5 border-t border-chart-2/20 text-[10px] text-muted-foreground">
+      <div className="px-4 py-2 bg-primary/5 border-t border-primary/20 text-[10px] text-muted-foreground">
         Exchange engine remains the final authority. OpenAI provides evidence only — EV, ROI, spread, liquidity, exposure, and BET/NO_BET are calculated deterministically every cycle.
       </div>
     </Panel>

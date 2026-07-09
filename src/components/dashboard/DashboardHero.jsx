@@ -9,15 +9,15 @@ export default function DashboardHero() {
   const todayPL = bankrollStats.todayPL;
   const positive = todayPL >= 0;
 
-  const chartColor = positive ? 'hsl(var(--chart-1))' : 'hsl(var(--chart-5))';
+  const chartColor = positive ? 'hsl(var(--success))' : 'hsl(var(--danger))';
 
   const statusText = emergencyStop ? 'Emergency Stop' : isRunning ? 'Bot Running' : isPaused ? 'Bot Paused' : 'Bot Stopped';
-  const dotColor = emergencyStop ? 'bg-chart-5' : isRunning ? 'bg-chart-1' : isPaused ? 'bg-chart-4' : 'bg-muted-foreground';
+  const dotColor = emergencyStop ? 'bg-danger' : isRunning ? 'bg-success' : isPaused ? 'bg-warning' : 'bg-muted-foreground';
 
   const stats = [
-    { label: "Today's P/L", value: `${positive ? '+' : ''}$${Math.abs(todayPL).toFixed(2)}`, color: positive ? 'text-chart-1' : 'text-chart-5' },
+    { label: "Today's P/L", value: `${positive ? '+' : ''}$${Math.abs(todayPL).toFixed(2)}`, color: positive ? 'text-success' : 'text-danger' },
     { label: 'Available', value: `$${bankrollStats.available.toFixed(0)}`, color: 'text-foreground' },
-    { label: 'ROI', value: `${bankrollStats.roi >= 0 ? '+' : ''}${bankrollStats.roi}%`, color: bankrollStats.roi >= 0 ? 'text-chart-1' : 'text-chart-5' },
+    { label: 'ROI', value: `${bankrollStats.roi >= 0 ? '+' : ''}${bankrollStats.roi}%`, color: bankrollStats.roi >= 0 ? 'text-success' : 'text-danger' },
     { label: 'Win Rate', value: `${bankrollStats.strikeRate}%`, color: 'text-foreground' },
   ];
 
@@ -25,7 +25,7 @@ export default function DashboardHero() {
     <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-6 md:p-8">
       {/* Decorative glows */}
       <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -left-16 h-64 w-64 rounded-full bg-chart-3/5 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -left-16 h-64 w-64 rounded-full bg-info/5 blur-3xl pointer-events-none" />
 
       <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         {/* Left: Status + Bankroll + Inline Stats */}

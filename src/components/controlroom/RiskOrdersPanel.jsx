@@ -2,9 +2,7 @@ import React from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 export default function RiskOrdersPanel() {
   const { bankrollStats, settings, paperOrders, rejectedOrders, riskStatus } = useApp();
@@ -109,13 +107,6 @@ export default function RiskOrdersPanel() {
         </Panel>
       )}
 
-      <div className="flex justify-end">
-        <Link to="/orders">
-          <Button variant="outline" size="sm" className="gap-1.5">
-            View All Orders <ArrowRight className="h-3.5 w-3.5" />
-          </Button>
-        </Link>
-      </div>
     </div>
   );
 }

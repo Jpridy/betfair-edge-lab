@@ -98,8 +98,8 @@ export default function WiringAudit() {
             )}
 
             {testResult.noBetReason && (
-              <div className="bg-chart-4/10 border border-chart-4/30 rounded p-3 text-xs">
-                <span className="font-bold text-chart-4">No Bet Reason: </span>
+              <div className="bg-warning/10 border border-warning/30 rounded p-3 text-xs">
+                <span className="font-bold text-warning">No Bet Reason: </span>
                 <span className="text-foreground">{testResult.noBetReason}</span>
               </div>
             )}
@@ -113,8 +113,8 @@ export default function WiringAudit() {
 
             {testResult.warnings.length > 0 && (
               <div className="space-y-1">
-                <div className="text-xs font-bold text-chart-4">Warnings ({testResult.warnings.length})</div>
-                {testResult.warnings.map((w, i) => <div key={i} className="text-xs text-chart-4 font-mono">• {w}</div>)}
+                <div className="text-xs font-bold text-warning">Warnings ({testResult.warnings.length})</div>
+                {testResult.warnings.map((w, i) => <div key={i} className="text-xs text-warning font-mono">• {w}</div>)}
               </div>
             )}
           </div>
@@ -138,7 +138,7 @@ export default function WiringAudit() {
             {liveStatus.map((s, i) => (
               <TableRow key={i}>
                 <TableCell className="font-medium text-xs">{s.serviceName}</TableCell>
-                <TableCell>{s.connected ? <CheckCircle className="h-4 w-4 text-chart-1" /> : <XCircle className="h-4 w-4 text-chart-5" />}</TableCell>
+                <TableCell>{s.connected ? <CheckCircle className="h-4 w-4 text-success" /> : <XCircle className="h-4 w-4 text-danger" />}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{s.lastSuccessfulCallAt ? new Date(s.lastSuccessfulCallAt).toLocaleTimeString() : '—'}</TableCell>
                 <TableCell className="text-xs font-mono">{s.recordsReturned ?? '—'}</TableCell>
                 <TableCell className="text-xs">{s.dataUsedByBot ? 'YES' : 'NO'}</TableCell>
@@ -260,8 +260,8 @@ export default function WiringAudit() {
         </div>
         {lastDiag?.noBetReason && (
           <div className="px-4 pb-4">
-            <div className="bg-chart-4/10 border border-chart-4/30 rounded p-2 text-xs">
-              <span className="font-bold text-chart-4">No Bet Reason: </span>
+            <div className="bg-warning/10 border border-warning/30 rounded p-2 text-xs">
+              <span className="font-bold text-warning">No Bet Reason: </span>
               <span>{lastDiag.noBetReason}</span>
             </div>
           </div>
@@ -389,8 +389,8 @@ export default function WiringAudit() {
 function TestMetric({ label, value, passed }) {
   return (
     <div className="bg-muted/30 border border-border rounded p-3 flex items-center gap-2">
-      {passed === true ? <CheckCircle className="h-4 w-4 text-chart-1 flex-shrink-0" />
-        : passed === false ? <XCircle className="h-4 w-4 text-chart-5 flex-shrink-0" />
+      {passed === true ? <CheckCircle className="h-4 w-4 text-success flex-shrink-0" />
+        : passed === false ? <XCircle className="h-4 w-4 text-danger flex-shrink-0" />
         : null}
       <div>
         <div className="text-[10px] text-muted-foreground uppercase">{label}</div>

@@ -127,8 +127,8 @@ export default function DecisionTimeline() {
   ];
 
   const statusConfig = {
-    passed: { icon: CheckCircle2, color: 'text-chart-1', bg: 'bg-chart-1/10' },
-    failed: { icon: XCircle, color: 'text-chart-5', bg: 'bg-chart-5/10' },
+    passed: { icon: CheckCircle2, color: 'text-success', bg: 'bg-success/10' },
+    failed: { icon: XCircle, color: 'text-danger', bg: 'bg-danger/10' },
     skipped: { icon: MinusCircle, color: 'text-muted-foreground', bg: 'bg-muted/20' },
   };
 

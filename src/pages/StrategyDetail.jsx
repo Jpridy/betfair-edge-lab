@@ -15,10 +15,10 @@ import FavOutsiderBreakdown from '@/components/strategy/FavOutsiderBreakdown';
 import { generateStrategyDocument } from '@/lib/strategyDocument';
 
 const RISK_COLORS = {
-  'Low': 'text-chart-1',
-  'Medium': 'text-chart-4',
-  'Medium-High': 'text-chart-5',
-  'High': 'text-chart-5',
+  'Low': 'text-success',
+  'Medium': 'text-warning',
+  'Medium-High': 'text-danger',
+  'High': 'text-danger',
 };
 
 export default function StrategyDetail() {
@@ -98,10 +98,10 @@ export default function StrategyDetail() {
 
       {/* Warning banner for failing/archived */}
       {status.light === 'red' && (
-        <div className="rounded-lg border border-chart-5/30 bg-chart-5/5 p-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-chart-5 shrink-0" />
+        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-danger shrink-0" />
           <div>
-            <div className="text-sm font-bold text-chart-5">This strategy is currently underperforming and is limited to paper testing only.</div>
+            <div className="text-sm font-bold text-danger">This strategy is currently underperforming and is limited to paper testing only.</div>
             <div className="text-xs text-muted-foreground mt-1">{status.reasons.join(' · ')}</div>
           </div>
         </div>
@@ -116,10 +116,10 @@ export default function StrategyDetail() {
         </div>
       )}
       {status.light === 'yellow' && audit.totalPaperOrders < 200 && (
-        <div className="rounded-lg border border-chart-4/30 bg-chart-4/5 p-4 flex items-start gap-3">
-          <Clock className="h-5 w-5 text-chart-4 shrink-0" />
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 flex items-start gap-3">
+          <Clock className="h-5 w-5 text-warning shrink-0" />
           <div>
-            <div className="text-sm font-bold text-chart-4">Needs More Data</div>
+            <div className="text-sm font-bold text-warning">Needs More Data</div>
             <div className="text-xs text-muted-foreground mt-1">Only {audit.totalPaperOrders} paper orders recorded. Minimum 200 recommended for meaningful analysis.</div>
           </div>
         </div>
@@ -133,7 +133,7 @@ export default function StrategyDetail() {
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">ROI</span>
-          <div className={`text-lg font-bold font-mono mt-1 ${audit.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{audit.roi.toFixed(1)}%</div>
+          <div className={`text-lg font-bold font-mono mt-1 ${audit.roi >= 0 ? 'text-success' : 'text-danger'}`}>{audit.roi.toFixed(1)}%</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Strike Rate</span>
@@ -141,15 +141,15 @@ export default function StrategyDetail() {
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Profit Factor</span>
-          <div className={`text-lg font-bold font-mono mt-1 ${audit.profitFactor >= 1.2 ? 'text-chart-1' : 'text-chart-5'}`}>{audit.profitFactor.toFixed(2)}</div>
+          <div className={`text-lg font-bold font-mono mt-1 ${audit.profitFactor >= 1.2 ? 'text-success' : 'text-danger'}`}>{audit.profitFactor.toFixed(2)}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">CLV</span>
-          <div className={`text-lg font-bold font-mono mt-1 ${audit.closingLineValue >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{audit.closingLineValue.toFixed(1)}%</div>
+          <div className={`text-lg font-bold font-mono mt-1 ${audit.closingLineValue >= 0 ? 'text-success' : 'text-danger'}`}>{audit.closingLineValue.toFixed(1)}%</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Max DD</span>
-          <div className="text-lg font-bold font-mono text-chart-5 mt-1">${audit.maxDrawdown.toFixed(0)}</div>
+          <div className="text-lg font-bold font-mono text-danger mt-1">${audit.maxDrawdown.toFixed(0)}</div>
         </div>
       </div>
 
@@ -163,7 +163,7 @@ export default function StrategyDetail() {
             </div>
             <div className="h-2 bg-muted rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${progress.percent >= 100 ? 'bg-chart-1' : 'bg-chart-4'}`}
+                className={`h-full rounded-full transition-all ${progress.percent >= 100 ? 'bg-success' : 'bg-warning'}`}
                 style={{ width: `${progress.percent}%` }}
               />
             </div>
@@ -227,14 +227,14 @@ export default function StrategyDetail() {
                 <div className="space-y-1">
                   {dataQuality.warnings.map((w, i) => (
                     <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <AlertTriangle className="h-3 w-3 text-chart-4 shrink-0 mt-0.5" />
+                      <AlertTriangle className="h-3 w-3 text-warning shrink-0 mt-0.5" />
                       {w}
                     </div>
                   ))}
                 </div>
               )}
               {dataQuality.warnings.length === 0 && (
-                <div className="flex items-center gap-2 text-xs text-chart-1">
+                <div className="flex items-center gap-2 text-xs text-success">
                   <CheckCircle2 className="h-3 w-3" /> All data quality checks passed.
                 </div>
               )}

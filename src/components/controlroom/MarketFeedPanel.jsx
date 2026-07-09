@@ -74,11 +74,11 @@ export default function MarketFeedPanel() {
       <div className="grid grid-cols-3 md:grid-cols-6 gap-px bg-border">
         {[
           { label: 'Total Loaded', value: totalLoaded, color: 'text-foreground' },
-          { label: 'Open Pre-Race', value: openPreRace, color: 'text-chart-3' },
-          { label: 'In Time Window', value: insideWindow, color: 'text-chart-1' },
-          { label: 'WIN', value: winMarkets, color: 'text-chart-1' },
-          { label: 'PLACE', value: placeMarkets, color: 'text-chart-2' },
-          { label: 'H2H', value: h2hMarkets, color: 'text-chart-3' },
+          { label: 'Open Pre-Race', value: openPreRace, color: 'text-info' },
+          { label: 'In Time Window', value: insideWindow, color: 'text-success' },
+          { label: 'WIN', value: winMarkets, color: 'text-success' },
+          { label: 'PLACE', value: placeMarkets, color: 'text-primary' },
+          { label: 'H2H', value: h2hMarkets, color: 'text-info' },
         ].map(s => (
           <div key={s.label} className="bg-card p-2 text-center">
             <div className={`text-lg font-bold font-mono ${s.color}`}>{s.value}</div>
@@ -90,9 +90,9 @@ export default function MarketFeedPanel() {
       {/* Price data status */}
       <div className="flex items-center gap-4 px-4 py-2 border-b border-border text-xs">
         <span className="text-muted-foreground">Price Data:</span>
-        <span className="text-chart-1 font-semibold">{withPriceData} with prices</span>
-        <span className="text-chart-5 font-semibold">{missingPriceData} missing</span>
-        {unknownMarkets > 0 && <span className="text-chart-4 font-semibold">{unknownMarkets} unknown type</span>}
+        <span className="text-success font-semibold">{withPriceData} with prices</span>
+        <span className="text-danger font-semibold">{missingPriceData} missing</span>
+        {unknownMarkets > 0 && <span className="text-warning font-semibold">{unknownMarkets} unknown type</span>}
       </div>
 
       {/* Market type detection note */}
@@ -143,7 +143,7 @@ export default function MarketFeedPanel() {
                 </TableCell>
                 <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{m.runnerCount || '—'}</TableCell>
                 <TableCell className="text-[10px] px-2 py-1">
-                  {m.hasPriceData ? <span className="text-chart-1">✓</span> : <span className="text-chart-5">✗</span>}
+                  {m.hasPriceData ? <span className="text-success">✓</span> : <span className="text-danger">✗</span>}
                 </TableCell>
               </TableRow>
             ))}

@@ -16,15 +16,15 @@ export default function LiveLockoutPanel({ strategy, audit, settings }) {
   return (
     <Panel title="Paper-Only Status" action={<StrategyStatusBadge light={status.light} label={status.label} />}>
       <div className="p-4 space-y-4">
-        <div className={`rounded-lg border p-4 ${validated ? 'border-chart-1/30 bg-chart-1/5' : 'border-chart-4/30 bg-chart-4/5'}`}>
+        <div className={`rounded-lg border p-4 ${validated ? 'border-success/30 bg-success/5' : 'border-warning/30 bg-warning/5'}`}>
           <div className="flex items-start gap-3">
             {validated ? (
-              <CheckCircle2 className="h-5 w-5 text-chart-1 shrink-0 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
             ) : (
-              <Lock className="h-5 w-5 text-chart-4 shrink-0 mt-0.5" />
+              <Lock className="h-5 w-5 text-warning shrink-0 mt-0.5" />
             )}
             <div className="flex-1">
-              <div className={`text-sm font-bold ${validated ? 'text-chart-1' : 'text-chart-4'}`}>
+              <div className={`text-sm font-bold ${validated ? 'text-success' : 'text-warning'}`}>
                 {validated ? 'Paper Validated' : 'Paper Testing'}
               </div>
               <div className="text-xs text-muted-foreground mt-1">
@@ -40,7 +40,7 @@ export default function LiveLockoutPanel({ strategy, audit, settings }) {
           <div className="space-y-1">
             {status.reasons.map((reason, i) => (
               <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                <XCircle className="h-3 w-3 text-chart-4 shrink-0 mt-0.5" />
+                <XCircle className="h-3 w-3 text-warning shrink-0 mt-0.5" />
                 {reason}
               </div>
             ))}

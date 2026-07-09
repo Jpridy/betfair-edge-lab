@@ -270,10 +270,10 @@ export default function RunnerView() {
               </Button>
             </div>
             {paperForm.stake > settings.maxStake && (
-              <div className="md:col-span-5 text-xs text-chart-5">Stake exceeds max (${settings.maxStake})</div>
+              <div className="md:col-span-5 text-xs text-danger">Stake exceeds max (${settings.maxStake})</div>
             )}
             {paperForm.persistenceType === 'PERSIST' && (
-              <div className="md:col-span-5 text-xs text-chart-5 flex items-center gap-1">
+              <div className="md:col-span-5 text-xs text-danger flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> PERSIST keeps unmatched bets active in-play — dangerous in paper mode. {settings.persistApproved ? 'Approved.' : 'Not approved — bot never uses PERSIST.'}
               </div>
             )}
@@ -285,12 +285,12 @@ export default function RunnerView() {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Best Back</span>
-          <div className="text-2xl font-bold font-mono text-chart-3 mt-1">{runner.bestBackPrice.toFixed(2)}</div>
+          <div className="text-2xl font-bold font-mono text-info mt-1">{runner.bestBackPrice.toFixed(2)}</div>
           <div className="text-[10px] text-muted-foreground">${runner.bestBackSize.toLocaleString()}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Best Lay</span>
-          <div className="text-2xl font-bold font-mono text-chart-5 mt-1">{runner.bestLayPrice.toFixed(2)}</div>
+          <div className="text-2xl font-bold font-mono text-danger mt-1">{runner.bestLayPrice.toFixed(2)}</div>
           <div className="text-[10px] text-muted-foreground">${runner.bestLaySize.toLocaleString()}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
@@ -320,7 +320,7 @@ export default function RunnerView() {
         <Panel title="Runner Warnings">
           <div className="p-4 space-y-2">
             {runnerWarnings.map((w, i) => (
-              <div key={i} className={`flex items-start gap-2 text-xs p-2 rounded ${w.level === 'critical' ? 'bg-chart-5/10 text-chart-5' : 'bg-chart-4/10 text-chart-4'}`}>
+              <div key={i} className={`flex items-start gap-2 text-xs p-2 rounded ${w.level === 'critical' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'}`}>
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {w.msg}
               </div>
             ))}
@@ -341,7 +341,7 @@ export default function RunnerView() {
           <div><span className="text-muted-foreground">Available to Back</span><div className="font-mono mt-0.5">{runner.availableToBack?.length || 0} levels</div></div>
           <div><span className="text-muted-foreground">Available to Lay</span><div className="font-mono mt-0.5">{runner.availableToLay?.length || 0} levels</div></div>
           <div><span className="text-muted-foreground">Signal Status</span><div className="mt-0.5"><StatusBadge status={runner.strategySignalStatus === 'active' ? 'ok' : runner.strategySignalStatus === 'rejected' ? 'danger' : 'neutral'}>{runner.strategySignalStatus || 'none'}</StatusBadge></div></div>
-          {runner.rejectedSignalReason && <div className="col-span-2"><span className="text-muted-foreground">Rejected Reason</span><div className="text-chart-5 mt-0.5">{runner.rejectedSignalReason}</div></div>}
+          {runner.rejectedSignalReason && <div className="col-span-2"><span className="text-muted-foreground">Rejected Reason</span><div className="text-danger mt-0.5">{runner.rejectedSignalReason}</div></div>}
         </div>
       </Panel>
 
@@ -354,7 +354,7 @@ export default function RunnerView() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Market-Derived Probability</span>
-          <div className="text-2xl font-bold font-mono text-chart-2 mt-1">{modelProbability.toFixed(2)}%</div>
+          <div className="text-2xl font-bold font-mono text-primary mt-1">{modelProbability.toFixed(2)}%</div>
           <div className="text-[10px] text-muted-foreground">
             {runner.formDataStatus === 'MARKET_ONLY' || !runner.formDataStatus
               ? 'Market microstructure only — no horse form data'
@@ -363,14 +363,14 @@ export default function RunnerView() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Edge</span>
-          <div className={`text-2xl font-bold font-mono mt-1 ${edge > 0 ? 'text-chart-1' : edge < 0 ? 'text-chart-5' : 'text-muted-foreground'}`}>
+          <div className={`text-2xl font-bold font-mono mt-1 ${edge > 0 ? 'text-success' : edge < 0 ? 'text-danger' : 'text-muted-foreground'}`}>
             {edge > 0 ? '+' : ''}{edge.toFixed(2)}%
           </div>
           <div className="text-[10px] text-muted-foreground">{edge > 2 ? 'Value detected' : edge < -2 ? 'Negative edge' : 'Marginal'}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">CLV Estimate</span>
-          <div className={`text-2xl font-bold font-mono mt-1 ${clvEstimate >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>
+          <div className={`text-2xl font-bold font-mono mt-1 ${clvEstimate >= 0 ? 'text-success' : 'text-danger'}`}>
             {clvEstimate >= 0 ? '+' : ''}{clvEstimate.toFixed(2)}%
           </div>
           <div className="text-[10px] text-muted-foreground">Closing line value</div>
@@ -378,7 +378,7 @@ export default function RunnerView() {
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Signal Status</span>
           <div className="text-2xl font-bold font-mono mt-1">
-            {edge > 3 ? <span className="text-chart-1">ACTIVE</span> : edge < -3 ? <span className="text-chart-5">BLOCKED</span> : <span className="text-chart-4">MARGINAL</span>}
+            {edge > 3 ? <span className="text-success">ACTIVE</span> : edge < -3 ? <span className="text-danger">BLOCKED</span> : <span className="text-warning">MARGINAL</span>}
           </div>
           <div className="text-[10px] text-muted-foreground">{edge > 3 ? 'Signal eligible' : edge < -3 ? 'Negative edge' : 'Below threshold'}</div>
         </div>
@@ -429,12 +429,12 @@ export default function RunnerView() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted-foreground flex items-center gap-1"><Activity className="h-3 w-3" /> Momentum</span>
-                <span className={`text-sm font-bold font-mono ${momentum > 0 ? 'text-chart-1' : momentum < 0 ? 'text-chart-5' : 'text-muted-foreground'}`}>
+                <span className={`text-sm font-bold font-mono ${momentum > 0 ? 'text-success' : momentum < 0 ? 'text-danger' : 'text-muted-foreground'}`}>
                   {momentum > 0 ? '+' : ''}{momentum.toFixed(2)}
                 </span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div className={`h-full ${momentum > 0 ? 'bg-chart-1' : 'bg-chart-5'}`} style={{ width: `${Math.min(Math.abs(momentum) * 50, 100)}%` }} />
+                <div className={`h-full ${momentum > 0 ? 'bg-success' : 'bg-danger'}`} style={{ width: `${Math.min(Math.abs(momentum) * 50, 100)}%` }} />
               </div>
               <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
                 <span>{momentum > 0 ? '▲ Steaming' : momentum < 0 ? '▼ Drifting' : '→ Stable'}</span>
@@ -443,12 +443,12 @@ export default function RunnerView() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted-foreground flex items-center gap-1"><Gauge className="h-3 w-3" /> Volatility</span>
-                <span className={`text-sm font-bold font-mono ${volatility > 0.1 ? 'text-chart-4' : 'text-chart-1'}`}>
+                <span className={`text-sm font-bold font-mono ${volatility > 0.1 ? 'text-warning' : 'text-success'}`}>
                   {volatility.toFixed(3)}
                 </span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div className={`h-full ${volatility > 0.1 ? 'bg-chart-4' : 'bg-chart-1'}`} style={{ width: `${Math.min(volatility * 500, 100)}%` }} />
+                <div className={`h-full ${volatility > 0.1 ? 'bg-warning' : 'bg-success'}`} style={{ width: `${Math.min(volatility * 500, 100)}%` }} />
               </div>
               <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
                 <span>{volatility > 0.1 ? 'High volatility' : 'Low volatility'}</span>
@@ -483,9 +483,9 @@ export default function RunnerView() {
           <div className="space-y-0.5 max-w-md mx-auto">
             {ladder.map((row, i) => (
               <div key={i} className={`grid grid-cols-3 gap-2 rounded text-xs ${row.isCurrent ? 'bg-primary/10 border border-primary/30' : ''}`}>
-                <div className="text-right py-1.5 pr-3 font-mono text-chart-3">{row.backSize > 0 ? `£${row.backSize}` : ''}</div>
+                <div className="text-right py-1.5 pr-3 font-mono text-info">{row.backSize > 0 ? `£${row.backSize}` : ''}</div>
                 <div className="text-center py-1.5 font-mono font-bold text-foreground">{row.price.toFixed(2)}</div>
-                <div className="text-left py-1.5 pl-3 font-mono text-chart-5">{row.laySize > 0 ? `£${row.laySize}` : ''}</div>
+                <div className="text-left py-1.5 pl-3 font-mono text-danger">{row.laySize > 0 ? `£${row.laySize}` : ''}</div>
               </div>
             ))}
           </div>

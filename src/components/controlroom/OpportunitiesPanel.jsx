@@ -101,13 +101,13 @@ export default function OpportunitiesPanel() {
           return (
             <div key={card.key} className={cn(
               'rounded-lg border p-2',
-              opp ? 'border-chart-1/30 bg-chart-1/5' : 'border-border bg-muted/20'
+              opp ? 'border-success/30 bg-success/5' : 'border-border bg-muted/20'
             )}>
               <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider truncate">{card.label}</div>
               {opp ? (
                 <>
                   <div className="text-xs font-bold text-foreground truncate mt-0.5">{opp.runnerName || '—'}</div>
-                  <div className="text-[10px] font-mono text-chart-1">EV ${opp.ev?.toFixed(2) || '0'}</div>
+                  <div className="text-[10px] font-mono text-success">EV ${opp.ev?.toFixed(2) || '0'}</div>
                   <div className="text-[10px] font-mono text-muted-foreground">@ {opp.odds?.toFixed(2) || '—'}</div>
                 </>
               ) : (
@@ -176,11 +176,11 @@ export default function OpportunitiesPanel() {
                 <TableCell className="text-[10px] px-2 py-1"><SideBadge side={opp.side || 'BACK'} /></TableCell>
                 <TableCell className="text-[10px] px-2 py-1 truncate max-w-[100px]">{opp.runnerName || '—'}</TableCell>
                 <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{opp.odds?.toFixed(2) || '—'}</TableCell>
-                <TableCell className={cn('text-[10px] px-2 py-1 text-right font-mono', (opp.ev || 0) > 0 ? 'text-chart-1' : 'text-chart-5')}>${opp.ev?.toFixed(2) || '0'}</TableCell>
+                <TableCell className={cn('text-[10px] px-2 py-1 text-right font-mono', (opp.ev || 0) > 0 ? 'text-success' : 'text-danger')}>${opp.ev?.toFixed(2) || '0'}</TableCell>
                 <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{((opp.roi || opp.expectedROI || 0) * 100).toFixed(1)}%</TableCell>
                 <TableCell className="text-[10px] px-2 py-1 text-right font-mono">{opp.confidence?.toFixed(0) || '—'}</TableCell>
                 <TableCell className="text-[10px] px-2 py-1 text-right font-mono">${opp.liability?.toFixed(0) || '0'}</TableCell>
-                <TableCell className="text-[10px] px-2 py-1 truncate max-w-[120px] text-chart-5">{opp.failedGate || opp.mainBlocker || (opp.blockers || [])[0] || '—'}</TableCell>
+                <TableCell className="text-[10px] px-2 py-1 truncate max-w-[120px] text-danger">{opp.failedGate || opp.mainBlocker || (opp.blockers || [])[0] || '—'}</TableCell>
                 <TableCell className="text-[10px] px-2 py-1">
                   <StatusBadge status={opp.decision === 'BET' || opp.passed ? 'ok' : 'danger'}>
                     {opp.decision || (opp.passed ? 'BET' : 'NO_BET')}

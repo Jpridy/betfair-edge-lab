@@ -13,11 +13,11 @@ function SettingRow({ label, savedValue, botValue, oppValue, passed, blockedCoun
         {hint && <div className="text-[9px] text-muted-foreground">{hint}</div>}
       </div>
       <div className="font-mono text-muted-foreground">{savedValue ?? '—'}</div>
-      <div className={cn('font-mono', mismatch ? 'text-chart-5' : 'text-foreground')}>{botValue ?? '—'}</div>
-      <div className={cn('font-mono', oppValue != null ? (passed ? 'text-chart-1' : 'text-chart-5') : 'text-muted-foreground')}>{oppValue ?? '—'}</div>
+      <div className={cn('font-mono', mismatch ? 'text-danger' : 'text-foreground')}>{botValue ?? '—'}</div>
+      <div className={cn('font-mono', oppValue != null ? (passed ? 'text-success' : 'text-danger') : 'text-muted-foreground')}>{oppValue ?? '—'}</div>
       <div className="flex items-center gap-1.5">
         <StatusBadge status={passed ? 'ok' : 'danger'}>{passed ? 'PASS' : 'FAIL'}</StatusBadge>
-        {blockedCount > 0 && <span className="text-[9px] text-chart-5">({blockedCount} blocked)</span>}
+        {blockedCount > 0 && <span className="text-[9px] text-danger">({blockedCount} blocked)</span>}
       </div>
     </div>
   );
@@ -151,7 +151,7 @@ export default function SettingsImpactPanel() {
         <div className="p-3 space-y-1.5">
           <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Impact Preview (does not change settings)</div>
           {impactPreviews.map((p, i) => (
-            <div key={i} className="text-xs text-chart-3 bg-chart-3/5 rounded px-2 py-1">{p}</div>
+            <div key={i} className="text-xs text-info bg-info/5 rounded px-2 py-1">{p}</div>
           ))}
         </div>
       )}

@@ -210,7 +210,7 @@ export default function FeatherlessAIDecisionPanel() {
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded-lg p-3">
+          <div className="flex items-start gap-2 text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg p-3">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
           </div>
         )}
@@ -224,10 +224,10 @@ export default function FeatherlessAIDecisionPanel() {
         {latestDecision && (
           <div className="space-y-3">
             {/* Decision Banner */}
-            <div className={`rounded-lg p-4 border ${latestDecision.decision === 'BET' ? 'bg-chart-1/10 border-chart-1/30' : latestDecision.decision === 'WATCH' ? 'bg-chart-4/10 border-chart-4/30' : 'bg-muted border-border'}`}>
+            <div className={`rounded-lg p-4 border ${latestDecision.decision === 'BET' ? 'bg-success/10 border-success/30' : latestDecision.decision === 'WATCH' ? 'bg-warning/10 border-warning/30' : 'bg-muted border-border'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {latestDecision.decision === 'BET' ? <Zap className="h-5 w-5 text-chart-1" /> : latestDecision.decision === 'WATCH' ? <Clock className="h-5 w-5 text-chart-4" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
+                  {latestDecision.decision === 'BET' ? <Zap className="h-5 w-5 text-success" /> : latestDecision.decision === 'WATCH' ? <Clock className="h-5 w-5 text-warning" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
                   <span className="text-lg font-bold">{latestDecision.decision}</span>
                 </div>
                 <div className="text-right">
@@ -256,15 +256,15 @@ export default function FeatherlessAIDecisionPanel() {
             </div>
 
             {/* Safety Gate */}
-            <div className={`rounded-lg p-3 border ${latestDecision.safetyGatePassed ? 'bg-chart-1/10 border-chart-1/30' : 'bg-chart-5/10 border-chart-5/30'}`}>
+            <div className={`rounded-lg p-3 border ${latestDecision.safetyGatePassed ? 'bg-success/10 border-success/30' : 'bg-danger/10 border-danger/30'}`}>
               <div className="flex items-center gap-2 text-xs font-bold">
-                {latestDecision.safetyGatePassed ? <CheckCircle2 className="h-4 w-4 text-chart-1" /> : <AlertTriangle className="h-4 w-4 text-chart-5" />}
+                {latestDecision.safetyGatePassed ? <CheckCircle2 className="h-4 w-4 text-success" /> : <AlertTriangle className="h-4 w-4 text-danger" />}
                 Safety Gate: {latestDecision.safetyGatePassed ? 'PASSED — Paper trade created' : 'FAILED — No paper trade'}
               </div>
               {latestDecision.safetyGateFailures?.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {latestDecision.safetyGateFailures.map((f, i) => (
-                    <div key={i} className="text-xs text-chart-5 flex items-start gap-1">
+                    <div key={i} className="text-xs text-danger flex items-start gap-1">
                       <span className="text-muted-foreground">•</span> {f}
                     </div>
                   ))}
@@ -278,7 +278,7 @@ export default function FeatherlessAIDecisionPanel() {
                 <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Risks</div>
                 <div className="space-y-1">
                   {latestDecision.risks.map((r, i) => (
-                    <div key={i} className="text-xs text-chart-4 bg-chart-4/5 rounded p-2 flex items-start gap-1">
+                    <div key={i} className="text-xs text-warning bg-warning/5 rounded p-2 flex items-start gap-1">
                       <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" /> {r}
                     </div>
                   ))}
@@ -288,9 +288,9 @@ export default function FeatherlessAIDecisionPanel() {
 
             {/* Web Research Assessment from AI */}
             {latestDecision.webResearchAssessment && (
-              <div className="rounded-lg p-3 border bg-chart-3/5 border-chart-3/20">
+              <div className="rounded-lg p-3 border bg-info/5 border-info/20">
                 <div className="flex items-center gap-2 text-xs font-bold mb-1">
-                  <Globe className="h-4 w-4 text-chart-3" />
+                  <Globe className="h-4 w-4 text-info" />
                   Web Research Assessment
                   <StatusBadge status={latestDecision.webResearchAssessment === 'supports' ? 'ok' : latestDecision.webResearchAssessment === 'conflicts' ? 'danger' : latestDecision.webResearchAssessment === 'missing' ? 'neutral' : 'info'}>
                     {latestDecision.webResearchAssessment}
@@ -304,7 +304,7 @@ export default function FeatherlessAIDecisionPanel() {
 
             {/* Validation Status */}
             {latestDecision.validationStatus === 'invalid' && (
-              <div className="text-xs text-chart-5 bg-chart-5/10 border border-chart-5/30 rounded p-2">
+              <div className="text-xs text-danger bg-danger/10 border border-danger/30 rounded p-2">
                 <div className="font-bold">AI Response Validation Failed:</div>
                 {latestDecision.validationErrors?.map((e, i) => <div key={i}>• {e}</div>)}
               </div>
@@ -341,7 +341,7 @@ function DecisionMetric({ label, value, positive }) {
   return (
     <div className="bg-card border border-border rounded-lg p-3">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className={`text-sm font-bold font-mono mt-1 ${positive === true ? 'text-chart-1' : positive === false ? 'text-chart-5' : 'text-foreground'}`}>{value}</div>
+      <div className={`text-sm font-bold font-mono mt-1 ${positive === true ? 'text-success' : positive === false ? 'text-danger' : 'text-foreground'}`}>{value}</div>
     </div>
   );
 }

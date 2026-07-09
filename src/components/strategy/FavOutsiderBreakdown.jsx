@@ -19,8 +19,8 @@ export default function FavOutsiderBreakdown({ breakdown }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-chart-5/30 bg-chart-5/5 p-4">
-        <div className="text-sm font-bold text-chart-5">⚠ This strategy is currently underperforming and is locked to paper testing only.</div>
+      <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+        <div className="text-sm font-bold text-danger">⚠ This strategy is currently underperforming and is locked to paper testing only.</div>
         <div className="text-xs text-muted-foreground mt-1">Negative CLV, profit factor below 1.00, and 6-trade losing streak detected. Review breakdown below before any further development.</div>
       </div>
 

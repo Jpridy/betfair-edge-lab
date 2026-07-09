@@ -19,7 +19,7 @@ export default function ExchangeDebugPanel({ diagnostics, eventClusters, opportu
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Bug className="h-4 w-4 text-chart-2" />
+        <Bug className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-bold font-heading">Exchange Engine Debug</h2>
       </div>
 
@@ -28,15 +28,15 @@ export default function ExchangeDebugPanel({ diagnostics, eventClusters, opportu
         <DebugStat label="Markets Scanned" value={diagnostics.marketsScanned ?? 0} />
         <DebugStat label="Events Found" value={diagnostics.eventsScanned ?? 0} />
         <DebugStat label="Events w/ AI" value={diagnostics.eventsWithAI ?? 0} />
-        <DebugStat label="WIN Markets" value={winMarkets} accent="text-chart-3" />
-        <DebugStat label="PLACE Markets" value={placeMarkets} accent="text-chart-1" />
-        <DebugStat label="H2H Markets" value={h2hMarkets} accent="text-chart-4" />
+        <DebugStat label="WIN Markets" value={winMarkets} accent="text-info" />
+        <DebugStat label="PLACE Markets" value={placeMarkets} accent="text-success" />
+        <DebugStat label="H2H Markets" value={h2hMarkets} accent="text-warning" />
         <DebugStat label="Total Opps" value={opportunities.length} />
-        <DebugStat label="BACK Opps" value={backCount} accent="text-chart-3" />
-        <DebugStat label="LAY Opps" value={layCount} accent="text-chart-5" />
-        <DebugStat label="Positive EV" value={positiveEV} accent={positiveEV > 0 ? 'text-chart-1' : 'text-muted-foreground'} />
-        <DebugStat label="Rejected" value={rejected} accent="text-chart-5" />
-        <DebugStat label="Cache Hits" value={diagnostics.cacheHits ?? 0} accent="text-chart-2" />
+        <DebugStat label="BACK Opps" value={backCount} accent="text-info" />
+        <DebugStat label="LAY Opps" value={layCount} accent="text-danger" />
+        <DebugStat label="Positive EV" value={positiveEV} accent={positiveEV > 0 ? 'text-success' : 'text-muted-foreground'} />
+        <DebugStat label="Rejected" value={rejected} accent="text-danger" />
+        <DebugStat label="Cache Hits" value={diagnostics.cacheHits ?? 0} accent="text-primary" />
       </div>
 
       {/* Best opportunity selected */}
@@ -51,8 +51,8 @@ export default function ExchangeDebugPanel({ diagnostics, eventClusters, opportu
                 <span className="text-xs text-muted-foreground">@ {best.odds?.toFixed(2)}</span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                <div><span className="text-muted-foreground">EV:</span> <span className="font-mono text-chart-1">${best.ev?.toFixed(2)}</span></div>
-                <div><span className="text-muted-foreground">ROI:</span> <span className="font-mono text-chart-1">{(best.roi * 100)?.toFixed(2)}%</span></div>
+                <div><span className="text-muted-foreground">EV:</span> <span className="font-mono text-success">${best.ev?.toFixed(2)}</span></div>
+                <div><span className="text-muted-foreground">ROI:</span> <span className="font-mono text-success">{(best.roi * 100)?.toFixed(2)}%</span></div>
                 <div><span className="text-muted-foreground">Edge:</span> <span className="font-mono">{(best.edge * 100)?.toFixed(2)}%</span></div>
                 <div><span className="text-muted-foreground">Liability:</span> <span className="font-mono">${best.liability?.toFixed(0)}</span></div>
                 <div><span className="text-muted-foreground">Delay Risk:</span> <span className="font-mono">{best.delayRiskScore?.toFixed(2)}</span></div>
@@ -134,7 +134,7 @@ export default function ExchangeDebugPanel({ diagnostics, eventClusters, opportu
                   <TableCell className="text-right text-xs font-mono">{r.ev?.toFixed(2)}</TableCell>
                   <TableCell className="text-right text-xs font-mono">{(r.roi * 100)?.toFixed(1)}%</TableCell>
                   <TableCell className="text-right text-xs font-mono">{r.confidence?.toFixed(0)}</TableCell>
-                  <TableCell className="text-xs text-chart-5">{r.failedGate}</TableCell>
+                  <TableCell className="text-xs text-danger">{r.failedGate}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

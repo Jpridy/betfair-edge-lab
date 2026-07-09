@@ -12,7 +12,7 @@ function PanelBox({ title, link, linkText, children }) {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-foreground">{title}</h3>
         {link &&
-        <Link to={link} className="text-xs font-medium text-chart-3 hover:text-chart-3/80 flex items-center gap-1 transition-colors">
+        <Link to={link} className="text-xs font-medium text-info hover:text-info/80 flex items-center gap-1 transition-colors">
             {linkText} <ArrowRight className="h-3 w-3" />
           </Link>
         }
@@ -30,7 +30,7 @@ function SignalRow({ s }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0">
       <div className="flex items-center gap-2 min-w-0">
-        <Zap className="h-3.5 w-3.5 text-chart-3 shrink-0" />
+        <Zap className="h-3.5 w-3.5 text-info shrink-0" />
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-foreground">{s.strategyName}</span>
@@ -40,7 +40,7 @@ function SignalRow({ s }) {
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="text-xs font-mono font-bold text-chart-1">+{s.edgePercent?.toFixed(2)}%</div>
+        <div className="text-xs font-mono font-bold text-success">+{s.edgePercent?.toFixed(2)}%</div>
         <div className="text-[9px] text-muted-foreground">@ {s.odds?.toFixed(2)}</div>
       </div>
     </div>);
@@ -71,7 +71,7 @@ function WarningRow({ s }) {
   return (
     <Link to={`/strategy/${s.id}`} className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0 hover:opacity-80">
       <div className="flex items-center gap-2 min-w-0">
-        <AlertTriangle className="h-3.5 w-3.5 text-chart-4 shrink-0" />
+        <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
         <div className="min-w-0">
           <div className="text-xs font-semibold text-foreground">{s.name}</div>
           <div className="text-[10px] text-muted-foreground truncate">{s.warningText}</div>
@@ -103,7 +103,7 @@ function BacktestRow({ r }) {
   return (
     <Link to="/backtesting" className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0 hover:opacity-80">
       <div className="flex items-center gap-2 min-w-0">
-        <FlaskConical className="h-3.5 w-3.5 text-chart-2 shrink-0" />
+        <FlaskConical className="h-3.5 w-3.5 text-primary shrink-0" />
         <div className="min-w-0">
           <div className="text-xs font-semibold text-foreground truncate">{r.name}</div>
           <div className="text-[10px] text-muted-foreground">{r.totalBets} bets · {r.strategyName}</div>
@@ -111,7 +111,7 @@ function BacktestRow({ r }) {
       </div>
       <div className="text-right shrink-0">
         <PLValue value={r.netProfit} />
-        <div className={`text-[9px] font-mono ${r.roi >= 0 ? 'text-chart-1' : 'text-chart-5'}`}>{r.roi.toFixed(1)}% ROI</div>
+        <div className={`text-[9px] font-mono ${r.roi >= 0 ? 'text-success' : 'text-danger'}`}>{r.roi.toFixed(1)}% ROI</div>
       </div>
     </Link>);
 
