@@ -261,8 +261,14 @@ export default function BetfairConnection() {
               <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-xs">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold">HTML 403 from Betfair</div>
-                  <div className="mt-0.5">Likely cause: wrong endpoint or proxy blocked. Action: Run Endpoint Diagnostic below.</div>
+                  <div className="font-semibold">HTML 403 from Betfair — Cloudflare Worker needs redeployment</div>
+                  <div className="mt-0.5">
+                    Your Cloudflare Worker proxy is missing a standard <span className="font-mono">User-Agent</span> header.
+                    Cloudflare Workers adds <span className="font-mono">User-Agent: Cloudflare-Workers</span> by default,
+                    which Betfair's WAF blocks. <strong>Redeploy the worker</strong> with the updated code from
+                    <span className="font-mono"> cloudflare-worker-code.txt</span> in your app files, then run the
+                    Endpoint Diagnostic again.
+                  </div>
                   {betfairConnection?.marketCatalogueError && (
                     <div className="mt-1 font-mono text-[10px] opacity-70">{betfairConnection.marketCatalogueError.slice(0, 200)}</div>
                   )}

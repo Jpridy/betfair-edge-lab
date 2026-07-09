@@ -3,156 +3,122 @@
  *
  * This worker handles TWO things on the same URL:
  *
- * 1. HTTP Proxy (existing): Forwards REST API requests to Betfair, adds CORS headers.
- *    Browser calls: https://<worker-url>/?url=<betfair-api-url>
+ * 1. REST API Proxy: Forwards Betfair Betting/Account API requests with CLEAN
+ *    headers. Sets a standard browser User-Agent to avoid Cloudflare Workers'
+ *    default "Cloudflare-Workers" UA which triggers Betfair's WAF block.
+ *    Does NOT forward Origin, Referer, cookies, or sec-fetch headers.
  *
- * 2. WebSocket-to-TCP Bridge (new): Accepts a WebSocket from the browser and
+ * 2. WebSocket-to-TCP Bridge: Accepts a WebSocket from the browser and
  *    bridges it to a raw SSL/TCP socket to Betfair's Stream API
- *    (stream-api.betfair.com:443). This is necessary because:
- *      - Betfair's Stream API does NOT support WebSocket connections
- *      - Browsers cannot make raw TCP socket connections
- *      - Cloudflare Workers CAN make outbound TCP connections via cloudflare:sockets
+ *    (stream-api.betfair.com:443).
  *
  * DEPLOY INSTRUCTIONS:
- *
  * 1. Go to https://dash.cloudflare.com → Workers & Pages
- * 2. Click "Create" → "Create Worker"
- * 3. Give it a name (e.g. "betfair-proxy") → click "Deploy"
- * 4. Click "Edit code"
- * 5. Delete everything in the editor
- * 6. Paste this entire file
- * 7. Click "Save and deploy"
- * 8. Copy the URL (e.g. https://betfair-proxy.yourname.workers.dev)
- * 9. Set that URL as your BETFAIR_PROXY_URL secret in Base44 settings
- *    (Settings → Environment Variables → BETFAIR_PROXY_URL)
- *
- * NOTE: TCP sockets (cloudflare:sockets) are available on the Cloudflare Workers
- * free plan with usage limits. For production use, the paid plan ($5/mo) is recommended.
+ * 2. Create Worker → paste this entire file → Save and deploy
+ * 3. Set the worker URL as BETFAIR_PROXY_URL secret in Base44 settings
  */
 
 import { connect } from "cloudflare:sockets";
 
 const BETFAIR_STREAM_HOST = "stream-api.betfair.com:443";
 
+const ALLOWED_HOSTS = new Set([
+  "api.betfair.com",
+  "api.betfair.com.au",
+  "identitysso.betfair.com",
+  "identitysso-cert.betfair.com",
+]);
+
+const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
 export default {
   async fetch(request) {
-    // ── WebSocket upgrade → Stream API TCP bridge ──
     if (request.headers.get("Upgrade") === "websocket") {
       return handleStreamBridge(request);
     }
 
-    // ── CORS preflight ──
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
         },
       });
     }
 
-    // ── HTTP Proxy ──
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get("url");
 
     if (!targetUrl) {
-      return new Response("Missing \"url\" query parameter", { status: 400 });
+      return json({ error: "Missing url parameter" }, 400);
     }
 
+    const target = new URL(targetUrl);
+    if (!ALLOWED_HOSTS.has(target.hostname)) {
+      return json({ error: "Target host not allowed", host: target.hostname }, 403);
+    }
+
+    const body = request.method !== "GET" && request.method !== "HEAD"
+      ? await request.text()
+      : null;
+
+    const headers = new Headers();
+    const appKey = request.headers.get("X-Application");
+    const auth = request.headers.get("X-Authentication");
+    if (appKey) headers.set("X-Application", appKey);
+    if (auth) headers.set("X-Authentication", auth);
+    headers.set("Content-Type", "application/json");
+    headers.set("Accept", "application/json");
+    headers.set("User-Agent", BROWSER_UA);
+    headers.set("Accept-Language", "en-AU,en;q=0.9");
+
     try {
-      let body = null;
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        body = await request.text();
-      }
-
-      const forwardHeaders = [
-        "x-application",
-        "x-authentication",
-        "x-application-id",
-        "content-type",
-        "accept",
-      ];
-
-      const cleanHeaders = {};
-      for (const h of forwardHeaders) {
-        const val = request.headers.get(h);
-        if (val) cleanHeaders[h] = val;
-      }
-
-      const target = new URL(targetUrl);
-      cleanHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-      cleanHeaders["Accept-Language"] = "en-AU,en;q=0.9";
-      cleanHeaders["Accept-Encoding"] = "gzip, deflate, br";
-      cleanHeaders["Origin"] = target.origin;
-      cleanHeaders["Referer"] = target.origin + "/";
-
-      if (!cleanHeaders["Content-Type"] && body) {
-        cleanHeaders["Content-Type"] = "application/x-www-form-urlencoded";
-      }
-      if (!cleanHeaders["Accept"]) {
-        cleanHeaders["Accept"] = "application/json";
-      }
-
-      const response = await fetch(targetUrl, {
+      const upstream = await fetch(targetUrl, {
         method: request.method,
-        headers: cleanHeaders,
-        body: body,
+        headers,
+        body,
       });
 
-      const newResponse = new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
+      const text = await upstream.text();
 
-      newResponse.headers.set("Access-Control-Allow-Origin", "*");
-      newResponse.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      newResponse.headers.set("Access-Control-Allow-Headers", "*");
-
-      return newResponse;
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 502,
+      return new Response(text, {
+        status: upstream.status,
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": upstream.headers.get("Content-Type") || "text/plain",
           "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
         },
       });
+    } catch (err) {
+      return json({ error: err.message }, 502);
     }
   },
 };
 
-/**
- * WebSocket ↔ TCP bridge for Betfair Stream API.
- *
- * Browser connects via WebSocket. Worker opens a TLS TCP socket to
- * stream-api.betfair.com:443 and translates bidirectionally:
- *   - WebSocket message from browser → append \r\n → write to TCP socket
- *   - TCP socket data → split by \r\n → send each line as WebSocket message
- */
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+  });
+}
+
 async function handleStreamBridge(request) {
   const pair = new WebSocketPair();
   const client = pair[0];
   const server = pair[1];
-
   server.accept();
 
-  let betfairSocket;
-  let writer;
-  let reader;
-
+  let betfairSocket, writer, reader;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
   let closed = false;
 
-  // Helper: send a diagnostic message back to the browser
   function sendDiag(message) {
-    try {
-      server.send(JSON.stringify({ op: "diag", message }));
-    } catch (_) {}
+    try { server.send(JSON.stringify({ op: "diag", message })); } catch (_) {}
   }
 
   try {
@@ -166,59 +132,41 @@ async function handleStreamBridge(request) {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  // Browser → Betfair: forward WebSocket messages as CRLF-terminated TCP
   server.addEventListener("message", (event) => {
     if (closed) return;
     const data = typeof event.data === "string" ? event.data + "\r\n" : null;
     if (data) {
       writer.write(encoder.encode(data)).catch((err) => {
         sendDiag("TCP write failed: " + (err?.message || String(err)));
-        if (!closed) {
-          closed = true;
-          server.close(1011, "TCP write failed");
-        }
+        if (!closed) { closed = true; server.close(1011, "TCP write failed"); }
       });
     }
   });
 
-  // Betfair → Browser: split TCP stream by CRLF, send each line as WS message
   (async () => {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          sendDiag("TCP stream ended (done=true)");
-          break;
-        }
+        if (done) { sendDiag("TCP stream ended"); break; }
         buffer += decoder.decode(value, { stream: true });
         let idx;
         while ((idx = buffer.indexOf("\r\n")) >= 0) {
           const line = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
-          if (line.trim()) {
-            server.send(line);
-          }
+          if (line.trim()) server.send(line);
         }
       }
     } catch (e) {
       sendDiag("TCP read error: " + (e?.message || String(e)));
     }
-    if (!closed) {
-      closed = true;
-      server.close(1000, "Betfair stream ended");
-    }
+    if (!closed) { closed = true; server.close(1000, "Betfair stream ended"); }
   })();
 
   server.addEventListener("close", () => {
-    closed = true;
-    writer.close().catch(() => {});
-    reader.cancel().catch(() => {});
+    closed = true; writer.close().catch(() => {}); reader.cancel().catch(() => {});
   });
-
   server.addEventListener("error", () => {
-    closed = true;
-    writer.close().catch(() => {});
-    reader.cancel().catch(() => {});
+    closed = true; writer.close().catch(() => {}); reader.cancel().catch(() => {});
   });
 
   return new Response(null, { status: 101, webSocket: client });

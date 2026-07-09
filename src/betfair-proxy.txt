@@ -1,47 +1,60 @@
+/**
+ * Betfair CORS Proxy — Cloudflare Worker (REST only, no stream bridge)
+ *
+ * Sets a standard browser User-Agent to avoid Cloudflare Workers' default
+ * "Cloudflare-Workers" UA which triggers Betfair's WAF HTML 403 block.
+ * Does NOT forward Origin, Referer, cookies, or sec-fetch headers.
+ *
+ * DEPLOY: Paste into Cloudflare Worker, set URL as BETFAIR_PROXY_URL secret.
+ */
+
+const ALLOWED_HOSTS = new Set([
+  "api.betfair.com",
+  "api.betfair.com.au",
+  "identitysso.betfair.com",
+  "identitysso-cert.betfair.com",
+]);
+
+const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
 export default {
   async fetch(request) {
-    if (request.method === 'OPTIONS') {
+    if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Application, X-Authentication',
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
         },
       });
     }
 
     const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
+    const targetUrl = url.searchParams.get("url");
 
     if (!targetUrl) {
-      return json({ error: 'Missing url parameter' }, 400);
+      return json({ error: "Missing url parameter" }, 400);
     }
-
-    const allowedHosts = new Set([
-      'api.betfair.com',
-      'api.betfair.com.au',
-      'identitysso.betfair.com',
-      'identitysso-cert.betfair.com',
-    ]);
 
     const target = new URL(targetUrl);
-    if (!allowedHosts.has(target.hostname)) {
-      return json({ error: 'Target host not allowed', host: target.hostname }, 403);
+    if (!ALLOWED_HOSTS.has(target.hostname)) {
+      return json({ error: "Target host not allowed", host: target.hostname }, 403);
     }
 
-    const body = request.method !== 'GET' && request.method !== 'HEAD'
+    const body = request.method !== "GET" && request.method !== "HEAD"
       ? await request.text()
       : null;
 
-    // Forward ONLY these 4 headers — nothing browser-like
     const headers = new Headers();
-    const appKey = request.headers.get('X-Application');
-    const auth = request.headers.get('X-Authentication');
-    if (appKey) headers.set('X-Application', appKey);
-    if (auth) headers.set('X-Authentication', auth);
-    headers.set('Content-Type', 'application/json');
-    headers.set('Accept', 'application/json');
+    const appKey = request.headers.get("X-Application");
+    const auth = request.headers.get("X-Authentication");
+    if (appKey) headers.set("X-Application", appKey);
+    if (auth) headers.set("X-Authentication", auth);
+    headers.set("Content-Type", "application/json");
+    headers.set("Accept", "application/json");
+    headers.set("User-Agent", BROWSER_UA);
+    headers.set("Accept-Language", "en-AU,en;q=0.9");
 
     try {
       const upstream = await fetch(targetUrl, {
@@ -55,10 +68,10 @@ export default {
       return new Response(text, {
         status: upstream.status,
         headers: {
-          'Content-Type': upstream.headers.get('Content-Type') || 'text/plain',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Application, X-Authentication',
+          "Content-Type": upstream.headers.get("Content-Type") || "text/plain",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
         },
       });
     } catch (err) {
@@ -70,9 +83,6 @@ export default {
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-    },
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
   });
 }

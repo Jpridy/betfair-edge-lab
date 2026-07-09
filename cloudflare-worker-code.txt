@@ -4,9 +4,9 @@
  * This worker handles TWO things on the same URL:
  *
  * 1. REST API Proxy: Forwards Betfair Betting/Account API requests with CLEAN
- *    headers only (X-Application, X-Authentication, Content-Type, Accept).
- *    Does NOT forward browser-like headers (Origin, Referer, User-Agent, cookies,
- *    sec-fetch, accept-encoding) — these trigger Betfair's WAF/Cloudflare block.
+ *    headers. Sets a standard browser User-Agent to avoid Cloudflare Workers'
+ *    default "Cloudflare-Workers" UA which triggers Betfair's WAF block.
+ *    Does NOT forward Origin, Referer, cookies, or sec-fetch headers.
  *
  * 2. WebSocket-to-TCP Bridge: Accepts a WebSocket from the browser and
  *    bridges it to a raw SSL/TCP socket to Betfair's Stream API
@@ -29,6 +29,10 @@ const ALLOWED_HOSTS = new Set([
   "identitysso.betfair.com",
   "identitysso-cert.betfair.com",
 ]);
+
+// Standard browser User-Agent — prevents Cloudflare Workers from adding its
+// default "Cloudflare-Workers" UA which Betfair's WAF blocks with HTML 403.
+const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 export default {
   async fetch(request) {
@@ -66,7 +70,10 @@ export default {
       ? await request.text()
       : null;
 
-    // Forward ONLY these 4 headers — nothing browser-like
+    // Build clean headers: Betfair auth + standard browser identity.
+    // CRITICAL: User-Agent must be set explicitly — if omitted, Cloudflare
+    // Workers adds "User-Agent: Cloudflare-Workers" which Betfair's WAF blocks.
+    // Do NOT set Origin or Referer — these can also trigger WAF on API endpoints.
     const headers = new Headers();
     const appKey = request.headers.get("X-Application");
     const auth = request.headers.get("X-Authentication");
@@ -74,6 +81,8 @@ export default {
     if (auth) headers.set("X-Authentication", auth);
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "application/json");
+    headers.set("User-Agent", BROWSER_UA);
+    headers.set("Accept-Language", "en-AU,en;q=0.9");
 
     try {
       const upstream = await fetch(targetUrl, {
@@ -123,30 +132,33 @@ async function handleStreamBridge(request) {
   let writer;
   let reader;
 
-  try {
-    betfairSocket = connect(BETFAIR_STREAM_HOST, { secureTransport: "on" });
-    writer = betfairSocket.writable.getWriter();
-    reader = betfairSocket.readable.getReader();
-  } catch (err) {
-    server.send(JSON.stringify({ op: "status", statusCode: "FAILURE", errorCode: "PROXY_ERROR", errorMessage: "Failed to connect to Betfair Stream API: " + err.message }));
-    server.close(1011, "TCP connection failed");
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
   let closed = false;
 
+  function sendDiag(message) {
+    try { server.send(JSON.stringify({ op: "diag", message })); } catch (_) {}
+  }
+
+  try {
+    betfairSocket = connect(BETFAIR_STREAM_HOST, { secureTransport: "on" });
+    writer = betfairSocket.writable.getWriter();
+    reader = betfairSocket.readable.getReader();
+    sendDiag("TCP socket created to " + BETFAIR_STREAM_HOST);
+  } catch (err) {
+    sendDiag("TCP connect() threw: " + err.message);
+    server.close(1011, "TCP connection failed");
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
   server.addEventListener("message", (event) => {
     if (closed) return;
     const data = typeof event.data === "string" ? event.data + "\r\n" : null;
     if (data) {
-      writer.write(encoder.encode(data)).catch(() => {
-        if (!closed) {
-          closed = true;
-          server.close(1011, "TCP write failed");
-        }
+      writer.write(encoder.encode(data)).catch((err) => {
+        sendDiag("TCP write failed: " + (err?.message || String(err)));
+        if (!closed) { closed = true; server.close(1011, "TCP write failed"); }
       });
     }
   });
@@ -155,24 +167,19 @@ async function handleStreamBridge(request) {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) { sendDiag("TCP stream ended (done=true)"); break; }
         buffer += decoder.decode(value, { stream: true });
         let idx;
         while ((idx = buffer.indexOf("\r\n")) >= 0) {
           const line = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
-          if (line.trim()) {
-            server.send(line);
-          }
+          if (line.trim()) server.send(line);
         }
       }
     } catch (e) {
-      // TCP read error or connection closed
+      sendDiag("TCP read error: " + (e?.message || String(e)));
     }
-    if (!closed) {
-      closed = true;
-      server.close(1000, "Betfair stream ended");
-    }
+    if (!closed) { closed = true; server.close(1000, "Betfair stream ended"); }
   })();
 
   server.addEventListener("close", () => {
