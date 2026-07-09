@@ -9,8 +9,8 @@ import { Zap, ArrowRight, AlertTriangle, ScrollText, FlaskConical } from 'lucide
 function PanelBox({ title, link, linkText, children }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between mb-3 hidden">
-        <h3 className="text-sm font-bold text-foreground hidden">{title}</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-foreground">{title}</h3>
         {link &&
         <Link to={link} className="text-xs font-medium text-chart-3 hover:text-chart-3/80 flex items-center gap-1 transition-colors">
             {linkText} <ArrowRight className="h-3 w-3" />
@@ -69,7 +69,7 @@ function OrderRow({ o }) {
 
 function WarningRow({ s }) {
   return (
-    <Link to={`/strategy/${s.id}`} className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0 hover:opacity-80 hidden">
+    <Link to={`/strategy/${s.id}`} className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0 hover:opacity-80">
       <div className="flex items-center gap-2 min-w-0">
         <AlertTriangle className="h-3.5 w-3.5 text-chart-4 shrink-0" />
         <div className="min-w-0">

@@ -22,7 +22,7 @@ function QuickAction({ to, icon: Icon, label, sub, accent }) {
   return (
     <Link
       to={to}
-      className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 hover:border-primary/40 transition-all hidden">
+      className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 hover:border-primary/40 transition-all">
       
       <div className="flex items-center gap-3">
         <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${QUICK_ACCENTS[accent]}`}>

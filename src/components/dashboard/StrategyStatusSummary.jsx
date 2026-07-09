@@ -30,7 +30,7 @@ export default function StrategyStatusSummary() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 hidden">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-foreground">Strategy Status Summary</h3>
         <Link to="/strategy-library" className="text-xs font-medium text-chart-3 hover:text-chart-3/80 flex items-center gap-1">
