@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Save, CheckCircle2, ShieldAlert, AlertTriangle, RefreshCw, Trash2, FileDown, Network, FlaskConical } from 'lucide-react';
-import { isPaperProofModeActive, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS } from '@/lib/paperProofDefaults';
+import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
