@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { exportToCSV } from '@/lib/csvExport';
 
 export default function MarketFeedPanel() {
-  const { lastExchangeDiagnostics, botCycles, markets } = useApp();
+  const { lastExchangeDiagnostics, botCycles, markets, apiConnected, betfairConnection } = useApp();
   const [showAll, setShowAll] = useState(false);
 
   const diag = lastExchangeDiagnostics;
@@ -15,6 +15,13 @@ export default function MarketFeedPanel() {
   const funnel = diag?.timeWindowFunnel;
   const loadedTable = diag?.loadedMarketsTable;
   const scanSummary = botCycles[0]?.scanSummary;
+  const connDiag = diag?.connectionDiagnostics;
+
+  // Connection status strip
+  const streamStatus = betfairConnection?.streamConnectionStatus || 'disconnected';
+  const lastUpdate = betfairConnection?.lastMarketSyncTime;
+  const streamConnected = streamStatus === 'connected' || streamStatus === 'polling';
+  const notConnected = !apiConnected;
 
   const totalLoaded = feedDiag?.totalMarketsLoaded ?? diag?.totalMarketsLoaded ?? scanSummary?.totalMarketsLoaded ?? markets.length ?? 0;
   const openPreRace = feedDiag?.openPreRaceMarkets ?? diag?.openPreRaceMarkets ?? scanSummary?.openPreRaceMarkets ?? 0;
@@ -70,6 +77,31 @@ export default function MarketFeedPanel() {
         </Button>
       }
     >
+      {/* Connection status strip */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border-subtle text-[11px] flex-wrap">
+        <span className="text-muted-foreground uppercase tracking-wider">Connection:</span>
+        {notConnected ? (
+          <StatusBadge status="danger">Not connected</StatusBadge>
+        ) : streamConnected ? (
+          <StatusBadge status="ok">Stream live</StatusBadge>
+        ) : streamStatus === 'error' ? (
+          <StatusBadge status="danger">Stream error</StatusBadge>
+        ) : (
+          <StatusBadge status="warning">{streamStatus}</StatusBadge>
+        )}
+        {lastUpdate && (
+          <span className="text-muted-foreground">
+            Last update: {new Date(lastUpdate).toLocaleTimeString()}
+          </span>
+        )}
+        {connDiag?.streamError && (
+          <span className="text-danger">{connDiag.streamError}</span>
+        )}
+        {notConnected && (
+          <span className="text-muted-foreground">Go to Setup → connect Betfair session to stream live market data</span>
+        )}
+      </div>
+
       {/* Summary stats */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-px bg-border">
         {[
