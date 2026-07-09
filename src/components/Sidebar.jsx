@@ -4,6 +4,7 @@ import { Bot, Settings, ScrollText, FileText, Wrench, ChevronDown, ChevronRight,
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { BrandLogo } from '@/components/BrandLogo';
 
 const mainNav = [
   { label: 'Bot Control Centre', path: '/', icon: Bot },
@@ -41,10 +42,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
         'md:translate-x-0',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
-        <div className="flex items-center justify-between px-5 h-16 border-b border-sidebar-border">
-          <span className="text-lg font-bold tracking-tight text-sidebar-foreground whitespace-nowrap">
-            BETFAIR <span className="text-primary">EDGE LAB</span>
-          </span>
+        <div className="flex items-center justify-between px-4 h-16 border-b border-sidebar-border">
+          <BrandLogo size={30} />
           <button onClick={onClose} className="md:hidden text-muted-foreground">
             <X className="h-5 w-5" />
           </button>
