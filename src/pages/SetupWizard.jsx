@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,9 @@ export default function SetupWizard() {
   const [results, setResults] = useState({});
   const [testing, setTesting] = useState(null);
   const [runningAll, setRunningAll] = useState(false);
+
+  // Ref to always access the latest runTest (avoids stale closures in runAll)
+  const runTestRef = useRef(null);
 
   const runTest = async (stepId) => {
     setTesting(stepId);
@@ -297,10 +300,13 @@ export default function SetupWizard() {
     setTesting(null);
   };
 
+  // Keep ref in sync with latest runTest (which captures latest markets/runners)
+  runTestRef.current = runTest;
+
   const runAll = async () => {
     setRunningAll(true);
     for (const step of STEPS) {
-      await runTest(step.id);
+      await runTestRef.current(step.id);
       await new Promise(r => setTimeout(r, 200));
     }
     setRunningAll(false);
