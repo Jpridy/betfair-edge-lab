@@ -285,6 +285,30 @@
     "allowFavouriteLayOnlyWhenVulnerable": {
       "type": "boolean",
       "default": true
+    },
+    "racePackCacheTtlMinutes": {
+      "type": "number",
+      "default": 30
+    },
+    "aiResultCacheTtlSeconds": {
+      "type": "number",
+      "default": 90
+    },
+    "rerunAiOnMajorPriceMove": {
+      "type": "boolean",
+      "default": true
+    },
+    "majorPriceMoveTicks": {
+      "type": "number",
+      "default": 5
+    },
+    "prewarmOpenAIWithinMinutes": {
+      "type": "number",
+      "default": 30
+    },
+    "completedRaceRetentionHours": {
+      "type": "number",
+      "default": 6
     }
   },
   "required": [

@@ -24,7 +24,7 @@ export default function ControlActions() {
       <section aria-labelledby="data-actions-heading" className="border-t border-border-subtle pt-4">
         <div className="mb-2"><h4 id="data-actions-heading" className="text-sm font-semibold text-foreground">Market workflow</h4><p className="text-xs text-muted-foreground">Refresh Betfair data before running a new manual scan.</p></div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Button className="w-full" variant="outline" onClick={() => run('refresh', refreshBetfairData)} disabled={busy || !apiConnected}><Database className={busy === 'refresh' ? 'animate-pulse' : ''} />{busy === 'refresh' ? 'Refreshing Markets...' : '1. Refresh Markets'}</Button>
+          <Button className="w-full" variant="outline" onClick={() => run('refresh', refreshBetfairData)} disabled={busy || !apiConnected}><Database className={busy === 'refresh' ? 'animate-pulse' : ''} />{busy === 'refresh' ? 'Loading Race Day...' : '1. Load / Refresh Race Day'}</Button>
           <Button className="w-full" variant="outline" onClick={() => run('scan', runManualScan)} disabled={busy || emergencyStop}><RefreshCw className={busy === 'scan' ? 'animate-spin' : ''} />{busy === 'scan' ? 'Scanning...' : '2. Run Manual Scan'}</Button>
         </div>
       </section>

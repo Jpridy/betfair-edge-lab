@@ -56,6 +56,12 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
   favouriteWeakConfidencePenalty: 10,
   requireFavouriteContextForWinMarket: false,
   allowFavouriteLayOnlyWhenVulnerable: true,
+  racePackCacheTtlMinutes: 30,
+  aiResultCacheTtlSeconds: 90,
+  rerunAiOnMajorPriceMove: true,
+  majorPriceMoveTicks: 5,
+  prewarmOpenAIWithinMinutes: 30,
+  completedRaceRetentionHours: 6,
 };
 
 export const DEFAULT_BOT_SETTINGS = {

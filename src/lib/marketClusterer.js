@@ -25,7 +25,7 @@ export function detectMarketType(market) {
   // Betfair marketTypeCode is the most reliable signal
   if (mtc === 'WIN' || mtc === 'WIN_MARKET') return 'WIN';
   if (mtc === 'PLACE' || mtc === 'PLACE_MARKET') return 'PLACE';
-  if (mtc === 'MATCH_ODDS' || mtc === 'AVB' || mtc === 'HEAD_TO_HEAD') return 'H2H';
+  if (mtc === 'MATCH_ODDS' || mtc === 'MATCH_BET' || mtc === 'AVB' || mtc === 'HEAD_TO_HEAD') return 'H2H';
 
   // Fallback: marketName detection
   const lowerName = name.toLowerCase();

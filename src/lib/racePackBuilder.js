@@ -372,6 +372,22 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
 /**
  * Create a compact summary of the race pack for diagnostics/logging.
  */
+export function buildStaticRacePack(eventCluster, allRunners = []) {
+  const markets = getAllMarketsInCluster(eventCluster);
+  const marketIds = new Set(markets.map(m => String(m.betfairMarketId || m.id)));
+  const staticRunners = allRunners.filter(r => marketIds.has(String(r.marketId || r.betfairMarketId))).map(r => ({ id: r.id, marketId: r.marketId, selectionId: String(r.betfairSelectionId || r.selectionId || ''), runnerName: r.runnerName, horseNumber: r.horseNumber || 0, raceFormProfile: r.raceFormProfile || null }));
+  return { raceId: eventCluster.eventId || eventCluster.raceKey, raceKey: eventCluster.raceKey || eventCluster.eventId, eventId: eventCluster.eventId || null, eventName: eventCluster.eventName || '', venue: eventCluster.venue || '', raceNumber: eventCluster.raceNumber || 0, startTime: eventCluster.startTime || markets[0]?.marketStartTime || markets[0]?.startTime || null, staticMarkets: markets.map(m => ({ id: m.id, betfairMarketId: m.betfairMarketId, eventId: m.eventId, eventName: m.eventName, venue: m.venue, raceNumber: m.raceNumber, marketName: m.marketName, marketType: m.marketType, marketTypeCode: m.marketTypeCode, marketStartTime: m.marketStartTime || m.startTime, numberOfWinners: m.numberOfWinners, marketBaseRate: m.marketBaseRate })), staticRunners, marketTypesAvailable: [...new Set(markets.map(detectMarketType).filter(t => t !== 'OTHER'))], placeTerms: markets.filter(m => detectMarketType(m) === 'PLACE').map(extractPlaceTerms), builtAt: new Date().toISOString(), buildCount: 1, cluster: eventCluster };
+}
+
+export function hydrateRacePackForScan(staticPack, { markets = [], runners = [], settings = {}, featherlessSettings = {}, bankrollStats = {}, paperOrders = [], externalResearch = null, opts = {} } = {}) {
+  if (!staticPack) return null;
+  const marketIds = new Set(staticPack.staticMarkets.map(m => String(m.betfairMarketId || m.id)));
+  const dynamicMarkets = markets.filter(m => marketIds.has(String(m.betfairMarketId || m.id)));
+  const dynamicRunners = runners.filter(r => marketIds.has(String(r.marketId || r.betfairMarketId)));
+  const hydrated = buildRacePack(staticPack.cluster, dynamicRunners, dynamicMarkets, settings, featherlessSettings, bankrollStats, paperOrders, externalResearch, opts);
+  return { ...hydrated, raceKey: staticPack.raceKey, staticBuiltAt: staticPack.builtAt, hydratedAt: new Date().toISOString(), racePackFromCache: true };
+}
+
 export function summarizeRacePack(racePack) {
   if (!racePack) return null;
   return {

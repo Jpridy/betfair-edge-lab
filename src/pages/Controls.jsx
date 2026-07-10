@@ -2,6 +2,7 @@ import React from 'react';
 import { Activity, FlaskConical, Link2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ControlActions from '@/components/controls/ControlActions';
+import RaceDayPanel from '@/components/controls/RaceDayPanel';
 import ManualPaperOrder from '@/components/controls/ManualPaperOrder';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import RiskOrdersPanel from '@/components/controlroom/RiskOrdersPanel';
@@ -27,7 +28,7 @@ export default function Controls() {
           <FlaskConical className="h-4 w-4 shrink-0" /><span><span className="block">Paper Proof</span><span className="block text-[10px] font-normal text-muted-foreground">Test the full pipeline</span></span>
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="operations" className="space-y-5"><ControlActions /><ManualPaperOrder /><RiskOrdersPanel /></TabsContent>
+      <TabsContent value="operations" className="space-y-5"><RaceDayPanel /><ControlActions /><ManualPaperOrder /><RiskOrdersPanel /></TabsContent>
       <TabsContent value="connection"><BetfairConnection /></TabsContent>
       <TabsContent value="proof"><PaperProofPanel /></TabsContent>
     </Tabs>

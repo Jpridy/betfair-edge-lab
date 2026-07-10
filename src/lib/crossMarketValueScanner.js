@@ -282,27 +282,30 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
     }
   }
 
-  // ── Apply Favourite Value Context (post-processing) ──
-  // For WIN markets, calculate favourite context and apply small capped
-  // adjustments to probability, confidence, and ranking. Also generate
-  // specific NO BET reasons for rejected opportunities.
+  // ── Apply Favourite Value Context and recalculate all probability-dependent maths ──
   const winMarket = allMarkets.find(m => detectMarketType(m) === 'WIN');
   if (winMarket) {
-    const winRunners = allRunners.filter(r =>
-      matchRunnerToMarket(r, winMarket) && r.status === 'ACTIVE'
-    );
+    const winRunners = allRunners.filter(r => matchRunnerToMarket(r, winMarket) && r.status === 'ACTIVE');
     const favouriteContext = calculateFavouriteContext(winRunners);
     const runnerContextScores = calculateRunnerContextScores(winRunners, favouriteContext, externalSearchResult);
 
     for (let i = 0; i < opportunities.length; i++) {
-      const opp = opportunities[i];
-      const runnerScore = runnerContextScores.find(s => s.selectionId === opp.selectionId);
-      opportunities[i] = applyFavouriteContextToOpportunity(opp, favouriteContext, runnerScore, featherlessSettings);
+      const original = opportunities[i];
+      const runnerScore = runnerContextScores.find(s => s.selectionId === original.selectionId);
+      const adjusted = applyFavouriteContextToOpportunity(original, favouriteContext, runnerScore, featherlessSettings);
+      let finalOpportunity = adjusted;
 
-      // Generate specific NO BET reason for rejected opportunities
-      if (opportunities[i].decision === 'NO_BET') {
-        opportunities[i].specificNoBetReason = generateSpecificNoBetReason(opportunities[i], favouriteContext, featherlessSettings);
+      if (Math.abs((adjusted.finalProbabilityUsedInEV ?? original.modelProbability) - original.modelProbability) > 0.000001) {
+        const market = allMarkets.find(m => String(m.id) === String(original.marketId) || String(m.betfairMarketId) === String(original.betfairMarketId));
+        const runner = allRunners.find(r => matchRunnerToMarket(r, market) && String(r.betfairSelectionId || r.selectionId) === String(original.selectionId));
+        if (market && runner) {
+          const rebuilt = buildOpportunity({ cluster, market, runner, marketType: original.marketType, thresholds: resolveMarketTypeThresholds(original.marketType, featherlessSettings), commissionRate: original.commissionRate, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, modelProbability: adjusted.finalProbabilityUsedInEV, probData: { ...(probMap.get(original.selectionId) || {}), confidence: adjusted.confidence }, dataQuality: adjusted.dataQuality, raceSummary, overround: original.overround, side: original.side, odds: original.odds, availableSize: original.availableSize, opponentSelectionId: original.opponentSelectionId, externalSearchFields: { externalSearchUsed: original.externalSearchUsed, externalSearchStatus: original.externalSearchStatus, externalSourceCount: original.externalSourceCount, externalDataQuality: original.externalDataQuality, preSearchProbability: original.preSearchProbability, postSearchProbability: original.postSearchProbability, probabilityDelta: original.probabilityDelta, preSearchConfidence: original.preSearchConfidence, postSearchConfidence: original.postSearchConfidence, confidenceDelta: original.confidenceDelta, externalPositiveSignals: original.externalPositiveSignals, externalNegativeSignals: original.externalNegativeSignals, externalNeutralSignals: original.externalNeutralSignals, externalSearchSummary: original.externalSearchSummary, externalSearchSourceUrls: original.externalSearchSourceUrls, decisionImpact: original.decisionImpact, marketOnlyFallbackReason: original.marketOnlyFallbackReason } });
+          finalOpportunity = { ...adjusted, ...rebuilt, favouriteSelectionId: adjusted.favouriteSelectionId, favouriteName: adjusted.favouriteName, isFavourite: adjusted.isFavourite, favouriteOdds: adjusted.favouriteOdds, favouriteDominanceScore: adjusted.favouriteDominanceScore, fieldStrengthCategory: adjusted.fieldStrengthCategory, qualityThreatCount: adjusted.qualityThreatCount, runnerContextScore: adjusted.runnerContextScore, marketScore: adjusted.marketScore, formScore: adjusted.formScore, pressureScore: adjusted.pressureScore, baseProbability: adjusted.baseProbability, favouriteContextAdjustment: adjusted.favouriteContextAdjustment, finalProbabilityUsedInEV: adjusted.finalProbabilityUsedInEV, contextAdjustmentReason: adjusted.contextAdjustmentReason, favouriteValueWarning: adjusted.favouriteValueWarning };
+        }
       }
+      if (finalOpportunity.favouriteValueWarning?.startsWith('LAY favourite blocked')) finalOpportunity = { ...finalOpportunity, decision: 'NO_BET', blockers: [...finalOpportunity.blockers, finalOpportunity.favouriteValueWarning], failedGate: finalOpportunity.favouriteValueWarning };
+      if (finalOpportunity.decision === 'NO_BET') finalOpportunity.specificNoBetReason = generateSpecificNoBetReason(finalOpportunity, favouriteContext, featherlessSettings);
+      opportunities[i] = finalOpportunity;
     }
   }
 

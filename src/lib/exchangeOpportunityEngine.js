@@ -28,6 +28,10 @@ import { matchRunnerToMarket } from './marketIdMatcher';
 import { buildRacePack, summarizeRacePack } from './racePackBuilder';
 import { checkMarketEligibility } from './marketEligibility';
 import { buildFavouriteValueDiagnostics, generateSpecificNoBetReason } from './favouriteValueContext';
+import { groupRaceDayData } from './raceDayLoader';
+import { getRaceDayCache, loadRaceDayCache, setRacePacks, updateRaceDayDynamic, pruneRaceDayCache, markRaceScanned } from './raceDayCache';
+import { buildRacePackCache, hydrateCachedRacePack, getRaceAiCache, setRaceAiCache } from './racePackCache';
+import { scheduleRaceScan, consumeForcedRaceScan } from './raceScanScheduler';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -414,9 +418,22 @@ export async function runExchangeCycle(params) {
   bankrollStats = bankrollStats || {};
   connectionState = connectionState || {};
 
+  // ── Race-day cache: build static structures once, then merge dynamic books ──
+  let raceCache = getRaceDayCache();
+  const inputMarketIds = new Set(markets.map(m => String(m.betfairMarketId || m.id)));
+  const cacheMatchesInput = [...inputMarketIds].some(id => raceCache.marketsById.has(id));
+  if (markets.length && (!raceCache.loadedAt || !cacheMatchesInput)) {
+    const grouped = groupRaceDayData(markets, runners);
+    const packs = buildRacePackCache(grouped.racesByRaceKey, runners);
+    raceCache = loadRaceDayCache({ markets, runners, racePacksByRaceKey: packs, fetchedAt: new Date().toISOString(), jurisdiction: 'AU' });
+    setRacePacks(packs);
+  } else if (raceCache.loadedAt) {
+    updateRaceDayDynamic({ markets, runners, source: connectionState?.streamConnected ? 'stream' : 'rest_book', updatedAt: connectionState?.lastStreamUpdateAt || connectionState?.lastCatalogueRefreshAt || new Date().toISOString() });
+  }
+  pruneRaceDayCache({ orders: paperOrders, retentionHours: featherlessSettings?.completedRaceRetentionHours || 6 });
+
   // ── Pre-build runner-by-market lookup (single O(runners) pass) ──
-  // Replaces N×M runners.filter() calls with O(1) map lookups.
-  const runnersByMarket = buildRunnerByMarketMap(runners);
+  let runnersByMarket = buildRunnerByMarketMap(runners);
 
   // ── Build pre-filter diagnostics from ALL loaded markets ──
   const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners, connectionState, runnersByMarket);
@@ -443,6 +460,22 @@ export async function runExchangeCycle(params) {
     streamError: connectionState?.streamError ?? null,
     priceFeedStale: connectionState?.priceFeedStale ?? false,
   };
+
+  const forcedScan = consumeForcedRaceScan();
+  const schedule = scheduleRaceScan(raceCache.racesByRaceKey, { windowStart: featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500, windowEnd: featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30, forceNext: forcedScan || debugScanMode || paperProofMode });
+  const selectedRace = schedule.selectedRaceForScan;
+  let hydratedRacePack = null;
+  if (selectedRace) {
+    const ids = new Set(selectedRace.markets.map(m => String(m.betfairMarketId || m.id)));
+    markets = selectedRace.markets.map(m => raceCache.marketsById.get(String(m.betfairMarketId || m.id)) || m);
+    runners = [...ids].flatMap(id => raceCache.runnersByMarketId.get(id) || []);
+    runnersByMarket = buildRunnerByMarketMap(runners);
+    hydratedRacePack = hydrateCachedRacePack(raceCache.racePacksByRaceKey.get(selectedRace.raceKey), { markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, opts: { paperMode: true, paperProofMode, dataFresh: selectedRace.freshnessStatus } });
+  }
+
+  if (!selectedRace && raceCache.loadedAt && !emergencyStop) {
+    return { bestOpportunity: null, allOpportunities: [], eventClusters: [], diagnostics: { noBetReason: 'No cached race currently inside scan window', noScanReason: schedule.selectionReason, marketsScanned: 0, eventsScanned: 0, totalMarketsLoaded: raceCache.summary.totalMarketsLoaded || 0, marketsSentToExchangeEngine: 0, raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt, opportunityFunnel: { raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, noScanReason: schedule.selectionReason, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt }, nextRace: schedule.nextRace ? { raceKey: schedule.nextRace.raceKey, eventName: schedule.nextRace.eventName, startTime: schedule.nextRace.startTime, secondsToJump: schedule.nextRace.secondsToJump } : null, marketFeedDiagnostics, marketFilterFunnel, timeWindowFunnel, loadedMarketsTable, connectionDiagnostics, debugScanMode } };
+  }
 
   if (emergencyStop) {
     return {
@@ -660,16 +693,19 @@ export async function runExchangeCycle(params) {
     }
 
     // ── Step 2: Build the RacePack ──
-    const racePack = buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult, {
-      paperMode: true,
-      paperProofMode,
-      dataFresh: connectionState?.priceFeedStale ? 'stale' : 'live',
-    });
+    const racePack = hydratedRacePack && selectedRace
+      ? hydrateCachedRacePack(raceCache.racePacksByRaceKey.get(selectedRace.raceKey), { markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, externalResearch: externalSearchResult, opts: { paperMode: true, paperProofMode, dataFresh: selectedRace.freshnessStatus } })
+      : buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult, {
+          paperMode: true,
+          paperProofMode,
+          dataFresh: connectionState?.priceFeedStale ? 'stale' : 'live',
+        });
     racePacksBuilt++;
     const racePackSummary = summarizeRacePack(racePack);
 
     // ── Step 3: Call Featherless with the FULL race pack ──
-    let aiResult = debugScanMode ? null : getCachedAIResult(cluster, marketRunners);
+    const raceAiCache = !debugScanMode && selectedRace ? getRaceAiCache(selectedRace.raceKey, marketRunners, featherlessSettings?.majorPriceMoveTicks || 5, featherlessSettings?.rerunAiOnMajorPriceMove !== false) : null;
+    let aiResult = debugScanMode ? null : (raceAiCache?.featherlessResult || getCachedAIResult(cluster, marketRunners));
     let usedMarketOnlyFallback = false;
     let featherlessStatus = 'not_called';
     let featherlessLatencyMs = 0;
@@ -691,7 +727,10 @@ export async function runExchangeCycle(params) {
         featherlessLatencyMs = Date.now() - flStart;
         featherlessTotalLatencyMs += featherlessLatencyMs;
         if (aiResult) {
-          if (!debugScanMode) setCachedAIResult(cluster, marketRunners, aiResult);
+          if (!debugScanMode) {
+            setCachedAIResult(cluster, marketRunners, aiResult);
+            if (selectedRace) setRaceAiCache(selectedRace.raceKey, aiResult, marketRunners, featherlessSettings?.aiResultCacheTtlSeconds || 90);
+          }
           eventsWithAI++;
           featherlessSucceeded++;
           featherlessStatus = aiResult.featherlessStatus || 'success';
@@ -824,6 +863,8 @@ export async function runExchangeCycle(params) {
       decisionSource: aiResult?.decisionSource || 'UNKNOWN',
     });
   }
+
+  if (selectedRace) markRaceScanned(selectedRace.raceKey);
 
   // ── Collect favourite contexts from opportunities (for diagnostics) ──
   const favouriteContextsDetected = [];
@@ -1111,6 +1152,23 @@ export async function runExchangeCycle(params) {
       proofFallbackAttempted,
       proofFallbackCreated,
       proofFallbackBlockedReason,
+      raceDayLoaded: !!raceCache.loadedAt,
+      raceDayLoadedAt: raceCache.loadedAt,
+      totalDayRaces: raceCache.summary.totalRacesLoaded || 0,
+      totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0,
+      cachedRacePacks: raceCache.racePacksByRaceKey.size,
+      selectedRaceKey: selectedRace?.raceKey || null,
+      selectedRaceName: selectedRace?.eventName || null,
+      selectedRaceStartTime: selectedRace?.startTime || null,
+      selectedRaceSecondsToJump: selectedRace?.secondsToJump ?? null,
+      racePackFromCache: !!hydratedRacePack,
+      racePackHydratedAt: hydratedRacePack?.hydratedAt || null,
+      racePackFreshnessStatus: selectedRace?.freshnessStatus || 'missing',
+      aiCacheUsed: cacheHits > 0,
+      openAICacheUsed: extSearchCacheHits > 0,
+      openAICalled: extSearchCalls > 0,
+      racesInsideWindow: schedule.racesInsideWindow,
+      nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt,
       racePacksBuilt,
       featherlessCalled,
       featherlessSucceeded,
@@ -1168,6 +1226,23 @@ export async function runExchangeCycle(params) {
       perEventResults: externalSearchPerEvent,
       cacheStats: getExternalSearchCacheStats(),
     },
+    raceDayLoaded: !!raceCache.loadedAt,
+    raceDayLoadedAt: raceCache.loadedAt,
+    totalDayRaces: raceCache.summary.totalRacesLoaded || 0,
+    totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0,
+    cachedRacePacks: raceCache.racePacksByRaceKey.size,
+    selectedRaceKey: selectedRace?.raceKey || null,
+    selectedRaceName: selectedRace?.eventName || null,
+    selectedRaceStartTime: selectedRace?.startTime || null,
+    selectedRaceSecondsToJump: selectedRace?.secondsToJump ?? null,
+    racePackFromCache: !!hydratedRacePack,
+    racePackHydratedAt: hydratedRacePack?.hydratedAt || null,
+    racePackFreshnessStatus: selectedRace?.freshnessStatus || 'missing',
+    aiCacheUsed: cacheHits > 0,
+    openAICacheUsed: extSearchCacheHits > 0,
+    openAICalled: extSearchCalls > 0,
+    racesInsideWindow: schedule.racesInsideWindow,
+    nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt,
     raceAssessmentDiagnostics: {
       racePacksBuilt,
       featherlessCalled,

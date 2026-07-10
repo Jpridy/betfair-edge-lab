@@ -15,6 +15,7 @@ import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { AppProvider } from '@/lib/AppContext';
+import { RaceDayProvider } from '@/lib/RaceDayContext';
 
 // Five focused product pages
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -51,6 +52,7 @@ const AuthenticatedApp = () => {
 
   return (
     <AppProvider>
+      <RaceDayProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -83,6 +85,7 @@ const AuthenticatedApp = () => {
         </Route>
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </RaceDayProvider>
     </AppProvider>
   );
 };
