@@ -363,110 +363,83 @@ Deno.serve(async (req) => {
     let catalogues = [];
     const catalogueErrors = [];
 
+    // Split the 2-day window into 8 six-hour chunks to avoid TOO_MUCH_DATA.
+    // Betfair's ANGX-0001 triggers when the combined response data (markets ×
+    // runners × metadata fields) exceeds an internal limit — smaller time
+    // windows + smaller maxResults keep each response well under that limit.
+    const CHUNK_MS = 6 * 60 * 60 * 1000; // 6 hours
+    const timeChunks = [];
+    const startMs = new Date(fromTime).getTime();
+    const endMs = new Date(toTime).getTime();
+    for (let t = startMs; t < endMs; t += CHUNK_MS) {
+      timeChunks.push({
+        from: new Date(t).toISOString(),
+        to: new Date(Math.min(t + CHUNK_MS, endMs)).toISOString(),
+      });
+    }
+
     for (const mt of requestedMarketTypes) {
-      const batchBody = {
-        filter: {
-          eventTypeIds: ['7'],
-          marketTypeCodes: [mt],
-          marketStartTime: { from: fromTime, to: toTime },
-        },
-        maxResults: '100',
-        sort: 'FIRST_TO_START',
-        marketProjection: [
-          'EVENT',
-          'EVENT_TYPE',
-          'MARKET_START_TIME',
-          'MARKET_DESCRIPTION',
-          'RUNNER_DESCRIPTION',
-          'RUNNER_METADATA',
-        ],
-      };
+      for (const chunk of timeChunks) {
+        const batchBody = {
+          filter: {
+            eventTypeIds: ['7'],
+            marketTypeCodes: [mt],
+            marketStartTime: { from: chunk.from, to: chunk.to },
+          },
+          maxResults: '50',
+          sort: 'FIRST_TO_START',
+          marketProjection: [
+            'EVENT',
+            'EVENT_TYPE',
+            'MARKET_START_TIME',
+            'MARKET_DESCRIPTION',
+            'RUNNER_DESCRIPTION',
+            'RUNNER_METADATA',
+          ],
+        };
 
-      let batchCatalogues;
-      try {
-        const batchRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(batchBody));
-        const batchText = await batchRes.text();
-
-        // HTML detection
-        const batchLooksHtml = batchText.trimStart().startsWith('<!DOCTYPE html') ||
-                               batchText.includes('<html') ||
-                               batchText.includes('<title>Betfair</title>');
-
-        if (batchLooksHtml) {
-          catalogueErrors.push(`${mt}: HTML 403 response`);
-          continue;
-        }
-
-        // Session expired?
-        if (batchText.includes('UNAUTHORIZED') || batchText.includes('INVALID_SESSION') || batchText.includes('NO_SESSION')) {
-          return Response.json({
-            status: 'error',
-            sessionExpired: true,
-            error: 'Betfair session expired',
-            errors: ['Betfair session expired'],
-            markets: [],
-            runners: [],
-          }, { status: 200 });
-        }
-
-        if (!batchRes.ok) {
-          catalogueErrors.push(`${mt}: HTTP ${batchRes.status}`);
-          continue;
-        }
-
-        let batchParsed;
         try {
-          batchParsed = JSON.parse(batchText);
-        } catch {
-          catalogueErrors.push(`${mt}: non-JSON response`);
-          continue;
-        }
+          const batchRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(batchBody));
+          const batchText = await batchRes.text();
 
-        // Betfair error in JSON body?
-        if (batchParsed && !Array.isArray(batchParsed) && batchParsed.error) {
-          const errStr = JSON.stringify(batchParsed.error);
-          if (errStr.includes('TOO_MUCH_DATA')) {
-            // Retry with even smaller batch
-            batchBody.maxResults = '40';
-            const retryRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(batchBody));
-            const retryText = await retryRes.text();
-            try {
-              const retryParsed = JSON.parse(retryText);
-              if (Array.isArray(retryParsed)) {
-                batchCatalogues = retryParsed;
-              } else {
-                catalogueErrors.push(`${mt}: TOO_MUCH_DATA even with maxResults=40`);
-                continue;
-              }
-            } catch {
-              catalogueErrors.push(`${mt}: retry non-JSON`);
-              continue;
-            }
-          } else if (errStr.includes('INVALID_SESSION') || errStr.includes('NO_SESSION')) {
-            return Response.json({
-              status: 'error',
-              sessionExpired: true,
-              error: 'Betfair session expired',
-              errors: ['Betfair session expired'],
-              markets: [],
-              runners: [],
-            }, { status: 200 });
-          } else {
-            catalogueErrors.push(`${mt}: ${errStr.slice(0, 150)}`);
+          // HTML detection
+          if (batchText.trimStart().startsWith('<!DOCTYPE html') || batchText.includes('<html') || batchText.includes('<title>Betfair</title>')) {
+            catalogueErrors.push(`${mt} ${chunk.from.slice(11,16)}: HTML 403`);
             continue;
           }
-        }
 
-        if (Array.isArray(batchParsed)) {
-          batchCatalogues = batchParsed;
-        }
-      } catch (err) {
-        catalogueErrors.push(`${mt}: ${err.message}`);
-        continue;
-      }
+          // Session expired?
+          if (batchText.includes('UNAUTHORIZED') || batchText.includes('INVALID_SESSION') || batchText.includes('NO_SESSION')) {
+            return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired', errors: ['Betfair session expired'], markets: [], runners: [] }, { status: 200 });
+          }
 
-      if (batchCatalogues && batchCatalogues.length > 0) {
-        catalogues = catalogues.concat(batchCatalogues);
+          if (!batchRes.ok) {
+            catalogueErrors.push(`${mt} ${chunk.from.slice(11,16)}: HTTP ${batchRes.status}`);
+            continue;
+          }
+
+          let batchParsed;
+          try { batchParsed = JSON.parse(batchText); } catch {
+            catalogueErrors.push(`${mt} ${chunk.from.slice(11,16)}: non-JSON`);
+            continue;
+          }
+
+          // Betfair error in JSON body?
+          if (batchParsed && !Array.isArray(batchParsed) && batchParsed.error) {
+            const errStr = JSON.stringify(batchParsed.error);
+            if (errStr.includes('INVALID_SESSION') || errStr.includes('NO_SESSION')) {
+              return Response.json({ status: 'error', sessionExpired: true, error: 'Betfair session expired', errors: ['Betfair session expired'], markets: [], runners: [] }, { status: 200 });
+            }
+            catalogueErrors.push(`${mt} ${chunk.from.slice(11,16)}: ${errStr.slice(0, 120)}`);
+            continue;
+          }
+
+          if (Array.isArray(batchParsed) && batchParsed.length > 0) {
+            catalogues = catalogues.concat(batchParsed);
+          }
+        } catch (err) {
+          catalogueErrors.push(`${mt} ${chunk.from.slice(11,16)}: ${err.message}`);
+        }
       }
     }
 
