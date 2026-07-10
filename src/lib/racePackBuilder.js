@@ -97,7 +97,7 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
           bestBackPrice: bestBack,
           bestLayPrice: bestLay,
           spreadTicks,
-          liquidity: Math.min(1, (r.bestBackSize || 0 + r.bestLaySize || 0) / Math.max(100, 1)),
+          liquidity: Math.min(1, ((r.bestBackSize || 0) + (r.bestLaySize || 0)) / Math.max(100, 1)),
           publicResearch: formProfile?.externalFormData ?? null,
           positiveSignals: [],
           negativeSignals: [],
@@ -247,7 +247,7 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
       previousBetsOnRace: openOrdersInRace.length,
       commissionRate,
       delayedApiMode: true,
-      dataFreshness: 'live',
+      dataFreshness: opts.dataFresh || 'live',
       riskLimits: {
         dailyLossLimit: settings?.dailyLossLimit ?? 500,
         weeklyLossLimit: settings?.weeklyLossLimit ?? 2500,

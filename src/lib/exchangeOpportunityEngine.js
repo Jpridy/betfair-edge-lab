@@ -533,7 +533,7 @@ export async function runExchangeCycle(params) {
   // This is the single biggest speedup: 1 AI call instead of N.
   // All clusters are still reported in diagnostics for transparency.
   const totalEventClusters = eventClusters.length;
-  const effectiveMaxEvents = maxEventsToScan || maxRacesPerCycle;
+  const effectiveMaxEvents = maxEventsToScan || featherlessSettings?.maxRacesPerCycle || 1;
   const clustersToScan = eventClusters.slice(0, effectiveMaxEvents);
 
   // ── Market detection log ──
@@ -602,7 +602,6 @@ export async function runExchangeCycle(params) {
   const allowMarketOnlyFallbackInNormalMode = featherlessSettings?.allowMarketOnlyFallbackInNormalMode === true;
   const allowMarketOnlyFallbackInDebug = featherlessSettings?.allowMarketOnlyFallbackInDebug !== false;
   const allowMarketOnlyFallbackInPaperProof = featherlessSettings?.allowMarketOnlyFallbackInPaperProof !== false;
-  const maxRacesPerCycle = featherlessSettings?.maxRacesPerCycle || 1;
 
   const marketTypeCounts = eligibleMarkets.reduce((acc, m) => {
     const type = detectMarketType(m);
@@ -671,7 +670,11 @@ export async function runExchangeCycle(params) {
     }
 
     // ── Step 2: Build the RacePack ──
-    const racePack = buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult, { paperMode: true, paperProofMode });
+    const racePack = buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult, {
+      paperMode: true,
+      paperProofMode,
+      dataFresh: connectionState?.priceFeedStale ? 'stale' : 'live',
+    });
     racePacksBuilt++;
     const racePackSummary = summarizeRacePack(racePack);
 
