@@ -13,6 +13,7 @@
 
 import { detectMarketType } from './marketClusterer';
 import { calcProofStake } from './paperProofDefaults';
+import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -43,7 +44,7 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
       if (marketType === 'OTHER') continue;
 
       const marketRunners = allRunners.filter(r =>
-        (r.marketId === market.id || r.marketId === market.betfairMarketId) && r.status === 'ACTIVE'
+        matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
       );
 
       for (const runner of marketRunners) {
@@ -52,8 +53,8 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
 
         // Check for duplicate open order
         const hasDup = paperOrders.some(o =>
-          (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
-          (o.selectionId === selectionId || o.runnerId === runner.id) &&
+          matchOrderToMarket(o, market) &&
+          (matchSelectionId(o.selectionId, selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
           OPEN_ORDER_STATUSES.includes(o.status)
         );
         if (hasDup) continue;

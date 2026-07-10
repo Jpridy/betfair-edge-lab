@@ -17,6 +17,7 @@ import { calculateSpreadTicks } from './tickLadder';
 import { countTicksBetween } from './tickLadder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact, getMarketOnlyFallbackReason } from './externalSearchIntegration';
 import { isPaperProofModeActive, isSoftBlocker, calcProofStake } from './paperProofDefaults';
+import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -79,7 +80,7 @@ export function resolveMarketTypeThresholds(marketType, featherlessSettings) {
  * @param {Array} paperOrders - Existing paper orders (for duplicate/exposure checks)
  * @returns {Array} Array of opportunity objects
  */
-export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult) {
+export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult) {
   const opportunities = [];
   const probMap = buildProbabilityMap(aiResult?.runnerProbabilities);
   const h2hMap = buildH2HMap(aiResult?.h2hProbabilities);
@@ -101,7 +102,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
     const thresholds = resolveMarketTypeThresholds(marketType, featherlessSettings);
     const commissionRate = market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
     const marketRunners = allRunners.filter(r =>
-      (r.marketId === market.id || r.marketId === market.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
     );
 
     // Calculate market overround for diagnostics
@@ -114,8 +115,8 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 
       // Skip if already has an open order for this strategy/market/runner
       const hasDup = paperOrders.some(o =>
-        (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
-        (o.selectionId === selectionId || o.runnerId === runner.id) &&
+        matchOrderToMarket(o, market) &&
+        (matchSelectionId(o.selectionId, selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
         o.strategyName === 'Featherless AI Value Decision Engine' &&
         OPEN_ORDER_STATUSES.includes(o.status)
       );
@@ -245,7 +246,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
       // ── BACK opportunity ──
       if (runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) {
         const backOpp = buildOpportunity({
-          cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
+          cluster, market, runner, marketType, thresholds, commissionRate, settings, botSettings, featherlessSettings,
           bankrollStats, paperOrders, modelProbability: adjustedProbability, probData, dataQuality, raceSummary, overround,
           side: 'BACK', odds: runner.bestBackPrice, availableSize: runner.bestBackSize || 0,
           opponentSelectionId,
@@ -263,7 +264,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
       // ── LAY opportunity ──
       if (runner.bestLayPrice > 0 && (runner.bestLaySize || 0) >= 2) {
         const layOpp = buildOpportunity({
-          cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
+          cluster, market, runner, marketType, thresholds, commissionRate, settings, botSettings, featherlessSettings,
           bankrollStats, paperOrders, modelProbability: adjustedProbability, probData, dataQuality, raceSummary, overround,
           side: 'LAY', odds: runner.bestLayPrice, availableSize: runner.bestLaySize || 0,
           opponentSelectionId,
@@ -287,7 +288,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
  * Build a single opportunity object with full exchange maths and safety gate.
  */
 function buildOpportunity({
-  cluster, market, runner, marketType, thresholds, commissionRate, settings, featherlessSettings,
+  cluster, market, runner, marketType, thresholds, commissionRate, settings, botSettings, featherlessSettings,
   bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
   side, odds, availableSize, opponentSelectionId, externalSearchFields,
 }) {
@@ -302,7 +303,7 @@ function buildOpportunity({
   const confidence = probData?.confidence || 0;
 
   // ── Paper Proof Mode detection ──
-  const paperProofMode = isPaperProofModeActive(settings, {}, featherlessSettings);
+  const paperProofMode = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   // Calculate stake using Kelly (or flat proof stake in proof mode)
   const bankroll = bankrollStats?.bankroll || settings.paperBankroll || settings.bankroll || 10000;
@@ -472,8 +473,8 @@ function buildOpportunity({
   // Duplicate opposite-side position check (unless hedging) — ALWAYS enforced
   const oppositeSide = side === 'BACK' ? 'LAY' : 'BACK';
   const hasOpposite = paperOrders.some(o =>
-    (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
-    (o.selectionId === selectionId || o.runnerId === runner.id) &&
+    matchOrderToMarket(o, market) &&
+    (matchSelectionId(o.selectionId, selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
     o.side === oppositeSide &&
     OPEN_ORDER_STATUSES.includes(o.status)
   );

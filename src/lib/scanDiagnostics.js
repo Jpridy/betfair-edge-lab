@@ -7,6 +7,7 @@
 // ============================================================================
 
 import { scoreRunnerCandidate, resolveThresholds, REJECTION_REASONS, fmtPct } from './candidateScoring';
+import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -67,15 +68,14 @@ export function buildScanDiagnostics(markets, runners, settings, aiSettings, pap
   let selectedMarket = null;
 
   for (const { market, secsBefore } of sorted) {
-    const marketRunners = runners.filter(r => {
-      const rmid = String(r.marketId || '');
-      return ((String(market.id || '') && rmid === String(market.id)) || (String(market.betfairMarketId || '') && rmid === String(market.betfairMarketId))) && r.status === 'ACTIVE';
-    });
+    const marketRunners = runners.filter(r =>
+      matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
+    );
     if (marketRunners.length === 0) continue;
 
     // Skip market if strategy already has an open order here
     const hasOpenStrategyOrder = paperOrders.some(o =>
-      (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
+      matchOrderToMarket(o, market) &&
       o.strategyName === STRATEGY_NAME &&
       OPEN_ORDER_STATUSES.includes(o.status)
     );
@@ -89,8 +89,8 @@ export function buildScanDiagnostics(markets, runners, settings, aiSettings, pap
       if (!runner.bestBackPrice || runner.bestBackPrice <= 0) continue;
 
       const hasDupOrder = paperOrders.some(o =>
-        (o.marketId === market.id || o.betfairMarketId === market.betfairMarketId) &&
-        (o.selectionId === runner.betfairSelectionId || o.runnerId === runner.id) &&
+        matchOrderToMarket(o, market) &&
+        (matchSelectionId(o.selectionId, runner.betfairSelectionId) || matchSelectionId(o.runnerId, runner.id)) &&
         o.strategyName === STRATEGY_NAME &&
         OPEN_ORDER_STATUSES.includes(o.status)
       );

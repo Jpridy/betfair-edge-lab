@@ -16,6 +16,7 @@ import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHER
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { runSettlementCheck } from '@/lib/settlementWatcher';
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
+import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
 
 // ── Metadata fields to strip when loading settings from DB ──
 const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
@@ -937,11 +938,12 @@ export function AppProvider({ children }) {
           priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
         };
 
-        const aiEnabled = s.featherlessSettings?.enabled !== false;
+        const aiEnabled = s.featherlessSettings?.enabled === true;
         const result = await runExchangeCycle({
           markets: s.markets,
           runners: s.runners,
           settings: s.settings,
+          botSettings: s.botSettings,
           featherlessSettings: { ...s.featherlessSettings, debugScanMode: true },
           bankrollStats: s.bankrollStats,
           paperOrders: s.paperOrders,
@@ -1382,7 +1384,7 @@ export function AppProvider({ children }) {
     // runs deterministic exchange EV maths, ranks by EV, picks best.
     // The engine ALWAYS runs — when Featherless AI is disabled, it uses
     // market-only probabilities (implied from Betfair prices).
-    const aiEnabled = s.featherlessSettings?.enabled !== false;
+    const aiEnabled = s.featherlessSettings?.enabled === true;
     const debugScanModeActive = s.featherlessSettings?.debugScanMode === true;
     steps[0].status = 'passed';
     steps[1].status = 'passed';
@@ -1410,12 +1412,13 @@ export function AppProvider({ children }) {
           markets: s.markets,
           runners: s.runners,
           settings: s.settings,
+          botSettings: s.botSettings,
           featherlessSettings: s.featherlessSettings,
           bankrollStats: s.bankrollStats,
           paperOrders: s.paperOrders,
           emergencyStop: s.emergencyStop,
           connectionState,
-          callAI: async (cluster, primaryMarket, marketRunners) => {
+          callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners) => {
             let webResearch = null;
             if (s.featherlessSettings?.webResearchEnabled) {
               try {
@@ -1432,7 +1435,7 @@ export function AppProvider({ children }) {
             });
             if (resp.data?.error) throw new Error(resp.data.error);
             return resp.data?.aiResult || null;
-          },
+          } : null, // null = market-only probabilities
           callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
             try {
               const resp = await base44.functions.invoke('openAIWebSearch', {
@@ -1822,11 +1825,12 @@ export function AppProvider({ children }) {
         priceFeedStale: conn.dataFresh === false,
       };
 
-      const aiEnabled = s.featherlessSettings?.enabled !== false;
+      const aiEnabled = s.featherlessSettings?.enabled === true;
       const result = await runExchangeCycle({
         markets: s.markets,
         runners: s.runners,
         settings: s.settings,
+        botSettings: s.botSettings,
         featherlessSettings: s.featherlessSettings,
         bankrollStats: s.bankrollStats,
         paperOrders: s.paperOrders,
@@ -1867,9 +1871,12 @@ export function AppProvider({ children }) {
         const opp = result.bestOpportunity;
         const runner = s.runners.find(r =>
           String(r.betfairSelectionId || r.selectionId) === opp.selectionId &&
-          (r.marketId === opp.marketId || r.marketId === opp.betfairMarketId)
+          matchRunnerToMarket(r, { id: opp.marketId, betfairMarketId: opp.betfairMarketId })
         );
-        const market = s.markets.find(m => m.id === opp.marketId || m.betfairMarketId === opp.betfairMarketId);
+        const market = s.markets.find(m =>
+          String(m.id || '') === String(opp.marketId || '') ||
+          String(m.betfairMarketId || '') === String(opp.betfairMarketId || '')
+        );
 
         if (runner && market) {
           const signal = opportunityToSignal(opp, s.settings);
@@ -1973,21 +1980,30 @@ export function AppProvider({ children }) {
       addAuditLog('Proof Scan Complete', 'system', 'info',
         `Markets: ${result.diagnostics.totalMarketsLoaded ?? 0}, Opportunities: ${result.diagnostics.totalOpportunities || 0}, Positive-EV: ${positiveEV}, Fallback: ${proofFallbackUsed}, Order: ${paperOrderCreated}`);
 
+      const funnel = result.diagnostics.opportunityFunnel || {};
       return {
         marketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
-        marketsEligible: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+        runnersLoaded: s.runners.length,
+        pricedRunners: s.runners.filter(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)).length,
+        eligibleMarkets: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+        eventClustersCreated: funnel.eventClustersCreated ?? result.eventClusters?.length ?? 0,
         opportunitiesGenerated: result.diagnostics.totalOpportunities || 0,
         positiveEVOpportunities: positiveEV,
+        proofModeDetectedInsideEngine: funnel.proofModeDetectedInsideEngine ?? false,
+        proofFallbackAttempted: funnel.proofFallbackAttempted ?? false,
         proofFallbackUsed,
+        proofFallbackBlockedReason: funnel.proofFallbackBlockedReason ?? null,
         selectedMarket: result.bestOpportunity?.marketName || null,
         selectedRunner: result.bestOpportunity?.runnerName || null,
         side: result.bestOpportunity?.side || null,
         odds: result.bestOpportunity?.odds || null,
         stake: result.bestOpportunity?.stake || null,
         liability: result.bestOpportunity?.liability || null,
+        persistenceType: result.bestOpportunity ? 'LAPSE' : null,
         paperOrderCreated,
         orderStatus,
         settlementStatus,
+        hardBlockerIfNoOrder: !paperOrderCreated ? (funnel.proofFallbackBlockedReason || result.diagnostics.noBetReason || 'No proof opportunity created') : null,
       };
     } catch (err) {
       addAuditLog('Proof Scan Error', 'system', 'error', `Proof scan error: ${err.message}`);

@@ -23,21 +23,10 @@ import { getCachedAIResult, setCachedAIResult, getCacheStats } from './exchangeE
 import { getCachedExternalSearch, setCachedExternalSearch, getExternalSearchCacheStats } from './externalSearchCache';
 import { isPaperProofModeActive } from './paperProofDefaults';
 import { buildProofOpportunity } from './paperProofScanner';
+import { matchRunnerToMarket } from './marketIdMatcher';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
-
-/**
- * Match a runner to a market using string-normalised IDs.
- * Prevents silent join failures when marketId is stored as a number
- * in one source and a string in another.
- */
-function matchRunnerToMarket(runner, market) {
-  const rmid = String(runner.marketId || '');
-  const mid = String(market.id || '');
-  const bmid = String(market.betfairMarketId || '');
-  return (mid && rmid === mid) || (bmid && rmid === bmid);
-}
 
 /**
  * Scan all eligible pre-race markets.
@@ -399,7 +388,7 @@ function buildMarketOnlyAIResult(cluster, marketRunners) {
  * @param {object} params.connectionState - Betfair connection state
  * @returns {object} { bestOpportunity, allOpportunities, eventClusters, diagnostics }
  */
-export async function runExchangeCycle({ markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, callExternalSearch, connectionState }) {
+export async function runExchangeCycle({ markets, runners, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, callExternalSearch, connectionState }) {
   // ── Build pre-filter diagnostics from ALL loaded markets ──
   const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners, connectionState);
 
@@ -532,6 +521,12 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   let eventsScanned = 0;
   let eventsWithAI = 0;
   let cacheHits = 0;
+  let marketOnlyResultsCreated = 0;
+  let clustersWithPrimaryMarket = 0;
+  let clustersWithMatchedRunners = 0;
+  let proofFallbackAttempted = false;
+  let proofFallbackCreated = false;
+  let proofFallbackBlockedReason = null;
 
   // ── External search diagnostics ──
   const externalSearchPerEvent = [];
@@ -565,6 +560,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     eventsScanned++;
     const primaryMarket = getPrimaryMarket(cluster);
     if (!primaryMarket) continue;
+    clustersWithPrimaryMarket++;
 
     // Get runners for the primary market
     const marketRunners = runners.filter(r =>
@@ -572,9 +568,11 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     );
 
     if (marketRunners.length === 0) continue;
+    clustersWithMatchedRunners++;
 
     // ── AI caching: check cache before calling AI ──
     let aiResult = getCachedAIResult(cluster, marketRunners);
+    let usedMarketOnlyFallback = false;
     if (aiResult) {
       cacheHits++;
       aiStatusLog.push({ eventId: cluster.eventId, status: 'cache_hit' });
@@ -592,21 +590,29 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
       } catch (err) {
         const isTimeout = err.message?.toLowerCase().includes('timeout') || err.code === 'ETIMEDOUT';
         aiStatusLog.push({ eventId: cluster.eventId, status: isTimeout ? 'ai_timeout' : 'ai_error', reason: err.message });
-        continue;
       }
     } else {
       aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
     }
 
+    // ── Fallback to market-only probabilities when AI is unavailable ──
+    // This ensures the exchange engine ALWAYS generates opportunities:
+    //   - AI disabled (callAI = null) → market-only
+    //   - AI returned null → market-only (in paper/proof mode) or skip (in normal mode)
+    //   - AI errored/timed out → market-only (in paper/proof mode) or skip (in normal mode)
     if (!aiResult) {
-      // If AI is disabled (no callAI provided), fall back to market-only probabilities
-      // derived from Betfair back/lay prices. This ensures the exchange engine always
-      // generates opportunities even when Featherless AI is disabled.
       if (!callAI) {
         aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
+        usedMarketOnlyFallback = true;
+        marketOnlyResultsCreated++;
         aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only', success: true, reason: 'AI disabled — using market-implied probabilities' });
+      } else if (paperProofMode) {
+        aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
+        usedMarketOnlyFallback = true;
+        marketOnlyResultsCreated++;
+        aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only_fallback', success: true, reason: 'AI error/null in proof mode — using market-implied probabilities' });
       } else {
-        // AI was called but returned null or errored — skip this event
+        // AI was called but returned null or errored — skip this event in normal mode
         continue;
       }
     }
@@ -675,7 +681,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
     // 5-7. Generate opportunities with exchange maths and safety gates
     const opportunities = generateOpportunitiesForEvent(
-      cluster, runners, aiResult, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult
+      cluster, runners, aiResult, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult
     );
     allOpportunities.push(...opportunities);
 
@@ -716,7 +722,9 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   const ranked = rankOpportunities(allOpportunities);
 
   // ── Paper Proof Mode: check if active ──
-  const paperProofMode = isPaperProofModeActive(settings, {}, featherlessSettings);
+  // FIX: was passing {} as botSettings, which made liveTradingEnabled === false
+  // check fail (undefined !== false), so proof mode was always false inside the engine.
+  const paperProofMode = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   // 9. Choose best positive-EV opportunity
   // In debug scan mode, do NOT select any opportunity for order placement
@@ -724,10 +732,53 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
   // ── Paper Proof Fallback: if no positive-EV opportunity and proof mode is active ──
   if (!debugScanMode && !bestOpportunity && paperProofMode) {
+    proofFallbackAttempted = true;
     const proofOpp = buildProofOpportunity(eventClusters, runners, paperOrders, settings);
     if (proofOpp) {
       bestOpportunity = proofOpp;
       allOpportunities.push(proofOpp);
+      proofFallbackCreated = true;
+    } else {
+      // Determine the exact reason the fallback failed
+      if (eventClusters.length === 0) {
+        proofFallbackBlockedReason = 'no eligible event clusters';
+      } else {
+        let hasMatchedRunners = false;
+        let hasActiveRunners = false;
+        let hasBackOrLayPrices = false;
+        let hasDuplicateOrder = false;
+        let hasOpenMarket = false;
+        for (const cluster of eventClusters) {
+          const allMarkets = [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets];
+          for (const market of allMarkets) {
+            if (market.status !== 'OPEN') continue;
+            hasOpenMarket = true;
+            if (market.inPlay) continue;
+            const marketRunners = runners.filter(r => matchRunnerToMarket(r, market) && r.status === 'ACTIVE');
+            if (marketRunners.length > 0) hasMatchedRunners = true;
+            for (const runner of marketRunners) {
+              hasActiveRunners = true;
+              if ((runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) ||
+                  (runner.bestLayPrice > 0 && (runner.bestLaySize || 0) >= 2)) {
+                hasBackOrLayPrices = true;
+              }
+              const selId = String(runner.betfairSelectionId || runner.selectionId || '');
+              const hasDup = paperOrders.some(o =>
+                matchRunnerToMarket(o, market) &&
+                (String(o.selectionId) === selId || String(o.runnerId) === String(runner.id)) &&
+                OPEN_ORDER_STATUSES.includes(o.status)
+              );
+              if (hasDup) hasDuplicateOrder = true;
+            }
+          }
+        }
+        if (!hasOpenMarket) proofFallbackBlockedReason = 'no OPEN markets in event clusters';
+        else if (!hasMatchedRunners) proofFallbackBlockedReason = 'no market matched runners';
+        else if (!hasActiveRunners) proofFallbackBlockedReason = 'no ACTIVE runners';
+        else if (!hasBackOrLayPrices) proofFallbackBlockedReason = 'no back/lay prices with sufficient size (>= $2)';
+        else if (hasDuplicateOrder) proofFallbackBlockedReason = 'duplicate open order on all candidates';
+        else proofFallbackBlockedReason = 'no valid candidate found (all blocked by hard blockers)';
+      }
     }
   }
 
@@ -863,6 +914,8 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     aiCacheMisses: eventsWithAI,
     aiStatusLog,
     aiDisabled: !callAI,
+    aiResultsCreated: eventsWithAI,
+    marketOnlyResultsCreated,
     cacheStats: getCacheStats(),
     marketDetectionLog,
     winMarketsFound: marketTypeCounts.winMarketsFound,
@@ -873,6 +926,28 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     totalOpportunities: allOpportunities.length,
     backOpportunities: allOpportunities.filter(o => o.side === 'BACK').length,
     layOpportunities: allOpportunities.filter(o => o.side === 'LAY').length,
+    // ── Opportunity-generation funnel ──
+    opportunityFunnel: {
+      currentMarketsInAppContext: markets.length,
+      currentRunnersInAppContext: runners.length,
+      currentPricedRunners: runners.filter(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)).length,
+      openPreRaceMarkets,
+      marketsWithTwoActiveRunners: marketFilterFunnel.marketsWithTwoActiveRunners,
+      marketsWithPriceData: marketFilterFunnel.marketsWithPriceData,
+      eligibleMarkets: eligibleMarkets.length,
+      eventClustersCreated: eventClusters.length,
+      clustersWithPrimaryMarket,
+      clustersWithMatchedRunners,
+      aiResultsCreated: eventsWithAI,
+      marketOnlyResultsCreated,
+      opportunitiesGenerated: allOpportunities.length,
+      backOpportunitiesGenerated: allOpportunities.filter(o => o.side === 'BACK').length,
+      layOpportunitiesGenerated: allOpportunities.filter(o => o.side === 'LAY').length,
+      proofModeDetectedInsideEngine: paperProofMode,
+      proofFallbackAttempted,
+      proofFallbackCreated,
+      proofFallbackBlockedReason,
+    },
     positiveEVOpportunities: allOpportunities.filter(o => o.decision === 'BET').length,
     rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET').length,
     topOpportunities,
