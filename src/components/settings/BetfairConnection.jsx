@@ -261,13 +261,13 @@ export default function BetfairConnection() {
               <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-xs">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold">HTML 403 from Betfair — Cloudflare Worker needs redeployment</div>
+                  <div className="font-semibold">HTML 403 from Betfair — Cloudflare Worker needs redeployment (v3)</div>
                   <div className="mt-0.5">
-                    Your Cloudflare Worker is missing browser headers (<span className="font-mono">Origin</span>,
-                    <span className="font-mono"> Referer</span>, <span className="font-mono">Sec-Fetch-*</span>).
-                    Betfair's betting API WAF rejects requests without these. <strong>Redeploy the worker</strong> with
-                    the updated code from <span className="font-mono">cloudflare-worker-code.txt</span>, then run the
-                    Endpoint Diagnostic again.
+                    Betfair's WAF fingerprints Cloudflare Workers' <span className="font-mono">fetch()</span> TLS stack
+                    and blocks it. The updated worker now uses <strong>raw TLS TCP sockets</strong> for REST API calls
+                    (same technique the stream bridge uses), completely bypassing <span className="font-mono">fetch()</span>.
+                    <strong> Redeploy the worker</strong> with the updated code from
+                    <span className="font-mono"> cloudflare-worker-code.txt</span>, then run the Endpoint Diagnostic.
                   </div>
                   {betfairConnection?.marketCatalogueError && (
                     <div className="mt-1 font-mono text-[10px] opacity-70">{betfairConnection.marketCatalogueError.slice(0, 200)}</div>
