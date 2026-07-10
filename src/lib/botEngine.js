@@ -175,7 +175,12 @@ export function runRiskCheck(signal, settings, bankrollStats, paperOrders) {
   const maxUnmatched = settings.maxUnmatchedOrders || settings.maxOpenOrders || 10;
   if (unmatchedOrders.length >= maxUnmatched) reasons.push(`Max unmatched orders reached (${unmatchedOrders.length}/${maxUnmatched})`);
 
-  const exposure = openOrders.reduce((sum, o) => sum + (o.matched_size || o.matchedStake || o.requestedStake || 0), 0);
+  const exposure = openOrders.reduce((sum, o) => {
+    const stake = o.matched_size || o.matchedStake || o.requestedStake || 0;
+    const odds = o.matchedOdds || o.matched_price || o.requestedOdds || o.requested_price || 0;
+    if ((o.side || '').toUpperCase() === 'LAY' && odds > 1) return sum + stake * (odds - 1);
+    return sum + stake;
+  }, 0);
   if (exposure >= (settings.maxMarketExposure || 1000)) reasons.push('Market exposure limit reached');
 
   const todayOrders = paperOrders.filter(o => {

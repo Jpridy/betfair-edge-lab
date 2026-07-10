@@ -58,7 +58,7 @@ export function createValidatedPaperOrder({
   const failures = [];
 
   // ── Paper Proof Mode detection ──
-  const paperProofMode = isPaperProofModeActive(settings, {}, settings);
+  const paperProofMode = isPaperProofModeActive(settings, settings, settings);
 
   // ── Emergency Stop ──
   if (emergencyStop) {
@@ -108,7 +108,7 @@ export function createValidatedPaperOrder({
   }
 
   // ── Stake Bounds ── (relaxed in proof mode: $2 min, $5 max)
-  const minStake = paperProofMode ? 1 : 1;
+  const minStake = paperProofMode ? 2 : 1;
   const maxStake = paperProofMode ? (settings.maxStake || 5) : (settings.maxStake || 500);
   if (!stake || stake < minStake) {
     failures.push({ field: 'stake', reason: `Invalid stake: $${stake}` });

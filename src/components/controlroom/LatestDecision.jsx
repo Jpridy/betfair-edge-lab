@@ -46,7 +46,7 @@ export default function LatestDecision() {
   } else if (blocker) {
     plainReason = `No bet placed because ${blocker}.`;
     if (bestOpp) {
-      plainReason += ` The best opportunity was ${bestOpp.side} ${bestOpp.runnerName} at ${bestOpp.odds?.toFixed(2) || '—'} odds with ${(bestOpp.edge || 0).toFixed(2)}% edge.`;
+      plainReason += ` The best opportunity was ${bestOpp.side} ${bestOpp.runnerName} at ${bestOpp.odds?.toFixed(2) || '—'} odds with ${((bestOpp.edge || 0) * 100).toFixed(2)}% edge.`;
     }
   } else if (lastCycle.scanSummary?.totalOpportunities === 0) {
     plainReason = 'No bet placed because no opportunities were generated. Check market data connection and time windows.';

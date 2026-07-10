@@ -488,7 +488,12 @@ function buildOpportunity({
       const om = o.betfairMarketId || o.marketId;
       return allClusterMarketIds(cluster).includes(om) && OPEN_ORDER_STATUSES.includes(o.status);
     })
-    .reduce((sum, o) => sum + (o.matchedStake || o.requestedStake || 0), 0);
+    .reduce((sum, o) => {
+      const stake = o.matchedStake || o.requestedStake || 0;
+      const odds = o.matchedOdds || o.matched_price || o.requestedOdds || o.requested_price || 0;
+      if ((o.side || '').toUpperCase() === 'LAY' && odds > 1) return sum + stake * (odds - 1);
+      return sum + stake;
+    }, 0);
   if (eventExposure + requiredFunds > (settings.maxMarketExposure || 1000) * 2) {
     blockers.push('Event exposure limit breached');
   }

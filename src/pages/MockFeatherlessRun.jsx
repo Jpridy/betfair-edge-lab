@@ -279,7 +279,7 @@ function LocalEngineResult({ response, racePack }) {
     const grossEV = opp.side === 'BACK'
       ? (modelProb * (odds - 1)) - (1 - modelProb)
       : ((1 - modelProb) * 1) - (modelProb * (odds - 1));
-    const commission = opp.side === 'BACK' ? Math.max(0, grossEV) * commissionRate : 0;
+    const commission = Math.max(0, grossEV) * commissionRate;
     const netEV = grossEV - commission;
     const stake = Math.min(100 * (modelProb / impliedProb), 500);
     const liability = opp.side === 'BACK' ? stake : stake * (odds - 1);

@@ -27,7 +27,7 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   const failures = [];
   const isLiveMode = connectionState?.apiConnected === true;
   const riskDisabled = settings?.riskLimitsDisabled === true;
-  const paperProofMode = isPaperProofModeActive(settings, {}, settings);
+  const paperProofMode = isPaperProofModeActive(settings, settings, settings);
 
   // ── Market Checks ──
   if (!market) {
