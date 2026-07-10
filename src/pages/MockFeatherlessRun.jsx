@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
 import { MOCK_RACE_PACK, MOCK_FEATHERLESS_RESPONSE } from '@/lib/mockFeatherlessData';
 import { Panel, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Brain, Send, ArrowRight, CheckCircle, AlertTriangle, TrendingUp, Clock, Zap, FileJson } from 'lucide-react';
+import { Brain, Send, ArrowRight, CheckCircle, AlertTriangle, TrendingUp, Clock, Zap, FileJson, Loader2, Sparkles } from 'lucide-react';
 
 function JsonViewer({ data, maxHeight = '400px' }) {
   return (
@@ -59,7 +60,7 @@ function RacePackSummary({ racePack }) {
   );
 }
 
-function FeatherlessResponse({ response }) {
+function FeatherlessResponse({ response, isLive = false }) {
   const [tab, setTab] = useState('summary');
   const [jsonExpanded, setJsonExpanded] = useState(false);
 
@@ -76,8 +77,16 @@ function FeatherlessResponse({ response }) {
       subtitle={`Model: DeepSeek-V4-Flash · Prompt v4.0-race-assessment · Data Quality: ${response.dataQuality}/100`}
       action={
         <div className="flex items-center gap-2">
-          <StatusBadge status="ok">success</StatusBadge>
-          <span className="text-xs text-muted-foreground font-mono">2,847ms</span>
+          {isLive ? (
+            <>
+              <StatusBadge status="ok">LIVE</StatusBadge>
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+            </>
+          ) : (
+            <>
+              <StatusBadge status="neutral">mock</StatusBadge>
+            </>
+          )}
         </div>
       }
     >
@@ -417,22 +426,107 @@ function LocalEngineResult({ response, racePack }) {
 }
 
 export default function MockFeatherlessRun() {
+  const [liveResponse, setLiveResponse] = useState(null);
+  const [liveError, setLiveError] = useState(null);
+  const [calling, setCalling] = useState(false);
+  const [elapsed, setElapsed] = useState(null);
+  const [useLive, setUseLive] = useState(false);
+
+  const activeResponse = useLive && liveResponse ? liveResponse : MOCK_FEATHERLESS_RESPONSE;
+
+  const handleLiveCall = async () => {
+    setCalling(true);
+    setLiveError(null);
+    setLiveResponse(null);
+    const start = Date.now();
+    try {
+      const resp = await base44.functions.invoke('featherlessAI', {
+        racePack: MOCK_RACE_PACK,
+        settings: { mode: 'demo', defaultCommissionRate: 0.05, bankroll: 10000, maxStake: 500, maxLayLiability: 1500 },
+        strategySettings: {
+          modelName: 'deepseek-ai/DeepSeek-V4-Flash',
+          temperature: 0.1,
+          maxTokens: 4000,
+          timeoutSeconds: 120,
+          featherlessTimeoutMs: 120000,
+        },
+      });
+      const ms = Date.now() - start;
+      setElapsed(ms);
+      if (resp.data?.aiResult) {
+        setLiveResponse(resp.data.aiResult);
+        setUseLive(true);
+      } else {
+        setLiveError(resp.data?.error || 'No AI result returned');
+      }
+    } catch (err) {
+      setLiveError(err.message || 'Failed to call Featherless AI');
+    } finally {
+      setCalling(false);
+    }
+  };
+
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <div className="flex items-center gap-3">
-        <Brain className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold font-heading">Mock Featherless AI Run</h1>
-          <p className="text-sm text-muted-foreground mt-1">Full end-to-end flow: Race Pack → AI Assessment → Local Engine Verification</p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <Brain className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold font-heading">Featherless AI Run</h1>
+            <p className="text-sm text-muted-foreground mt-1">Full end-to-end flow: Race Pack → AI Assessment → Local Engine Verification</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {useLive && (
+            <Button variant="outline" onClick={() => setUseLive(false)}>
+              Show Mock Data
+            </Button>
+          )}
+          <Button onClick={handleLiveCall} disabled={calling}>
+            {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {calling ? 'Calling Featherless...' : 'Run Live AI'}
+          </Button>
         </div>
       </div>
+
+      {/* Status bar */}
+      {calling && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 text-primary animate-spin" />
+          <div>
+            <div className="text-sm font-semibold text-primary">Calling Featherless AI...</div>
+            <div className="text-xs text-muted-foreground">Sending race pack to DeepSeek-V4-Flash — this takes 60-120 seconds for a full 8-runner assessment</div>
+          </div>
+        </div>
+      )}
+      {liveError && !calling && (
+        <div className="bg-danger/5 border border-danger/20 rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-danger" />
+          <div>
+            <div className="text-sm font-semibold text-danger">AI Call Failed</div>
+            <div className="text-xs text-muted-foreground">{liveError}</div>
+          </div>
+        </div>
+      )}
+      {liveResponse && !calling && (
+        <div className="bg-success/5 border border-success/20 rounded-lg p-4 flex items-center gap-3">
+          <CheckCircle className="h-5 w-5 text-success" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-success">Live AI Response Received</div>
+            <div className="text-xs text-muted-foreground">
+              {(elapsed / 1000).toFixed(1)}s · {liveResponse.runnerProbabilities?.length || 0} runners assessed ·
+              Data Quality: {liveResponse.dataQuality}/100 · Confidence: {liveResponse.confidence}/100
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
         <Send className="h-3.5 w-3.5" />
         <span>Race Pack</span>
         <ArrowRight className="h-3 w-3" />
         <Brain className="h-3.5 w-3.5 text-primary" />
-        <span>Featherless AI</span>
+        <span>Featherless AI {useLive && liveResponse ? '(LIVE)' : '(mock)'}</span>
         <ArrowRight className="h-3 w-3" />
         <CheckCircle className="h-3.5 w-3.5 text-success" />
         <span>Local Engine</span>
@@ -447,13 +541,13 @@ export default function MockFeatherlessRun() {
         <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
       </div>
 
-      <FeatherlessResponse response={MOCK_FEATHERLESS_RESPONSE} />
+      <FeatherlessResponse response={activeResponse} isLive={useLive && !!liveResponse} />
 
       <div className="flex justify-center">
         <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
       </div>
 
-      <LocalEngineResult response={MOCK_FEATHERLESS_RESPONSE} racePack={MOCK_RACE_PACK} />
+      <LocalEngineResult response={activeResponse} racePack={MOCK_RACE_PACK} />
     </div>
   );
 }
