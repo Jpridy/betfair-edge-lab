@@ -1071,6 +1071,7 @@ export function AppProvider({ children }) {
             loadedMarketsTable: result.diagnostics.loadedMarketsTable ?? null,
             connectionDiagnostics: result.diagnostics.connectionDiagnostics ?? null,
             externalSearchDiagnostics: result.diagnostics.externalSearchDiagnostics ?? null,
+            opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
           },
           selectedMarketName: result.bestOpportunity?.marketName || null,
         };
@@ -1469,9 +1470,12 @@ export function AppProvider({ children }) {
           const opp = result.bestOpportunity;
           const runner = s.runners.find(r =>
             String(r.betfairSelectionId || r.selectionId) === opp.selectionId &&
-            (r.marketId === opp.marketId || r.marketId === opp.betfairMarketId)
+            matchRunnerToMarket(r, { id: opp.marketId, betfairMarketId: opp.betfairMarketId })
           );
-          const market = s.markets.find(m => m.id === opp.marketId || m.betfairMarketId === opp.betfairMarketId);
+          const market = s.markets.find(m =>
+            String(m.id || '') === String(opp.marketId || '') ||
+            String(m.betfairMarketId || '') === String(opp.betfairMarketId || '')
+          );
 
           if (runner && market) {
             const strategyName = 'Featherless AI Value Decision Engine';
@@ -1706,6 +1710,7 @@ export function AppProvider({ children }) {
         loadedMarketsTable: exchangeDiag.loadedMarketsTable ?? null,
         connectionDiagnostics: exchangeDiag.connectionDiagnostics ?? null,
         externalSearchDiagnostics: exchangeDiag.externalSearchDiagnostics ?? null,
+        opportunityFunnel: exchangeDiag.opportunityFunnel ?? null,
       } : (diagnostics?.scanSummary || null),
       assessedRunners: useExchange ? (exchangeDiag.topOpportunities || []) : (diagnostics?.assessedRunners || []),
       selectedMarketName: useExchange
@@ -1970,6 +1975,7 @@ export function AppProvider({ children }) {
           orderStatus,
           settlementStatus,
           paperProofMode: true,
+          opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
         },
         selectedMarketName: result.bestOpportunity?.marketName || null,
       };

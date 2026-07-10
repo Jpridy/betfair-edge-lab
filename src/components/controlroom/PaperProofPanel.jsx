@@ -180,16 +180,30 @@ export default function PaperProofPanel() {
           <div className="text-[10px] font-bold text-success uppercase mb-1">Proof Scan Result</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1">
             <div>Markets: <span className="font-mono font-bold">{scanResult.marketsLoaded}</span></div>
+            <div>Runners: <span className="font-mono font-bold">{scanResult.runnersLoaded ?? '—'}</span></div>
+            <div>Priced: <span className="font-mono font-bold">{scanResult.pricedRunners ?? '—'}</span></div>
             <div>Eligible: <span className="font-mono font-bold">{scanResult.marketsEligible}</span></div>
+            <div>Clusters: <span className="font-mono font-bold">{scanResult.eventClustersCreated ?? '—'}</span></div>
             <div>Opportunities: <span className="font-mono font-bold">{scanResult.opportunitiesGenerated}</span></div>
             <div>Positive-EV: <span className="font-mono font-bold">{scanResult.positiveEVOpportunities}</span></div>
-            <div>Fallback: <span className="font-mono font-bold">{scanResult.proofFallbackUsed ? 'YES' : 'NO'}</span></div>
+            <div>Proof Mode (Engine): <span className="font-mono font-bold">{scanResult.proofModeDetectedInsideEngine ? 'YES' : 'NO'}</span></div>
+            <div>Fallback Attempted: <span className="font-mono font-bold">{scanResult.proofFallbackAttempted ? 'YES' : 'NO'}</span></div>
+            <div>Fallback Used: <span className="font-mono font-bold">{scanResult.proofFallbackUsed ? 'YES' : 'NO'}</span></div>
             <div>Order: <span className="font-mono font-bold">{scanResult.paperOrderCreated ? 'YES' : 'NO'}</span></div>
+            {scanResult.persistenceType && <div>Persistence: <span className="font-bold">{scanResult.persistenceType}</span></div>}
             {scanResult.selectedRunner && <div>Runner: <span className="font-bold">{scanResult.selectedRunner}</span></div>}
             {scanResult.side && <div>Side: <span className="font-bold">{scanResult.side}</span></div>}
             {scanResult.odds && <div>Odds: <span className="font-mono font-bold">{scanResult.odds.toFixed(2)}</span></div>}
             {scanResult.stake && <div>Stake: <span className="font-mono font-bold">${scanResult.stake.toFixed(2)}</span></div>}
+            {scanResult.liability != null && <div>Liability: <span className="font-mono font-bold">${scanResult.liability.toFixed(2)}</span></div>}
+            {scanResult.orderStatus && <div>Order Status: <span className="font-bold">{scanResult.orderStatus}</span></div>}
+            {scanResult.settlementStatus && <div>Settlement: <span className="font-bold">{scanResult.settlementStatus}</span></div>}
           </div>
+          {scanResult.hardBlockerIfNoOrder && (
+            <div className="mt-2 text-danger font-body">
+              <span className="font-bold">No order — blocker:</span> {scanResult.hardBlockerIfNoOrder}
+            </div>
+          )}
         </div>
       )}
 

@@ -167,9 +167,17 @@ export default function ControlBar() {
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">Last cycle:</span>
-          <span className="font-mono tabular-nums font-semibold text-foreground">
-            {botState.lastCycleTime ? new Date(botState.lastCycleTime).toLocaleTimeString('en-AU') : 'Never'}
-          </span>
+          {botState.lastCycleTime ? (
+            <span className="font-mono tabular-nums font-semibold text-foreground">
+              {new Date(botState.lastCycleTime).toLocaleTimeString('en-AU')}
+            </span>
+          ) : markets.length > 0 ? (
+            <span className="text-[10px] text-info font-body">
+              Markets loaded but not scanned yet — click Debug Scan or Run Proof Scan Now
+            </span>
+          ) : (
+            <span className="font-mono tabular-nums font-semibold text-muted-foreground">Never</span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground">Decision:</span>

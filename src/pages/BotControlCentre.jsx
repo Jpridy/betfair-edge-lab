@@ -15,6 +15,7 @@ import SettlementPanel from '@/components/controlroom/SettlementPanel';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
 import CurrentMarketFeed from '@/components/controlroom/CurrentMarketFeed';
+import OpportunityFunnel from '@/components/controlroom/OpportunityFunnel';
 
 export default function BotControlCentre() {
   const { dataLoading, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
@@ -28,6 +29,7 @@ export default function BotControlCentre() {
   }
 
   const lastCycle = botCycles[0];
+  const hasScanned = !!lastCycle;
   const openOrders = paperOrders.filter(o => ['pending', 'matched', 'partially_matched', 'executable'].includes(o.status)).length;
   const awaitingSettlement = paperOrders.filter(o => o.status === 'awaiting_result').length;
   const bestEV = exchangeOpportunities?.length > 0
@@ -36,6 +38,9 @@ export default function BotControlCentre() {
   const bestROI = exchangeOpportunities?.length > 0
     ? Math.max(...exchangeOpportunities.map(o => (o.roi || o.expectedROI || 0) * 100))
     : (lastCycle?.bestCandidate?.expectedROI || 0) * 100;
+  const oppCount = hasScanned
+    ? (exchangeOpportunities?.length || lastCycle?.scanSummary?.totalOpportunities || 0)
+    : null;
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -48,7 +53,7 @@ export default function BotControlCentre() {
       {/* Summary metrics */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <SummaryMetric label="Markets" value={markets.length || 0} />
-        <SummaryMetric label="Opportunities" value={exchangeOpportunities?.length || lastCycle?.scanSummary?.totalOpportunities || 0} />
+        <SummaryMetric label="Opportunities" value={oppCount === null ? '—' : oppCount} subtext={oppCount === null ? 'Run Debug Scan' : `${oppCount} from latest scan`} />
         <SummaryMetric label="Best EV" value={bestEV ? `$${bestEV.toFixed(2)}` : '—'} accent={bestEV ? 'text-success' : ''} />
         <SummaryMetric label="Best ROI" value={bestROI ? `${bestROI.toFixed(1)}%` : '—'} accent={bestROI ? 'text-success' : ''} />
         <SummaryMetric label="Open Orders" value={openOrders} accent={openOrders > 0 ? 'text-info' : ''} />
@@ -71,6 +76,7 @@ export default function BotControlCentre() {
           <CurrentMarketFeed />
           <LatestDecision />
           <DecisionTimeline />
+          <OpportunityFunnel />
           <SystemHealthRow />
         </TabsContent>
 
@@ -97,6 +103,7 @@ export default function BotControlCentre() {
         </TabsContent>
 
         <TabsContent value="debug" className="space-y-5">
+          <OpportunityFunnel />
           <DecisionLogPanel />
         </TabsContent>
       </Tabs>
@@ -104,13 +111,14 @@ export default function BotControlCentre() {
   );
 }
 
-function SummaryMetric({ label, value, accent }) {
+function SummaryMetric({ label, value, accent, subtext }) {
   return (
     <div className="bg-card border border-border-subtle rounded-lg p-3.5 hover:border-border transition-colors">
       <div className="text-[10px] font-body font-medium text-muted-foreground uppercase tracking-label mb-1">{label}</div>
       <div className={`text-xl font-heading font-semibold tabular-nums tracking-tight-brand ${accent || 'text-foreground'}`}>
         {value}
       </div>
+      {subtext && <div className="text-[9px] text-muted-foreground mt-0.5">{subtext}</div>}
     </div>
   );
 }
