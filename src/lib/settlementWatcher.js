@@ -92,6 +92,12 @@ export async function runSettlementCheck({
               selectionId: String(order.selectionId || ''),
               marketType: order.marketType,
               opponentSelectionId,
+              runners: (() => {
+                const linked = runners.filter(r => String(r.marketId || '') === String(orderMarketId || ''));
+                return linked.length > 0
+                  ? linked.map(r => ({ selectionId: String(r.betfairSelectionId || r.selectionId || ''), runnerName: r.runnerName || '' }))
+                  : [{ selectionId: String(order.selectionId || ''), runnerName: order.runnerName || '' }];
+              })(),
             });
 
             const lookup = resp?.data?.resultLookup;
@@ -195,6 +201,10 @@ export async function runSettlementCheck({
           selectionId: orderSelectionId,
           marketType,
           opponentSelectionId,
+          runners: marketRunners.map(r => ({
+            selectionId: String(r.betfairSelectionId || r.selectionId || ''),
+            runnerName: r.runnerName || '',
+          })),
         });
 
         const lookup = resp?.data?.resultLookup;

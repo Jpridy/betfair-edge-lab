@@ -171,6 +171,11 @@ export default function ExternalSearchTestButton() {
         raceLevelNotes: externalSearchResult.raceLevelNotes,
         dataQuality: externalSearchResult.dataQuality,
         errorMessage: externalSearchResult.errorMessage,
+        model: searchResp.data?.model,
+        responseTimeMs: searchResp.data?.responseTimeMs,
+        webSearchActuallyUsed: searchResp.data?.webSearchActuallyUsed,
+        parseStatus: searchResp.data?.parseStatus,
+        jsonSchemaMode: searchResp.data?.jsonSchemaMode,
         runnerComparisons,
         bestPreName,
         bestPostName,
@@ -230,7 +235,7 @@ export default function ExternalSearchTestButton() {
             }>
               {result.searchStatus?.toUpperCase().replace(/_/g, ' ')}
             </StatusBadge>
-            <span className="text-xs text-muted-foreground">{result.sourceCount} sources · Data quality: {result.dataQuality}/100</span>
+            <span className="text-xs text-muted-foreground">{result.sourceCount} sources · Data quality: {result.dataQuality}/100 · {result.model || 'unknown model'} · {result.responseTimeMs || 0}ms · search {result.webSearchActuallyUsed === true ? 'verified' : 'not verified'} · JSON schema {result.jsonSchemaMode ? 'on' : 'off'}</span>
           </div>
 
           {result.errorMessage && (

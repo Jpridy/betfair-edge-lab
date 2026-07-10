@@ -3,6 +3,7 @@ import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Globe, Search, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
+import OpenAIConnectionCheck from '@/components/bot/OpenAIConnectionCheck';
 
 export default function OpenAISearchDebugPanel() {
   const { lastExchangeDiagnostics, featherlessSettings } = useApp();
@@ -36,7 +37,6 @@ export default function OpenAISearchDebugPanel() {
   } = searchDiag;
 
   const openaiConnected = featherlessSettings?.externalSearchEnabled === true;
-  const webSearchEnabled = openaiConnected;
 
   const statusIcon = (status) => {
     switch (status) {
@@ -56,18 +56,7 @@ export default function OpenAISearchDebugPanel() {
   return (
     <Panel
       title="OpenAI External Search"
-      action={
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            {openaiConnected ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <XCircle className="h-3.5 w-3.5 text-danger" />}
-            <span className="text-[10px] font-medium text-muted-foreground">API {openaiConnected ? 'Connected' : 'Disabled'}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {webSearchEnabled ? <Globe className="h-3.5 w-3.5 text-info" /> : <Globe className="h-3.5 w-3.5 text-muted-foreground" />}
-            <span className="text-[10px] font-medium text-muted-foreground">Web Search {webSearchEnabled ? 'On' : 'Off'}</span>
-          </div>
-        </div>
-      }
+      action={<OpenAIConnectionCheck />}
     >
       {/* Stats grid */}
       <div className="grid grid-cols-4 md:grid-cols-8 gap-px bg-border">
