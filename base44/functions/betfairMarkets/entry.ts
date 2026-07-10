@@ -350,7 +350,8 @@ Deno.serve(async (req) => {
     }
 
     // ── Step 2: List Market Catalogue ──
-    // Horse Racing (eventType 7). Fetch per market type with smaller batches
+    // Horse Racing (eventType 7). Fetch per market type in 6-hour time chunks
+    // with smaller batches
     // to avoid Betfair's TOO_MUCH_DATA (ANGX-0001) error, which triggers when
     // a single listMarketCatalogue call would return too many markets with
     // full runner metadata.
