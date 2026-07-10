@@ -75,13 +75,15 @@ export default function LatestDecision() {
           </div>
         )}
 
-        {/* Plain English reason */}
+        {/* Plain English reason — hide when stale (banner already explains) */}
+        {!isStaleCycle && (
         <div className={cn(
           'rounded-lg p-4 text-sm font-body border',
           decision === 'BET' ? 'bg-success/8 text-success border-success/20' : 'bg-warning/8 text-warning border-warning/20'
         )}>
           {plainReason}
         </div>
+        )}
 
         {/* Best opportunity details */}
         {bestOpp && (
@@ -105,8 +107,8 @@ export default function LatestDecision() {
           </div>
         )}
 
-        {/* Blocker */}
-        {blocker && decision === 'NO_BET' && (
+        {/* Blocker — hide when stale */}
+        {blocker && decision === 'NO_BET' && !isStaleCycle && (
           <div className="flex items-start gap-2.5 text-xs bg-danger/8 text-danger border border-danger/20 rounded-lg p-3">
             <Ban className="h-4 w-4 shrink-0 mt-0.5" />
             <div>
