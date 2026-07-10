@@ -1,10 +1,8 @@
 /**
  * Frontend Betfair API service.
  *
- * All Betfair API calls are routed through a Cloudflare Worker proxy
- * (BETFAIR_PROXY_URL) which:
- *   1. Runs on Cloudflare's edge network → bypasses Betfair's Cloudflare bot protection
- *   2. Adds CORS headers → allows the browser to read the responses
+ * All Betfair API calls are routed through the configured Betfair proxy
+ * (BETFAIR_PROXY_URL), which adds the required request profile and CORS headers.
  *
  * Login is done server-side (betfairLogin backend function) through the same proxy.
  * Market data is fetched browser-side through the proxy.
@@ -155,7 +153,7 @@ export async function fetchBetfairMarkets(ssoid) {
   const config = await getBetfairConfig();
 
   if (!config.proxyUrl) {
-    return { status: 'error', error: 'BETFAIR_PROXY_URL not configured. Market data requires the Cloudflare Worker proxy.' };
+    return { status: 'error', error: 'BETFAIR_PROXY_URL not configured. Market data requires the Betfair proxy.' };
   }
 
   const bettingBase = `${config.apiBase}/exchange/betting/rest/v1.0`;

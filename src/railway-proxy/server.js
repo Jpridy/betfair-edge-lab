@@ -15,6 +15,8 @@ const corsHeaders = {
   "access-control-allow-headers": "Content-Type, X-Application, X-Authentication",
 };
 
+const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
 function sendJson(response, status, data) {
   response.writeHead(status, { ...corsHeaders, "content-type": "application/json" });
   response.end(JSON.stringify(data));
@@ -29,7 +31,7 @@ const server = http.createServer(async (request, response) => {
 
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   if (requestUrl.pathname === "/health") {
-    sendJson(response, 200, { status: "ok", service: "betfair-rest-proxy" });
+    sendJson(response, 200, { status: "ok", service: "betfair-rest-proxy", version: "2-browser-profile" });
     return;
   }
 
@@ -55,9 +57,19 @@ const server = http.createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
+  const isAustralianEndpoint = target.hostname.endsWith(".com.au");
+  const betfairOrigin = isAustralianEndpoint ? "https://www.betfair.com.au" : "https://www.betfair.com";
   const headers = {
     accept: "application/json",
+    "accept-language": "en-AU,en;q=0.9",
+    "accept-encoding": "identity",
     "content-type": request.headers["content-type"] || "application/json",
+    "user-agent": browserUserAgent,
+    origin: betfairOrigin,
+    referer: `${betfairOrigin}/`,
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-site",
   };
   if (request.headers["x-application"]) headers["x-application"] = request.headers["x-application"];
   if (request.headers["x-authentication"]) headers["x-authentication"] = request.headers["x-authentication"];
