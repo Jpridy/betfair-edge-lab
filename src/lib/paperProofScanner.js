@@ -129,8 +129,8 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
   const liability = side === 'BACK' ? stake : stake * (odds - 1);
   const maxLoss = side === 'BACK' ? stake : liability;
   const maxProfit = side === 'BACK'
-    ? (odds - 1) * stake * (1 - (market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.08))
-    : stake * (1 - (market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.08));
+    ? (odds - 1) * stake * (1 - (market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05))
+    : stake * (1 - (market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05));
 
   const startTime = market.startTime || market.marketStartTime;
   const marketNameParts = [];
@@ -168,7 +168,7 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
     impliedProbability: 1 / odds,
     breakevenProbability: 1 / odds,
     fairOdds: odds,
-    commissionRate: market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.08,
+    commissionRate: market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05,
     ev: 0,
     roi: 0,
     edge: 0,
