@@ -1,7 +1,6 @@
 import http from "node:http";
 import { Buffer } from "node:buffer";
 import process from "node:process";
-import { rawHttpsRequest } from "./rawHttpsRequest.js";
 
 const allowedHosts = new Set([
   "api.betfair.com",
@@ -32,7 +31,7 @@ const server = http.createServer(async (request, response) => {
 
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   if (requestUrl.pathname === "/health") {
-    sendJson(response, 200, { status: "ok", service: "betfair-rest-proxy", version: "3-raw-tls" });
+    sendJson(response, 200, { status: "ok", service: "betfair-rest-proxy", version: "4-standard-fetch" });
     return;
   }
 
@@ -76,12 +75,17 @@ const server = http.createServer(async (request, response) => {
   if (request.headers["x-authentication"]) headers["x-authentication"] = request.headers["x-authentication"];
 
   try {
-    const upstream = await rawHttpsRequest(target, request.method, headers, request.method === "GET" || request.method === "HEAD" ? undefined : body);
+    const upstream = await fetch(target.href, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : body,
+    });
+    const responseBody = Buffer.from(await upstream.arrayBuffer());
     response.writeHead(upstream.status, {
       ...corsHeaders,
-      "content-type": upstream.headers["content-type"] || "application/octet-stream",
+      "content-type": upstream.headers.get("content-type") || "application/octet-stream",
     });
-    response.end(upstream.body);
+    response.end(responseBody);
   } catch (error) {
     sendJson(response, 502, { error: `Betfair proxy request failed: ${error.message}` });
   }
