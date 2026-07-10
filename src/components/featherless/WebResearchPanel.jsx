@@ -19,7 +19,9 @@ export default function WebResearchPanel({ research, loading }) {
 
   if (!research) return null;
 
-  const sources = research.source_links || [];
+  const sources = research.sources || [];
+  const runnerResearch = research.runnerResearch || [];
+  const dataQuality = research.dataQuality || 0;
 
   return (
     <div className="rounded-lg border border-info/30 bg-info/5 p-4 space-y-3">
@@ -28,85 +30,13 @@ export default function WebResearchPanel({ research, loading }) {
           <Globe className="h-4 w-4" />
           Web Research Summary
         </div>
-        <StatusBadge status={research.data_quality === 'good' ? 'ok' : research.data_quality === 'partial' ? 'info' : 'warning'}>
-          {research.data_quality || 'unknown'} data
+        <StatusBadge status={dataQuality >= 70 ? 'ok' : dataQuality >= 40 ? 'info' : 'warning'}>
+          {dataQuality}/100 quality · {research.sourceCount || sources.length} sources
         </StatusBadge>
       </div>
 
-      {research.research_summary && (
-        <div className="text-xs text-foreground bg-muted/30 rounded p-2">{research.research_summary}</div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {research.track_condition && <ResearchField label="Track Condition" value={research.track_condition} />}
-        {research.weather && <ResearchField label="Weather" value={research.weather} />}
-      </div>
-
-      {research.scratchings?.length > 0 && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Scratchings</div>
-          <div className="flex flex-wrap gap-1">
-            {research.scratchings.map((s, i) => (
-              <span key={i} className="text-xs bg-danger/10 text-danger border border-danger/30 rounded px-1.5 py-0.5">{s}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {research.runner_notes?.filter(n => n.runner).length > 0 && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Runner Notes</div>
-          <div className="space-y-1">
-            {research.runner_notes.filter(n => n.runner).map((n, i) => (
-              <div key={i} className="text-xs">
-                <span className="font-medium">{n.runner}:</span> <span className="text-muted-foreground">{n.notes}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {research.form_comments && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Form Comments</div>
-          <div className="text-xs text-muted-foreground">{research.form_comments}</div>
-        </div>
-      )}
-
-      {research.trainer_jockey_notes && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Trainer / Jockey Notes</div>
-          <div className="text-xs text-muted-foreground">{research.trainer_jockey_notes}</div>
-        </div>
-      )}
-
-      {research.public_tips?.length > 0 && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Public Tips</div>
-          <div className="space-y-0.5">
-            {research.public_tips.map((t, i) => (
-              <div key={i} className="text-xs text-muted-foreground">• {t}</div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {research.market_news && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Market News</div>
-          <div className="text-xs text-muted-foreground">{research.market_news}</div>
-        </div>
-      )}
-
-      {research.risk_warnings?.length > 0 && (
-        <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Risk Warnings</div>
-          <div className="space-y-0.5">
-            {research.risk_warnings.map((r, i) => (
-              <div key={i} className="text-xs text-warning">⚠ {r}</div>
-            ))}
-          </div>
-        </div>
+      {research.raceLevelNotes && (
+        <div className="text-xs text-foreground bg-muted/30 rounded p-2">{research.raceLevelNotes}</div>
       )}
 
       {sources.length > 0 && (
@@ -122,18 +52,28 @@ export default function WebResearchPanel({ research, loading }) {
         </div>
       )}
 
-      <div className="text-[10px] text-muted-foreground italic">
-        Web research is supplementary context only. The AI must not bet based solely on public tips.
-      </div>
-    </div>
-  );
-}
+      {runnerResearch.filter(r => (r.positiveSignals?.length > 0 || r.negativeSignals?.length > 0)).length > 0 && (
+        <div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Runner Signals</div>
+          <div className="space-y-1">
+            {runnerResearch.filter(r => r.positiveSignals?.length > 0 || r.negativeSignals?.length > 0).map((r, i) => (
+              <div key={i} className="text-xs">
+                <span className="font-medium">{r.runnerName}:</span>
+                {r.positiveSignals?.length > 0 && (
+                  <span className="text-success"> +{r.positiveSignals.join('; ')}</span>
+                )}
+                {r.negativeSignals?.length > 0 && (
+                  <span className="text-danger"> −{r.negativeSignals.join('; ')}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-function ResearchField({ label, value }) {
-  return (
-    <div className="bg-muted/30 rounded p-2">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
-      <div className="text-xs font-medium mt-0.5">{value}</div>
+      <div className="text-[10px] text-muted-foreground italic">
+        Web research is supplementary context only. The exchange engine remains the final authority for BET/NO_BET decisions.
+      </div>
     </div>
   );
 }

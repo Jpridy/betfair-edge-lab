@@ -74,7 +74,7 @@ function FeatherlessResponse({ response, isLive = false }) {
   return (
     <Panel
       title="Step 2: Featherless AI Response"
-      subtitle={`Model: DeepSeek-V4-Flash · Prompt v4.0-race-assessment · Data Quality: ${response.dataQuality}/100`}
+      subtitle={`Model: DeepSeek-V4-Pro · Prompt v4.0-race-assessment · Data Quality: ${response.dataQuality}/100`}
       action={
         <div className="flex items-center gap-2">
           {isLive ? (
@@ -495,7 +495,7 @@ export default function MockFeatherlessRun() {
           <Loader2 className="h-5 w-5 text-primary animate-spin" />
           <div>
             <div className="text-sm font-semibold text-primary">Calling Featherless AI...</div>
-            <div className="text-xs text-muted-foreground">Sending race pack to DeepSeek-V4-Flash — this takes 60-120 seconds for a full 8-runner assessment</div>
+            <div className="text-xs text-muted-foreground">Sending race pack to DeepSeek-V4-Pro — this takes 60-120 seconds for a full 8-runner assessment</div>
           </div>
         </div>
       )}

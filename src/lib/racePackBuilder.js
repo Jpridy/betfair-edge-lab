@@ -143,7 +143,11 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
       if (agg) {
         agg.positiveSignals = research.positiveSignals || [];
         agg.negativeSignals = research.negativeSignals || [];
-        agg.notes = research.summary || research.notes || '';
+        const posCount = (research.positiveSignals || []).length;
+        const negCount = (research.negativeSignals || []).length;
+        agg.notes = (posCount || negCount)
+          ? `${posCount} positive, ${negCount} negative signals from external search`
+          : '';
       }
     }
   }

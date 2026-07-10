@@ -118,7 +118,7 @@ export default function ExternalSearchTestButton() {
 
         const runnerResearch = findRunnerResearch(externalSearchResult, selectionId);
         const { postSearchProbability, probabilityDelta } = applyExternalAdjustment(
-          preSearchProbability, runnerResearch, featherlessSettings
+          preSearchProbability, runnerResearch, featherlessSettings, externalSearchResult.dataQuality
         );
         const { postSearchConfidence, confidenceDelta } = applyConfidenceAdjustment(
           preSearchConfidence, runnerResearch, featherlessSettings

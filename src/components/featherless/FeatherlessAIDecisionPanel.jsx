@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Brain, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Globe } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { base44 } from '@/api/base44Client';
+import { clusterMarketsByEvent, detectMarketType } from '@/lib/marketClusterer';
+import { buildRacePack } from '@/lib/racePackBuilder';
 import WebResearchPanel from './WebResearchPanel';
 
 export default function FeatherlessAIDecisionPanel() {
@@ -47,32 +49,54 @@ export default function FeatherlessAIDecisionPanel() {
     setWebResearch(null);
 
     try {
-      // Step 1: Gather public race-day information via OpenAI web search
-      let research = null;
-      setResearchLoading(true);
-      try {
-        const researchResp = await base44.functions.invoke('raceWebResearch', {
-          market: selectedMarket,
-          runners: marketRunners,
-        });
-        if (researchResp.data?.research) {
-          research = researchResp.data.research;
-          setWebResearch(research);
+      // Step 1: Gather external research via OpenAI web search (if enabled)
+      let externalSearchResult = null;
+      if (featherlessSettings?.externalSearchEnabled) {
+        setResearchLoading(true);
+        try {
+          const searchResp = await base44.functions.invoke('openAIWebSearch', {
+            market: selectedMarket,
+            runners: marketRunners,
+            settings: featherlessSettings,
+          });
+          externalSearchResult = searchResp.data?.externalSearchResult || null;
+          if (externalSearchResult) {
+            // Adapt to WebResearchPanel's expected format
+            setWebResearch({
+              raceLevelNotes: externalSearchResult.raceLevelNotes || '',
+              dataQuality: externalSearchResult.dataQuality || 0,
+              sources: externalSearchResult.sources || [],
+              runnerResearch: externalSearchResult.runnerResearch || [],
+              searchStatus: externalSearchResult.searchStatus || 'unknown',
+              sourceCount: externalSearchResult.sourceCount || 0,
+            });
+          }
+        } catch (_) {
+          // Research failed — continue without it (graceful degradation)
         }
-      } catch (_) {
-        // Research failed — continue without it (graceful degradation)
+        setResearchLoading(false);
       }
-      setResearchLoading(false);
 
-      // Step 2: Run Featherless AI with Betfair data + web research
+      // Step 2: Build a race pack and call Featherless AI
+      const eventClusters = clusterMarketsByEvent([selectedMarket]);
+      const cluster = eventClusters[0];
+      const bankrollStatsForAI = bankrollStats || { bankroll: settings.paperBankroll || settings.bankroll || 10000 };
+      const racePack = buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStatsForAI, [], externalSearchResult, {
+        paperMode: true,
+        paperProofMode: false,
+      });
+
+      if (!racePack) {
+        setError('Failed to build race pack for AI analysis.');
+        setAnalysing(false);
+        return;
+      }
+
       const resp = await base44.functions.invoke('featherlessAI', {
-        market: selectedMarket,
-        runners: marketRunners,
+        racePack,
         settings,
         strategySettings: featherlessSettings,
-        bankrollStats,
-        raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-        webResearch: research,
+        bankrollStats: bankrollStatsForAI,
       });
 
       if (resp.data?.error) {

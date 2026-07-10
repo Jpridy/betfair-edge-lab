@@ -13,6 +13,7 @@ import { resolveMarketTypeThresholds, MARKET_TYPE_THRESHOLDS } from './crossMark
 import { calcBackEV, calcLayEV } from './exchangeMath';
 import { runPreOrderChecks } from './orderValidation';
 import { runRiskCheck } from './botEngine';
+import { buildRacePack } from './racePackBuilder';
 import { calculateRiskMetrics } from './riskCalculations';
 import { calculateCommission } from './betfairMapping';
 import { base44 } from '@/api/base44Client';
@@ -311,17 +312,15 @@ export async function runFullWiringTest(appContext) {
       callAI: async (cluster, primaryMarket, marketRunners) => {
         aiCallAttempted = true;
         try {
-          let webResearch = null;
-          if (featherlessSettings?.webResearchEnabled) {
-            const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
-            if (researchResp.data?.research) webResearch = researchResp.data.research;
-          }
+          const racePack = buildRacePack(cluster, runners || [], markets || [], settings, featherlessSettings, bankrollStats, paperOrders, null, {
+            paperMode: true,
+            paperProofMode: false,
+          });
           const resp = await base44.functions.invoke('featherlessAI', {
-            market: primaryMarket, runners: marketRunners, settings,
-            strategySettings: featherlessSettings, bankrollStats,
-            raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-            webResearch,
-            allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+            racePack,
+            settings,
+            strategySettings: featherlessSettings,
+            bankrollStats,
           });
           if (resp.data?.error) throw new Error(resp.data.error);
           return resp.data?.aiResult || null;

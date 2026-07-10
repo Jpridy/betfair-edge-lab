@@ -13,17 +13,17 @@ const DEFAULT_FEATHERLESS = {
   modelName: 'deepseek-ai/DeepSeek-V4-Pro',
   temperature: 0.1,
   maxTokens: 4000,
-  timeoutSeconds: 60,
-  minConfidence: 75,
-  minEdge: 5,
-  minExpectedROI: 3,
+  timeoutSeconds: 120,
+  minConfidence: 50,
+  minEdge: 3,
+  minExpectedROI: 1,
   paperTradeOnly: true,
   allowLiveHandoff: false,
   storeLogs: true,
-  minOdds: 2.0,
-  maxOdds: 12.0,
-  minLiquidity: 500,
-  maxSpread: 5,
+  minOdds: 1.5,
+  maxOdds: 50,
+  minLiquidity: 20,
+  maxSpread: 7,
   timeWindowStart: 500,
   timeWindowEnd: 30,
   stakingMode: 'confidence_weighted_fractional_kelly',
@@ -98,13 +98,12 @@ export default function FeatherlessSettings({ settings, onSave }) {
           </div>
         )}
 
-        {/* Web Research Toggle */}
+        {/* External Search note — controlled by the External Search toggle below */}
         <div className="flex items-center justify-between py-2 border-b border-border">
           <div>
             <Label className="text-sm font-bold">OpenAI Web Search Research</Label>
-            <div className="text-xs text-muted-foreground mt-1">Gathers public race-day info (form, scratchings, track, tips) via OpenAI web search before AI analysis. Adds ~10-30s latency per bot cycle. API key stored securely (OPENAI_API_KEY).</div>
+            <div className="text-xs text-muted-foreground mt-1">Gathers public race-day info (form, scratchings, track, tips) via OpenAI web search before AI analysis. Adds ~10-30s latency per bot cycle. Controlled by the External Search toggle below. API key stored securely (OPENAI_API_KEY).</div>
           </div>
-          <Switch checked={local.webResearchEnabled} onCheckedChange={v => update('webResearchEnabled', v)} />
         </div>
 
         {/* Model Settings */}
