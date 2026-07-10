@@ -54,6 +54,11 @@ describe('OpenAI web search reliability', () => {
     expect(resolveRunnerSelectionId('Fast Horse', '', runners)).toBe('101');
   });
 
+  it('checks betfairSelectionId explicitly when an internal selectionId also exists', () => {
+    const runners = [{ selectionId: 'internal-101', betfairSelectionId: 'bf-101', runnerName: 'Fast Horse' }];
+    expect(resolveRunnerSelectionId('', 'bf-101', runners)).toBe('bf-101');
+  });
+
   it('refuses an unclear normalized name match', () => {
     const runners = [{ selectionId: '101', runnerName: 'O’Brien' }, { selectionId: '202', runnerName: 'Obrien' }];
     expect(resolveRunnerSelectionId('OBrien', '', runners)).toBeNull();

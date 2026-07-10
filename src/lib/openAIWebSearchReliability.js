@@ -5,11 +5,13 @@ export function normalizeRunnerName(value) {
 export function resolveRunnerSelectionId(name, suppliedId, runners = []) {
   const valid = runners.filter((runner) => runner.runnerName && (runner.selectionId || runner.betfairSelectionId));
   const id = String(suppliedId || '');
-  const idMatches = valid.filter((runner) => String(runner.selectionId || runner.betfairSelectionId) === id);
-  if (id && idMatches.length === 1) return String(idMatches[0].selectionId || idMatches[0].betfairSelectionId);
+  const idMatches = valid.filter((runner) =>
+    String(runner.selectionId || '') === id || String(runner.betfairSelectionId || '') === id
+  );
+  if (id && idMatches.length === 1) return String(idMatches[0].betfairSelectionId || idMatches[0].selectionId);
   const normalized = normalizeRunnerName(name);
   const nameMatches = normalized ? valid.filter((runner) => normalizeRunnerName(runner.runnerName) === normalized) : [];
-  return nameMatches.length === 1 ? String(nameMatches[0].selectionId || nameMatches[0].betfairSelectionId) : null;
+  return nameMatches.length === 1 ? String(nameMatches[0].betfairSelectionId || nameMatches[0].selectionId) : null;
 }
 
 export function clampProbabilityAdjustment(value, maximum = 0.05) {
