@@ -8,6 +8,9 @@
     "marketId": {
       "type": "string"
     },
+    "betfairMarketId": {
+      "type": "string"
+    },
     "selectionId": {
       "type": "string"
     },
@@ -30,6 +33,18 @@
       "type": "number"
     },
     "marketStartTime": {
+      "type": "string"
+    },
+    "eventName": {
+      "type": "string"
+    },
+    "eventId": {
+      "type": "string"
+    },
+    "marketType": {
+      "type": "string"
+    },
+    "marketTypeCode": {
       "type": "string"
     },
     "side": {
@@ -148,12 +163,11 @@
     "settlementStatus": {
       "type": "string",
       "enum": [
-        "pending",
-        "settled",
+        "not_applicable",
+        "awaiting_result",
         "result_unknown",
-        "voided",
-        "lapsed",
-        "awaiting_result"
+        "settled",
+        "voided"
       ]
     },
     "resultSource": {
@@ -191,6 +205,9 @@
     "opponentFinishPosition": {
       "type": "number"
     },
+    "opponentSelectionId": {
+      "type": "string"
+    },
     "voided": {
       "type": "boolean",
       "default": false
@@ -198,11 +215,11 @@
     "voidReason": {
       "type": "string"
     },
-    "marketType": {
-      "type": "string"
+    "numberOfWinners": {
+      "type": "number"
     },
-    "eventId": {
-      "type": "string"
+    "placeTerms": {
+      "type": "number"
     },
     "liability": {
       "type": "number"
@@ -307,6 +324,24 @@
         "EXTERNAL_FORM_PLUS_MARKET",
         "MARKET_ONLY_PROOF"
       ]
+    },
+    "validationRan": {
+      "type": "boolean",
+      "default": false
+    },
+    "riskCheckRan": {
+      "type": "boolean",
+      "default": false
+    },
+    "softOverridesApplied": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hardBlockersChecked": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

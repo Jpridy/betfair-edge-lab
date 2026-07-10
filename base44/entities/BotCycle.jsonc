@@ -23,6 +23,10 @@
         "failed"
       ]
     },
+    "debugOnly": {
+      "type": "boolean",
+      "default": false
+    },
     "marketsScanned": {
       "type": "number"
     },
@@ -107,6 +111,24 @@
     },
     "proofSettlementStatus": {
       "type": "string"
+    },
+    "engineError": {
+      "type": "string"
+    },
+    "scanStage": {
+      "type": "string"
+    },
+    "failedStage": {
+      "type": "string"
+    },
+    "lastCompletedStage": {
+      "type": "string"
+    },
+    "cycleSteps": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "required": [

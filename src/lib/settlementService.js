@@ -61,12 +61,14 @@ export function settleOrderWithResult(order, market, settings, result) {
       winnerSelectionIds: winners,
       placedSelectionIds: placedRunners,
       voided: true,
-      voidReason: 'Market voided by Betfair',
+      voidReason: 'market_voided_by_betfair',
     };
   }
 
   // ── Result unknown: cannot confirm winner/placed from reliable source ──
   // Do NOT guess. Set status to awaiting_result and netProfit to null.
+  // Lifecycle: status=awaiting_result, settlementStatus=result_unknown, settledAt=null
+  // (settledAt is only set when the order is truly settled)
   const hasWinners = winners.length > 0;
   const hasPlaced = placedRunners.length > 0 || (marketType !== 'PLACE');
 
@@ -76,7 +78,7 @@ export function settleOrderWithResult(order, market, settings, result) {
       result: 'pending',
       status: 'awaiting_result',
       settlementStatus: 'result_unknown',
-      settledAt: settledDate,
+      settledAt: null,
       netProfit: null,
       grossProfit: null,
       commission: null,
@@ -100,7 +102,7 @@ export function settleOrderWithResult(order, market, settings, result) {
       result: 'pending',
       status: 'awaiting_result',
       settlementStatus: 'result_unknown',
-      settledAt: settledDate,
+      settledAt: null,
       netProfit: null,
       grossProfit: null,
       commission: null,
@@ -236,16 +238,22 @@ function detectMarketTypeFromOrder(order, market) {
  * Settle unmatched orders at market close (lapse).
  */
 export function lapseUnmatchedOrder(order, reason = 'Market closed — order was not matched') {
+  const now = new Date().toISOString();
   return {
     ...order,
     status: 'lapsed',
     result: 'void',
+    settlementStatus: 'voided',
     lapse_reason: reason,
-    settled_date: new Date().toISOString(),
+    settled_date: now,
+    settledAt: now,
     remaining_size: 0,
     netProfit: 0,
     grossProfit: 0,
     commission: 0,
+    voided: true,
+    voidReason: 'unmatched_order_lapsed',
     resultSource: 'market_closed',
+    exitReason: reason,
   };
 }

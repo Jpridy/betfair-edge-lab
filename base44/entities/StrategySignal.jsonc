@@ -8,7 +8,34 @@
     "marketId": {
       "type": "string"
     },
+    "betfairMarketId": {
+      "type": "string"
+    },
+    "selectionId": {
+      "type": "string"
+    },
     "runnerId": {
+      "type": "string"
+    },
+    "runnerName": {
+      "type": "string"
+    },
+    "eventId": {
+      "type": "string"
+    },
+    "eventName": {
+      "type": "string"
+    },
+    "marketName": {
+      "type": "string"
+    },
+    "marketType": {
+      "type": "string"
+    },
+    "marketTypeCode": {
+      "type": "string"
+    },
+    "opponentSelectionId": {
       "type": "string"
     },
     "side": {
@@ -23,6 +50,36 @@
     },
     "stakeSuggestion": {
       "type": "number"
+    },
+    "liability": {
+      "type": "number"
+    },
+    "maxProfit": {
+      "type": "number"
+    },
+    "maxLoss": {
+      "type": "number"
+    },
+    "commissionRate": {
+      "type": "number"
+    },
+    "spreadTicks": {
+      "type": "number"
+    },
+    "persistenceType": {
+      "type": "string",
+      "enum": [
+        "LAPSE",
+        "PERSIST",
+        "MARKET_ON_CLOSE"
+      ]
+    },
+    "proofMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "proofReason": {
+      "type": "string"
     },
     "modelProbability": {
       "type": "number"
@@ -39,17 +96,26 @@
     "expectedValue": {
       "type": "number"
     },
+    "expectedROI": {
+      "type": "number"
+    },
     "confidence": {
+      "type": "number"
+    },
+    "dataQuality": {
       "type": "number"
     },
     "signalStatus": {
       "type": "string",
       "enum": [
+        "proposed",
         "active",
-        "expired",
+        "blocked",
         "executed",
-        "blocked"
-      ]
+        "expired",
+        "cancelled"
+      ],
+      "default": "active"
     },
     "reason": {
       "type": "string"
@@ -58,9 +124,19 @@
       "type": "string",
       "enum": [
         "MARKET_ONLY",
+        "MARKET_ONLY_PROOF",
         "BETFAIR_METADATA_PLUS_MARKET",
-        "EXTERNAL_FORM_PLUS_MARKET"
+        "EXTERNAL_FORM_PLUS_MARKET",
+        "FEATHERLESS",
+        "OPENAI_ADJUSTED",
+        "FALLBACK"
       ]
+    },
+    "probabilitySource": {
+      "type": "string"
+    },
+    "finalProbabilityUsedInEV": {
+      "type": "number"
     },
     "probabilityLabel": {
       "type": "string"
@@ -82,6 +158,15 @@
     },
     "finalScore": {
       "type": "number"
+    },
+    "clvEstimate": {
+      "type": "number"
+    },
+    "orderId": {
+      "type": "string"
+    },
+    "blocker": {
+      "type": "string"
     }
   },
   "required": [

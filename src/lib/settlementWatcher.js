@@ -12,6 +12,7 @@
 
 import { settleOrderWithResult, lapseUnmatchedOrder } from './settlementService';
 import { detectMarketType } from './marketClusterer';
+import { matchRunnerToMarket } from './marketIdMatcher';
 
 /**
  * Run a settlement check on all awaiting_result paper orders.
@@ -35,9 +36,17 @@ export async function runSettlementCheck({
   invokeFunction,
   addAuditLog,
 }) {
+  // ── Only check orders that are genuinely awaiting settlement ──
+  // Must be matched or partially_matched, and settlementStatus must be
+  // awaiting_result or result_unknown. Do not re-check pending/unmatched orders.
   const awaiting = paperOrders.filter(o =>
-    o.status === 'awaiting_result' ||
-    (o.result === 'pending' && o.status !== 'settled' && o.status !== 'voided' && o.status !== 'lapsed' && o.status !== 'cancelled' && o.status !== 'rejected')
+    (o.status === 'matched' || o.status === 'partially_matched' || o.status === 'awaiting_result') &&
+    (o.settlementStatus === 'awaiting_result' || o.settlementStatus === 'result_unknown' || o.settlementStatus == null) &&
+    o.status !== 'settled' &&
+    o.status !== 'voided' &&
+    o.status !== 'lapsed' &&
+    o.status !== 'cancelled' &&
+    o.status !== 'rejected'
   );
 
   const before = awaiting.length;
@@ -60,12 +69,59 @@ export async function runSettlementCheck({
   for (const order of awaiting) {
     try {
       const orderMarketId = order.betfairMarketId || order.marketId;
-      const market = markets.find(m =>
-        m.betfairMarketId === orderMarketId || m.id === orderMarketId
-      );
+      // Use shared string-normalised market matcher (same as exchange engine)
+      const market = markets.find(m => matchRunnerToMarket(order, m));
 
       if (!market) {
-        // Market not in memory — can't check. Leave as awaiting.
+        // ── Market pruned from memory — attempt backfill from order metadata ──
+        // Reconstruct settlement lookup from stored PaperOrder fields
+        // rather than stopping because the market is missing.
+        if (order.marketType && order.runnerName && order.marketStartTime) {
+          try {
+            const opponentSelectionId = order.opponentSelectionId || null;
+            const resp = await invokeFunction('openAIWebSearch', {
+              action: 'result_lookup',
+              eventName: order.eventName || order.marketName || '',
+              marketName: order.marketName || '',
+              marketStartTime: order.marketStartTime || '',
+              runnerName: order.runnerName || '',
+              selectionId: String(order.selectionId || ''),
+              marketType: order.marketType,
+              opponentSelectionId,
+            });
+
+            const lookup = resp?.data?.resultLookup;
+            if (lookup && lookup.resultLookupStatus === 'success') {
+              const lookupWinners = lookup.winnerSelectionIds || [];
+              const lookupPlaced = lookup.placedSelectionIds || [];
+
+              if (lookupWinners.length > 0 || (order.marketType === 'PLACE' && lookupPlaced.length > 0)) {
+                const settled = settleOrderWithResult(order, { marketName: order.marketName }, settings, {
+                  winners: lookupWinners,
+                  placedRunners: lookupPlaced,
+                  placeTerms: order.placeTerms || null,
+                  resultSource: 'openai_result_lookup_backfill',
+                  marketType: order.marketType,
+                  marketStatusAtSettlement: 'CLOSED',
+                  selectedRunnerFinishPosition: lookup.selectedRunnerFinishPosition,
+                  opponentFinishPosition: lookup.opponentFinishPosition,
+                });
+
+                if (settled.status === 'settled') {
+                  await updateOrder(order.id, settled);
+                  settledThisRun++;
+                  latestResultSource = 'openai_result_lookup_backfill';
+                  addAuditLog('Settlement Backfill', 'order', 'info',
+                    `${order.runnerName} settled via OpenAI backfill (market pruned) — ${settled.result} (net $${settled.netProfit?.toFixed(2)})`);
+                  continue;
+                }
+              }
+            }
+          } catch (backfillErr) {
+            latestSettlementError = backfillErr.message;
+          }
+        }
+        // Backfill failed — keep as awaiting
         resultUnknownThisRun++;
         continue;
       }
@@ -86,8 +142,7 @@ export async function runSettlementCheck({
       // ── Market is CLOSED or SETTLED — try to get winner data ──
       // Check runner statuses for WINNER/LOSER/PLACED
       const marketRunners = runners.filter(r =>
-        (r.marketId === market.id || r.marketId === market.betfairMarketId) &&
-        r.status !== 'HIDDEN'
+        matchRunnerToMarket(r, market) && r.status !== 'HIDDEN'
       );
 
       const winners = marketRunners

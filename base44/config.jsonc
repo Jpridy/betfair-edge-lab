@@ -1,5 +1,5 @@
 {
-  "name": "untitled",
+  "name": "Betfair Edge Lab",
   "site": {
     "installCommand": "npm install",
     "buildCommand": "npm run build",

@@ -1004,6 +1004,9 @@ export function AppProvider({ children }) {
           finishedAt: new Date().toISOString(),
           status: 'completed',
           debugOnly: true,
+          scanStage: result.diagnostics.scanStage || 'completed',
+          lastCompletedStage: result.diagnostics.lastCompletedStage || 'completed',
+          cycleSteps: result.diagnostics.cycleSteps || [],
           marketsScanned: result.diagnostics.totalMarketsLoaded ?? result.diagnostics.marketsScanned ?? 0,
           marketsPassedFilters: result.diagnostics.marketsSentToExchangeEngine ?? 0,
           signalsCreated: 0, // Never create signals in debug mode

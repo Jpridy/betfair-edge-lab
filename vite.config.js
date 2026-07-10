@@ -26,7 +26,6 @@ export default defineConfig({
           'vendor-markdown': ['react-markdown'],
           'vendor-export': ['jspdf'],
           'vendor-maps': ['react-leaflet', 'leaflet'],
-          'vendor-three': ['three'],
         },
       },
     },

@@ -112,6 +112,10 @@
       "type": "boolean",
       "default": false
     },
+    "allowHedging": {
+      "type": "boolean",
+      "default": false
+    },
     "emergencyStopActive": {
       "type": "boolean",
       "default": false
@@ -152,26 +156,6 @@
     "streamApiEnabled": {
       "type": "boolean",
       "default": false
-    },
-    "strategyValueBetEnabled": {
-      "type": "boolean",
-      "default": true
-    },
-    "strategyScalpingEnabled": {
-      "type": "boolean",
-      "default": true
-    },
-    "strategyFavOutsiderEnabled": {
-      "type": "boolean",
-      "default": false
-    },
-    "strategySteamDriftEnabled": {
-      "type": "boolean",
-      "default": true
-    },
-    "strategyCrossMarketEnabled": {
-      "type": "boolean",
-      "default": true
     },
     "favouriteSideEnabled": {
       "type": "boolean",

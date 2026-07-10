@@ -746,16 +746,27 @@ export async function runExchangeCycle(params) {
   const ranked = rankOpportunities(allOpportunities);
 
   // 9. Choose best positive-EV opportunity
-  let bestOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
+  let bestNormalOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
+  let bestOpportunity = bestNormalOpportunity;
+  let proofFallbackOpportunity = null;
+  const normalOpportunities = [...ranked];
 
   // ── Paper Proof Fallback ──
+  // 1. Build normal opportunities (done above)
+  // 2. Rank normal opportunities (done above)
+  // 3. Determine whether proof fallback is required
+  // 4. Add proof fallback to allOpportunities
+  // 5. Re-rank the final complete list
   if (!debugScanMode && !bestOpportunity && paperProofMode) {
     proofFallbackAttempted = true;
     const proofOpp = buildProofOpportunity(eventClusters, runners, paperOrders, settings);
     if (proofOpp) {
+      proofFallbackOpportunity = proofOpp;
       bestOpportunity = proofOpp;
       allOpportunities.push(proofOpp);
       proofFallbackCreated = true;
+      // Re-rank the final complete list so the proof fallback appears in tables/exports
+      ranked = rankOpportunities(allOpportunities);
     } else {
       if (eventClusters.length === 0) {
         proofFallbackBlockedReason = 'no eligible event clusters';
@@ -965,7 +976,10 @@ export async function runExchangeCycle(params) {
       proofFallbackCreated,
       proofFallbackBlockedReason,
     },
-    positiveEVOpportunities: allOpportunities.filter(o => o.decision === 'BET').length,
+    positiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
+    mathematicallyPositiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
+    gateApprovedOpportunities: allOpportunities.filter(o => o.decision === 'BET' && !o.proofMode).length,
+    forcedProofOpportunities: allOpportunities.filter(o => o.proofMode === true).length,
     rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET').length,
     topOpportunities,
     topRejected: rejectedOpps,
@@ -1018,6 +1032,10 @@ export async function runExchangeCycle(params) {
   return {
     bestOpportunity,
     allOpportunities: ranked,
+    normalOpportunities,
+    proofFallbackOpportunity,
+    bestNormalOpportunity,
+    proofFallbackUsed: proofFallbackCreated,
     eventClusters,
     diagnostics,
   };
