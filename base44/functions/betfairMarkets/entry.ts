@@ -486,9 +486,12 @@ Deno.serve(async (req) => {
     }
 
     // ── Step 3: List Market Book — get live prices ──
+    // Use smaller batches (40) to stay well under Betfair's 200-point data
+    // weighting limit (EX_BEST_OFFERS=1pt + EX_TRADED=0.5pt per market = 1.5pt;
+    // 40 × 1.5 = 60pt, comfortably under the cap).
     const marketIds = catalogues.map(c => c.marketId);
     let books = [];
-    const BATCH_SIZE = 100;
+    const BATCH_SIZE = 40;
     for (let i = 0; i < marketIds.length; i += BATCH_SIZE) {
       const batchIds = marketIds.slice(i, i + BATCH_SIZE);
       const bookBody = {
@@ -513,10 +516,24 @@ Deno.serve(async (req) => {
             const batchBooks = JSON.parse(bookText);
             if (Array.isArray(batchBooks)) books = books.concat(batchBooks);
           } catch {
-            errors.push(`listMarketBook batch ${Math.floor(i / BATCH_SIZE) + 1} returned non-JSON`);
+            errors.push(`listMarketBook batch ${Math.floor(i / BATCH_SIZE) + 1} returned non-JSON: ${bookText.slice(0, 200)}`);
           }
         } else {
-          errors.push(`listMarketBook batch ${Math.floor(i / BATCH_SIZE) + 1} failed (HTTP ${bookRes.status})`);
+          // Capture the actual Betfair error — don't just log the HTTP status
+          let errorDetail = `HTTP ${bookRes.status}`;
+          try {
+            const errParsed = JSON.parse(bookText);
+            if (errParsed?.detail?.APINGException?.errorCode) {
+              errorDetail += ` ${errParsed.detail.APINGException.errorCode}`;
+            } else if (errParsed?.faultstring) {
+              errorDetail += ` ${errParsed.faultstring}`;
+            } else if (errParsed?.error) {
+              errorDetail += ` ${JSON.stringify(errParsed.error).slice(0, 150)}`;
+            }
+          } catch {
+            errorDetail += ` ${bookText.slice(0, 150)}`;
+          }
+          errors.push(`listMarketBook batch ${Math.floor(i / BATCH_SIZE) + 1} (${batchIds.length} ids) failed: ${errorDetail}`);
         }
       } catch (e) {
         errors.push(`listMarketBook batch error: ${e.message}`);
