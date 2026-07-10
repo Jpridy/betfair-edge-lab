@@ -9,7 +9,6 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 // Eager imports — auth pages and layout must load immediately
 import Layout from '@/components/Layout';
-import BotControlCentre from '@/pages/BotControlCentre';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -17,26 +16,12 @@ import ResetPassword from '@/pages/ResetPassword';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { AppProvider } from '@/lib/AppContext';
 
-// Lazy-loaded pages — reduces initial bundle size
-const DashboardHome = lazy(() => import('@/pages/DashboardHome'));
-const SetupWizard = lazy(() => import('@/pages/SetupWizard'));
-const MarketScanner = lazy(() => import('@/pages/MarketScanner'));
-const PaperTrading = lazy(() => import('@/pages/PaperTrading'));
-const PerformanceAnalytics = lazy(() => import('@/pages/PerformanceAnalytics'));
+// Five focused product pages
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const Controls = lazy(() => import('@/pages/Controls'));
+const Analytics = lazy(() => import('@/pages/Analytics'));
 const Settings = lazy(() => import('@/pages/Settings'));
-
-// Admin/Advanced pages — lazy loaded, not in main sidebar
-const RunnerView = lazy(() => import('@/pages/RunnerView'));
-const StrategyLab = lazy(() => import('@/pages/StrategyLab'));
-const Backtesting = lazy(() => import('@/pages/Backtesting'));
-const Orders = lazy(() => import('@/pages/Orders'));
-const RiskManager = lazy(() => import('@/pages/RiskManager'));
-const LogsAudit = lazy(() => import('@/pages/LogsAudit'));
-const StrategyLibrary = lazy(() => import('@/pages/StrategyLibrary'));
-const StrategyDetail = lazy(() => import('@/pages/StrategyDetail'));
-const ExchangeOpportunities = lazy(() => import('@/pages/ExchangeOpportunities'));
-const WiringAudit = lazy(() => import('@/pages/WiringAudit'));
-const MockFeatherlessRun = lazy(() => import('@/pages/MockFeatherlessRun'));
+const Debug = lazy(() => import('@/pages/Debug'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -73,25 +58,27 @@ const AuthenticatedApp = () => {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
           <Route element={<Layout />}>
-            <Route path="/" element={<BotControlCentre />} />
-            <Route path="/dashboard" element={<Suspense fallback={<PageLoader />}><DashboardHome /></Suspense>} />
-            <Route path="/setup-wizard" element={<Suspense fallback={<PageLoader />}><SetupWizard /></Suspense>} />
-            <Route path="/scanner" element={<Suspense fallback={<PageLoader />}><MarketScanner /></Suspense>} />
-            <Route path="/paper-trading" element={<Suspense fallback={<PageLoader />}><PaperTrading /></Suspense>} />
-            <Route path="/performance-analytics" element={<Suspense fallback={<PageLoader />}><PerformanceAnalytics /></Suspense>} />
+            <Route path="/" element={<Suspense fallback={<PageLoader />}><Dashboard /></Suspense>} />
+            <Route path="/controls" element={<Suspense fallback={<PageLoader />}><Controls /></Suspense>} />
+            <Route path="/analytics" element={<Suspense fallback={<PageLoader />}><Analytics /></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
-            {/* Admin/Advanced pages — accessible but not in main sidebar */}
-            <Route path="/runner" element={<Suspense fallback={<PageLoader />}><RunnerView /></Suspense>} />
-            <Route path="/strategy" element={<Suspense fallback={<PageLoader />}><StrategyLab /></Suspense>} />
-            <Route path="/backtesting" element={<Suspense fallback={<PageLoader />}><Backtesting /></Suspense>} />
-            <Route path="/orders" element={<Suspense fallback={<PageLoader />}><Orders /></Suspense>} />
-            <Route path="/risk" element={<Suspense fallback={<PageLoader />}><RiskManager /></Suspense>} />
-            <Route path="/logs" element={<Suspense fallback={<PageLoader />}><LogsAudit /></Suspense>} />
-            <Route path="/strategy-library" element={<Suspense fallback={<PageLoader />}><StrategyLibrary /></Suspense>} />
-            <Route path="/strategy/:id" element={<Suspense fallback={<PageLoader />}><StrategyDetail /></Suspense>} />
-            <Route path="/exchange-opportunities" element={<Suspense fallback={<PageLoader />}><ExchangeOpportunities /></Suspense>} />
-            <Route path="/wiring-audit" element={<Suspense fallback={<PageLoader />}><WiringAudit /></Suspense>} />
-            <Route path="/mock-featherless" element={<Suspense fallback={<PageLoader />}><MockFeatherlessRun /></Suspense>} />
+            <Route path="/debug" element={<Suspense fallback={<PageLoader />}><Debug /></Suspense>} />
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
+            <Route path="/setup-wizard" element={<Navigate to="/controls" replace />} />
+            <Route path="/risk" element={<Navigate to="/controls" replace />} />
+            <Route path="/scanner" element={<Navigate to="/debug" replace />} />
+            <Route path="/runner" element={<Navigate to="/debug" replace />} />
+            <Route path="/exchange-opportunities" element={<Navigate to="/" replace />} />
+            <Route path="/paper-trading" element={<Navigate to="/analytics" replace />} />
+            <Route path="/performance-analytics" element={<Navigate to="/analytics" replace />} />
+            <Route path="/orders" element={<Navigate to="/analytics" replace />} />
+            <Route path="/strategy" element={<Navigate to="/settings" replace />} />
+            <Route path="/strategy-library" element={<Navigate to="/analytics" replace />} />
+            <Route path="/strategy/:id" element={<Navigate to="/analytics" replace />} />
+            <Route path="/backtesting" element={<Navigate to="/debug" replace />} />
+            <Route path="/logs" element={<Navigate to="/debug" replace />} />
+            <Route path="/wiring-audit" element={<Navigate to="/debug" replace />} />
+            <Route path="/mock-featherless" element={<Navigate to="/debug" replace />} />
           </Route>
         </Route>
         <Route path="*" element={<PageNotFound />} />

@@ -6,31 +6,20 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Save, CheckCircle2, AlertTriangle, RefreshCw, Trash2, FileDown, FlaskConical } from 'lucide-react';
-import { isPaperProofModeActive } from '@/lib/paperProofDefaults';
+import { Download, Save, CheckCircle2 } from 'lucide-react';
 import InfoHint from '@/components/InfoHint';
-import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
-import { getCommissionWarnings } from '@/lib/betfairMapping';
-import { exportToCSV } from '@/lib/csvExport';
-import { cn } from '@/lib/utils';
 
 export default function Settings() {
   const {
     settings, updateSettings, addAuditLog,
     botSettings, updateBotSettings,
-    betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair,
-    apiConnected, resetAllPaperTrading, resetDailyStats, clearBotCycles, clearLogs,
     featherlessSettings, updateFeatherlessSettings,
-    botCycles, paperOrders,
-    applyPaperProofDefaults,
   } = useApp();
 
   const [local, setLocal] = useState(settings);
   const [botLocal, setBotLocal] = useState(botSettings);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [testResults, setTestResults] = useState(null);
   const [savedSection, setSavedSection] = useState(null);
 
   useEffect(() => { setLocal(settings); }, [settings]);
@@ -46,13 +35,6 @@ export default function Settings() {
     setTimeout(() => setSavedSection(null), 2000);
   };
 
-  const handleTestConnection = async () => {
-    setTestingConnection(true);
-    const results = await testBetfairConnection();
-    setTestResults(results);
-    setTestingConnection(false);
-  };
-
   const handleExportSettings = () => {
     const exportData = { ...local };
     delete exportData.id; delete exportData.created_date; delete exportData.updated_date; delete exportData.created_by_id;
@@ -64,47 +46,12 @@ export default function Settings() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExportCycles = () => {
-    if (botCycles.length === 0) return;
-    exportToCSV('bot-cycles.csv', botCycles.map(c => ({
-      cycleNumber: c.cycleNumber, status: c.status, startedAt: c.startedAt, finishedAt: c.finishedAt,
-      marketsScanned: c.marketsScanned, marketsPassed: c.marketsPassedFilters, signalsCreated: c.signalsCreated,
-      ordersCreated: c.ordersCreated, ordersBlocked: c.ordersBlocked, noBetReason: c.noBetReason || '',
-      bestCandidate: c.bestCandidate?.runnerName || '', selectedMarket: c.selectedMarketName || '', notes: c.notes || '',
-    })));
-  };
-
-  const commWarnings = getCommissionWarnings({ marketBaseRate: 0.05 }, local);
-  const proofActive = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   return (
     <div className="space-y-5">
-      {/* Paper Proof Mode — compact status strip */}
-      <div className="flex items-center gap-3 px-3 py-2 rounded-md border border-border-subtle bg-muted/20">
-        <div className={cn(
-          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-body font-semibold border tracking-label shrink-0',
-          proofActive ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border'
-        )}>
-          <FlaskConical className="h-3 w-3" />
-          {proofActive ? 'Paper Proof Mode Active' : 'Paper Proof Mode'}
-        </div>
-        <span className="text-[11px] text-muted-foreground flex-1">
-          {proofActive ? 'Filters relaxed for paper testing only.' : 'Apply defaults to test the full pipeline.'}
-        </span>
-        <Button
-          size="sm"
-          variant={proofActive ? 'outline' : 'default'}
-          onClick={() => applyPaperProofDefaults()}
-          className="gap-1.5 shrink-0 h-7 text-xs"
-        >
-          <FlaskConical className="h-3 w-3" />
-          {proofActive ? 'Re-apply Defaults' : 'Apply Defaults'}
-        </Button>
-      </div>
-
-      {/* Top bar */}
+      {/* Settings toolbar */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">Configure bot mode, market filters, opportunity rules, risk management, AI, Betfair, and settlement.</div>
+        <div className="text-sm text-muted-foreground">Configure bot behaviour, market filters, opportunity thresholds, risk limits, commission, and AI research.</div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExportSettings}><Download className="h-4 w-4 mr-1" /> Export JSON</Button>
           <Button size="sm" onClick={() => handleSave('all')}>
@@ -120,9 +67,6 @@ export default function Settings() {
           <TabsTrigger value="rules" className="text-xs">Opportunity Rules</TabsTrigger>
           <TabsTrigger value="risk" className="text-xs">Risk Management</TabsTrigger>
           <TabsTrigger value="ai" className="text-xs">AI & Research</TabsTrigger>
-          <TabsTrigger value="betfair" className="text-xs">Betfair</TabsTrigger>
-          <TabsTrigger value="settlement" className="text-xs">Settlement</TabsTrigger>
-          <TabsTrigger value="debug" className="text-xs">Debug</TabsTrigger>
         </TabsList>
 
         {/* 1. Bot Mode */}
@@ -139,7 +83,6 @@ export default function Settings() {
               </div>
               <div className="space-y-3 pt-3 border-t border-border">
                 <ToggleRow label="Auto Paper Trading — automatically create paper orders when signals pass all checks" checked={botLocal.autoPaperTradingEnabled} onChange={v => setBotLocal(prev => ({ ...prev, autoPaperTradingEnabled: v }))} />
-                <ToggleRow label="Debug Scan Mode — scan all markets regardless of time window (for testing)" checked={featherlessSettings?.debugScanMode || false} onChange={v => updateFeatherlessSettings({ debugScanMode: v })} />
                 <ToggleRow label="Live Trading — DISABLED (forced off)" checked={false} onChange={() => {}} />
               </div>
               <InfoHint tone="info" className="text-[11px]">
@@ -219,7 +162,6 @@ export default function Settings() {
               </div>
               <div className="space-y-3 pt-3 border-t border-border">
                 <ToggleRow label="Allow Hedging — allow conflicting BACK+LAY positions on same selection" checked={local.allowHedging || false} onChange={v => update('allowHedging', v)} />
-                <ToggleRow label="Risk Limits Disabled — bypass all risk checks (TESTING ONLY)" checked={local.riskLimitsDisabled || false} onChange={v => update('riskLimitsDisabled', v)} />
               </div>
               <div className="flex justify-end pt-4 border-t border-border">
                 <Button size="sm" onClick={() => handleSave('risk')}>
@@ -257,106 +199,6 @@ export default function Settings() {
           />
         </TabsContent>
 
-        {/* 6. Betfair */}
-        <TabsContent value="betfair">
-          <Panel title="Betfair Connection Status">
-            <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatusField label="API Connected" value={apiConnected ? 'Yes' : 'No'} ok={apiConnected} />
-                <StatusField label="Login Status" value={betfairConnection.loginStatus} ok={betfairConnection.loginStatus === 'connected'} />
-                <StatusField label="Stream Status" value={betfairConnection.streamConnectionStatus} ok={betfairConnection.streamConnectionStatus === 'connected'} />
-                <StatusField label="Market Catalogue" value={apiConnected ? 'Available' : 'Not Available'} ok={apiConnected} />
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-3 border-t border-border">
-                <StatusField label="Last Market Sync" value={betfairConnection.lastMarketSyncTime ? new Date(betfairConnection.lastMarketSyncTime).toLocaleTimeString('en-AU') : 'Never'} ok={!!betfairConnection.lastMarketSyncTime} />
-                <StatusField label="Data Freshness" value={betfairConnection.dataFresh ? 'Fresh' : 'Stale'} ok={betfairConnection.dataFresh} />
-                <Field label="Data Freshness Limit (seconds)"><Input type="number" value={betfairConnection.dataFreshnessLimit} onChange={e => updateBetfairConnection({ dataFreshnessLimit: +e.target.value })} /></Field>
-              </div>
-              <div className="flex gap-2 pt-3 border-t border-border">
-                <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testingConnection}>
-                  {testingConnection ? <><RefreshCw className="h-4 w-4 mr-1 animate-spin" /> Testing...</> : 'Test Connection'}
-                </Button>
-                <Button variant="destructive" size="sm" onClick={() => { if (window.confirm('Disconnect from Betfair?')) disconnectBetfair(); }} disabled={!apiConnected}>
-                  Disconnect
-                </Button>
-              </div>
-              {testResults && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pt-3 border-t border-border">
-                  <TestResult label="Login/Session" passed={testResults.loginValid} />
-                  <TestResult label="App Key" passed={testResults.appKeyPresent} />
-                  <TestResult label="Market Data" passed={testResults.marketDataAccess} />
-                  <TestResult label="Account Funds" passed={testResults.accountFundsAvailable} />
-                  <TestResult label="Current Orders" passed={testResults.currentOrdersAvailable} />
-                  <TestResult label="Stream" passed={testResults.streamAvailable} />
-                </div>
-              )}
-            </div>
-          </Panel>
-          <BetfairConnection />
-        </TabsContent>
-
-        {/* 7. Settlement */}
-        <TabsContent value="settlement">
-          <Panel title="Settlement Configuration">
-            <div className="p-4 space-y-4">
-              <InfoHint tone="info" className="text-[11px]">
-                Real Settlement Only — settlement uses real Betfair stream results. No random or simulated settlement.
-              </InfoHint>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between py-1.5 border-b border-border">
-                  <span className="text-sm">Result Unknown Handling</span>
-                  <StatusBadge status="warning">Awaiting Result — Never Guessed</StatusBadge>
-                </div>
-                <div className="flex items-center justify-between py-1.5 border-b border-border">
-                  <span className="text-sm">Random Settlement</span>
-                  <StatusBadge status="danger">DISABLED</StatusBadge>
-                </div>
-                <div className="flex items-center justify-between py-1.5 border-b border-border">
-                  <span className="text-sm">Settlement Source</span>
-                  <StatusBadge status="ok">Betfair Stream</StatusBadge>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3">
-                <StatusField label="Settled" value={paperOrders.filter(o => o.status === 'settled').length} ok={true} />
-                <StatusField label="Awaiting Result" value={paperOrders.filter(o => o.status === 'awaiting_result').length} ok={false} />
-                <StatusField label="Pending" value={paperOrders.filter(o => ['matched', 'partially_matched'].includes(o.status)).length} ok={true} />
-                <StatusField label="Voided" value={paperOrders.filter(o => o.voided).length} ok={true} />
-              </div>
-            </div>
-          </Panel>
-        </TabsContent>
-
-        {/* 8. Debug */}
-        <TabsContent value="debug">
-          <Panel title="Debug & Maintenance">
-            <div className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Button variant="outline" size="sm" onClick={handleExportCycles} disabled={botCycles.length === 0} className="justify-start">
-                  <FileDown className="h-4 w-4 mr-2" /> Export Bot Cycles ({botCycles.length})
-                </Button>
-                <Button variant="outline" size="sm" onClick={resetDailyStats} className="justify-start">
-                  <RefreshCw className="h-4 w-4 mr-2" /> Reset Daily Stats
-                </Button>
-                <Button variant="outline" size="sm" onClick={clearBotCycles} className="justify-start">
-                  <Trash2 className="h-4 w-4 mr-2" /> Clear Decision Logs
-                </Button>
-                <Button variant="outline" size="sm" onClick={clearLogs} className="justify-start">
-                  <Trash2 className="h-4 w-4 mr-2" /> Clear Audit Logs
-                </Button>
-              </div>
-
-              <div className="pt-3 border-t border-border">
-                <Button variant="destructive" size="sm" onClick={() => {
-                  if (window.confirm('This will permanently delete ALL paper orders, signals, bot cycles, and reset bankroll. Continue?')) {
-                    resetAllPaperTrading();
-                  }
-                }}>
-                  <Trash2 className="h-4 w-4 mr-1" /> Reset All Paper Trading Data
-                </Button>
-              </div>
-            </div>
-          </Panel>
-        </TabsContent>
       </Tabs>
     </div>
   );
@@ -376,24 +218,6 @@ function ToggleRow({ label, checked, onChange }) {
     <div className="flex items-center justify-between py-1">
       <Label className="text-sm">{label}</Label>
       <Switch checked={checked} onCheckedChange={onChange} disabled={label.includes('DISABLED')} />
-    </div>
-  );
-}
-
-function StatusField({ label, value, ok }) {
-  return (
-    <div>
-      <Label className="text-[10px] text-muted-foreground">{label}</Label>
-      <div className="pt-1"><StatusBadge status={ok ? 'ok' : 'warning'}>{String(value)}</StatusBadge></div>
-    </div>
-  );
-}
-
-function TestResult({ label, passed }) {
-  return (
-    <div className={`flex items-center gap-2 text-xs p-2 rounded ${passed ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
-      {passed ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-      {label}: {passed ? '✓' : '✗'}
     </div>
   );
 }

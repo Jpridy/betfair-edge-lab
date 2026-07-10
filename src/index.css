@@ -6,26 +6,26 @@
 @layer base {
   :root {
     /* ── Backgrounds ── */
-    --background: 228 30% 5%;
-    --foreground: 210 40% 96%;
-    --card: 225 24% 8%;
-    --card-foreground: 210 40% 96%;
-    --elevated: 222 22% 11%;
-    --hover: 220 18% 13%;
-    --selected: 262 30% 14%;
+    --background: 222 24% 8%;
+    --foreground: 210 20% 94%;
+    --card: 222 20% 11%;
+    --card-foreground: 210 20% 94%;
+    --elevated: 220 18% 14%;
+    --hover: 220 16% 16%;
+    --selected: 214 30% 18%;
     --popover: 225 24% 8%;
     --popover-foreground: 210 40% 96%;
 
-    /* ── Primary (Violet) ── */
-    --primary: 262 83% 58%;
-    --primary-foreground: 210 40% 98%;
-    --primary-muted: 262 40% 20%;
+    /* ── Primary (restrained blue) ── */
+    --primary: 213 70% 56%;
+    --primary-foreground: 210 30% 98%;
+    --primary-muted: 213 32% 22%;
 
     /* ── Neutrals ── */
     --secondary: 220 20% 14%;
     --secondary-foreground: 210 40% 96%;
     --muted: 220 18% 12%;
-    --muted-foreground: 215 18% 52%;
+    --muted-foreground: 215 14% 66%;
     --accent: 220 18% 14%;
     --accent-foreground: 210 40% 96%;
 
@@ -42,12 +42,12 @@
     --danger-foreground: 210 40% 98%;
 
     /* ── Borders ── */
-    --border: 220 16% 15%;
-    --border-subtle: 220 14% 12%;
-    --border-active: 262 83% 58%;
+    --border: 220 14% 22%;
+    --border-subtle: 220 13% 17%;
+    --border-active: 213 70% 56%;
     --border-warning: 38 92% 50%;
     --border-error: 0 72% 51%;
-    --ring: 262 83% 58%;
+    --ring: 213 70% 56%;
     --input: 220 16% 15%;
 
     /* ── Chart / Status Colours ── */
@@ -72,12 +72,12 @@
     /* ── Sidebar ── */
     --sidebar-background: 230 30% 4%;
     --sidebar-foreground: 210 40% 92%;
-    --sidebar-primary: 262 83% 58%;
+    --sidebar-primary: 213 70% 56%;
     --sidebar-primary-foreground: 210 40% 98%;
     --sidebar-accent: 220 18% 10%;
     --sidebar-accent-foreground: 210 40% 96%;
     --sidebar-border: 220 16% 11%;
-    --sidebar-ring: 262 83% 58%;
+    --sidebar-ring: 213 70% 56%;
   }
 }
 
@@ -88,6 +88,11 @@
   body {
     @apply bg-background text-foreground font-body antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   }
 }
 

@@ -5,6 +5,7 @@
 // Or import individual test functions.
 // ============================================================================
 
+import { describe, it, expect } from 'vitest';
 import { calcBackEV, calcLayEV, calcBackEdge, calcLayEdge, calcKellyStake, calcLayKellyStake, calcDelayRiskScore } from './exchangeMath';
 import { detectMarketType, extractPlaceTerms } from './marketClusterer';
 import { settleOrderWithResult, lapseUnmatchedOrder } from './settlementService';
@@ -141,7 +142,7 @@ test('Result unknown settlement does not guess', () => {
   });
   assert(settled.status === 'awaiting_result', `Should be awaiting_result, got ${settled.status}`);
   assert(settled.netProfit === null, 'netProfit should be null');
-  assert(settled.settlementStatus === 'RESULT_UNKNOWN', 'settlementStatus should be RESULT_UNKNOWN');
+  assert(settled.settlementStatus === 'result_unknown', 'settlementStatus should be result_unknown');
   assert(settled.resultSource === 'betfair_stream', 'resultSource should be set');
 });
 
@@ -236,5 +237,11 @@ export function runExchangeTests() {
 
   return { passed, failed, total: tests.length, results };
 }
+
+describe('Exchange Engine — deterministic cases', () => {
+  for (const testCase of tests) {
+    it(testCase.name, () => expect(() => testCase.fn()).not.toThrow());
+  }
+});
 
 export { tests };

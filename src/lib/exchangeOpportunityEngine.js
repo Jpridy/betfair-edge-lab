@@ -733,6 +733,7 @@ export async function runExchangeCycle(params) {
         aiResult.featherlessStatus = featherlessStatus;
         usedMarketOnlyFallback = true;
         marketOnlyFallbacksUsed++;
+        marketOnlyResultsCreated++;
         const reason = !callAI ? 'Featherless not configured — market-implied probabilities' : `Featherless ${featherlessStatus} — market-implied fallback`;
         aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only_fallback', success: true, reason });
       } else if (isNormalMode && featherlessAlwaysRequired) {

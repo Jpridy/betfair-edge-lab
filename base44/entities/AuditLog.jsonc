@@ -35,6 +35,21 @@
     },
     "timestamp": {
       "type": "string"
+    },
+    "objectType": {
+      "type": "string"
+    },
+    "objectName": {
+      "type": "string"
+    },
+    "beforeValue": {
+      "type": "string"
+    },
+    "afterValue": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
     }
   },
   "required": [

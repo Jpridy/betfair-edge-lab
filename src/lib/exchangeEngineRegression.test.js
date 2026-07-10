@@ -6,6 +6,7 @@
  *   import('/src/lib/exchangeEngineRegression.test.js').then(m => m.runRegressionTests())
  */
 
+import { describe, it, expect } from 'vitest';
 import { runExchangeCycle } from './exchangeOpportunityEngine';
 
 function makeMarket(id, type = 'WIN') {
@@ -20,9 +21,9 @@ function makeMarket(id, type = 'WIN') {
   };
 }
 
-function makeRunner(selId, name, back, lay) {
+function makeRunner(selId, name, back, lay, marketId) {
   return {
-    id: `r${selId}`, betfairSelectionId: selId, selectionId: selId,
+    id: `r${selId}`, marketId, betfairSelectionId: selId, selectionId: selId,
     runnerName: name, status: 'ACTIVE', handicap: 0,
     bestBackPrice: back, bestBackSize: 100,
     bestLayPrice: lay, bestLaySize: 100,
@@ -44,14 +45,14 @@ const BASE_SETTINGS = {
 export async function testPaperProofMode_callAI_returnsNull_fallsBackToMarketOnly() {
   const markets = [makeMarket('1.1', 'WIN')];
   const runners = [
-    makeRunner('1001', 'Horse A', 3.0, 3.1),
-    makeRunner('1002', 'Horse B', 5.0, 5.1),
-    makeRunner('1003', 'Horse C', 7.0, 7.1),
+    makeRunner('1001', 'Horse A', 3.0, 3.1, '1.1'),
+    makeRunner('1002', 'Horse B', 5.0, 5.1, '1.1'),
+    makeRunner('1003', 'Horse C', 7.0, 7.1, '1.1'),
   ];
   const result = await runExchangeCycle({
     markets, runners,
-    settings: { ...BASE_SETTINGS, paperProofMode: true },
-    botSettings: { botMode: 'paper_proof', paperProofMode: true },
+    settings: { ...BASE_SETTINGS, paperProofMode: true, forcedPaperOnlyMode: true, liveTradingEnabled: false },
+    botSettings: { botMode: 'paper_proof', paperProofMode: true, liveTradingEnabled: false },
     featherlessSettings: { enabled: true, debugScanMode: false, paperProofMode: true },
     bankrollStats: { bankroll: 10000 }, paperOrders: [],
     emergencyStop: false, connectionState: { apiConnected: true },
@@ -68,6 +69,9 @@ export async function testPaperProofMode_callAI_returnsNull_fallsBackToMarketOnl
       opportunities: result.diagnostics.totalOpportunities,
       marketOnlyFallbacks: result.diagnostics.marketOnlyResultsCreated,
       engineError: result.diagnostics.engineError,
+      noBetReason: result.diagnostics.noBetReason,
+      totalMarketsLoaded: result.diagnostics.totalMarketsLoaded,
+      marketsSentToExchangeEngine: result.diagnostics.marketsSentToExchangeEngine,
     },
   };
 }
@@ -75,8 +79,8 @@ export async function testPaperProofMode_callAI_returnsNull_fallsBackToMarketOnl
 export async function testDebugScanMode_callAI_throws_fallsBackToMarketOnly() {
   const markets = [makeMarket('1.2', 'WIN')];
   const runners = [
-    makeRunner('2001', 'Horse D', 2.5, 2.6),
-    makeRunner('2002', 'Horse E', 4.0, 4.1),
+    makeRunner('2001', 'Horse D', 2.5, 2.6, '1.2'),
+    makeRunner('2002', 'Horse E', 4.0, 4.1, '1.2'),
   ];
   const result = await runExchangeCycle({
     markets, runners,
@@ -104,7 +108,7 @@ export async function testDebugScanMode_callAI_throws_fallsBackToMarketOnly() {
 
 export async function testNoReferenceError_forPaperProofMode() {
   const markets = [makeMarket('1.3', 'WIN')];
-  const runners = [makeRunner('3001', 'Horse F', 3.0, 3.1)];
+  const runners = [makeRunner('3001', 'Horse F', 3.0, 3.1, '1.3')];
   let threwReferenceError = false;
   let errorMessage = null;
   try {
@@ -153,11 +157,15 @@ export async function runRegressionTests() {
     await testNoReferenceError_forPaperProofMode(),
     await testSafeDefaults_undefinedArgs_dontCrash(),
   ];
-  const allPassed = tests.every(t => t.passed);
-  console.log('=== Exchange Engine Regression Tests ===');
-  tests.forEach(t => {
-    console.log(`${t.passed ? '✓' : '✗'} ${t.name}`, t.diagnostics);
-  });
-  console.log(`\n${allPassed ? 'ALL PASSED' : 'SOME FAILED'} (${tests.filter(t => t.passed).length}/${tests.length})`);
-  return { allPassed, tests };
+  return { allPassed: tests.every(t => t.passed), tests };
 }
+
+describe('Exchange Engine — regression cases', () => {
+  it('falls back in paper proof mode', async () => {
+    const result = await testPaperProofMode_callAI_returnsNull_fallsBackToMarketOnly();
+    expect(result.passed, JSON.stringify(result.diagnostics)).toBe(true);
+  });
+  it('falls back after debug timeout', async () => expect((await testDebugScanMode_callAI_throws_fallsBackToMarketOnly()).passed).toBe(true));
+  it('avoids paper proof initialization errors', async () => expect((await testNoReferenceError_forPaperProofMode()).passed).toBe(true));
+  it('handles empty arguments', async () => expect((await testSafeDefaults_undefinedArgs_dontCrash()).passed).toBe(true));
+});
