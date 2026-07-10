@@ -3,7 +3,7 @@ import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Download, RefreshCw, Link as LinkIcon, FlaskConical, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, RefreshCw, Link as LinkIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportToCSV } from '@/lib/csvExport';
 import { getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { Link } from 'react-router-dom';

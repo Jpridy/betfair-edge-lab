@@ -278,6 +278,9 @@ export function AppProvider({ children }) {
   const [lastScanDiagnostics, setLastScanDiagnostics] = useState(null);
   const [exchangeOpportunities, setExchangeOpportunities] = useState([]);
   const [lastExchangeDiagnostics, setLastExchangeDiagnostics] = useState(null);
+  const [lastDebugScanResult, setLastDebugScanResult] = useState(null);
+  const [lastDebugScanError, setLastDebugScanError] = useState(null);
+  const [lastDebugScanAt, setLastDebugScanAt] = useState(null);
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
@@ -911,23 +914,33 @@ export function AppProvider({ children }) {
 
   // ── Debug Scan Cycle — diagnostic only, never creates orders/signals ──
   const runDebugScanCycle = async () => {
-    if (cycleInProgressRef.current) return;
+    if (cycleInProgressRef.current) {
+      return { success: false, cycleCreated: false, error: 'A scan is already in progress' };
+    }
     cycleInProgressRef.current = true;
+    const s = stateRef.current;
+    const cycleNum = s.botState.cycleNumber + 1;
+    const now = new Date().toISOString();
+    const marketsLoaded = s.markets.length;
+    const runnersLoaded = s.runners.length;
+    const pricedRunners = s.runners.filter(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)).length;
+
+    setLastDebugScanAt(now);
+    setLastDebugScanError(null);
+
+    if (s.emergencyStop) {
+      cycleInProgressRef.current = false;
+      return { success: false, cycleCreated: false, cycleNumber: cycleNum, marketsLoaded, eligibleMarkets: 0, opportunitiesGenerated: 0, error: 'Emergency stop is active' };
+    }
+
+    addAuditLog('Debug Scan Cycle Triggered', 'system', 'info', 'Diagnostic-only scan initiated. No orders or signals will be created.');
+
+    const diagnostics = buildScanDiagnostics(s.markets, s.runners, s.settings, s.featherlessSettings, s.paperOrders, s.bankrollStats, s.emergencyStop);
+    setLastScanDiagnostics(diagnostics);
+
     try {
-      const s = stateRef.current;
-      if (s.emergencyStop) return;
-
-      const cycleNum = s.botState.cycleNumber + 1;
-      const now = new Date().toISOString();
-      addAuditLog('Debug Scan Cycle Triggered', 'system', 'info', 'Diagnostic-only scan initiated. No orders or signals will be created.');
-
-      const diagnostics = buildScanDiagnostics(s.markets, s.runners, s.settings, s.featherlessSettings, s.paperOrders, s.bankrollStats, s.emergencyStop);
-      setLastScanDiagnostics(diagnostics);
-
       // Always run the exchange engine, regardless of Featherless enabled/disabled
-      try {
-        const debugScanMode = true; // Always true for debug scans
-        const conn = s.betfairConnection || {};
+      const conn = s.betfairConnection || {};
         const connectionState = {
           apiConnected: s.apiConnected,
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
@@ -1075,17 +1088,103 @@ export function AppProvider({ children }) {
           },
           selectedMarketName: result.bestOpportunity?.marketName || null,
         };
-        setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-        base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+        const localId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
+        const optimisticCycle = { ...cycleRecord, id: localId };
+        setBotCycles(prev => [optimisticCycle, ...prev].slice(0, 100));
+
+        let savedCycleId = localId;
+        try {
+          const savedCycle = await base44.entities.BotCycle.create(cycleRecord);
+          if (savedCycle?.id) {
+            savedCycleId = savedCycle.id;
+            setBotCycles(prev => prev.map(c => c.id === localId ? { ...c, id: savedCycle.id } : c));
+          }
+        } catch (dbErr) {
+          addAuditLog('Debug Scan DB Save Failed', 'system', 'error', `BotCycle creation failed: ${dbErr.message}`);
+        }
 
         setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
         addAuditLog('Debug Scan Complete', 'system', 'info', `Scanned ${cycleRecord.marketsScanned} markets, ${result.diagnostics.totalOpportunities || 0} opportunities, 0 orders (debug only).`);
         addToBotActivity('Debug scan completed', `${cycleRecord.marketsScanned} markets, ${result.diagnostics.totalOpportunities || 0} opportunities — no orders placed`);
+
+        const scanResult = {
+          success: true,
+          cycleCreated: true,
+          cycleNumber: cycleNum,
+          botCycleId: savedCycleId,
+          marketsLoaded,
+          eligibleMarkets: result.diagnostics.marketsSentToExchangeEngine ?? 0,
+          opportunitiesGenerated: result.diagnostics.totalOpportunities || 0,
+          backOpportunities: result.diagnostics.backOpportunities || 0,
+          layOpportunities: result.diagnostics.layOpportunities || 0,
+          paperProofModeDetected: result.diagnostics.opportunityFunnel?.proofModeDetectedInsideEngine ?? false,
+          debugScanMode: true,
+          eventClustersCreated: result.eventClusters?.length ?? 0,
+          clustersWithMatchedRunners: result.diagnostics.opportunityFunnel?.clustersWithMatchedRunners ?? 0,
+          featherlessCallsAttempted: result.diagnostics.aiCallsMade ?? 0,
+          featherlessFailures: result.diagnostics.aiStatusLog?.filter(l => l.status === 'ai_error' || l.status === 'ai_timeout').length ?? 0,
+          marketOnlyFallbacks: result.diagnostics.marketOnlyResultsCreated ?? 0,
+          lastCompletedStage: result.diagnostics.scanStage || 'completed',
+          engineError: null,
+        };
+        setLastDebugScanResult(scanResult);
+        return scanResult;
       } catch (err) {
         addAuditLog('Debug Scan Error', 'system', 'error', `Exchange engine error: ${err.message}`);
-      }
-    } finally {
-      cycleInProgressRef.current = false;
+
+        // Create a failed BotCycle so Last Cycle doesn't stay "Never"
+        const failedCycleRecord = {
+          cycleNumber: cycleNum,
+          botMode: 'paper',
+          startedAt: now,
+          finishedAt: new Date().toISOString(),
+          status: 'failed',
+          debugOnly: true,
+          marketsScanned: marketsLoaded,
+          marketsPassedFilters: 0,
+          signalsCreated: 0,
+          ordersCreated: 0,
+          ordersBlocked: 0,
+          errors: 1,
+          notes: `Debug scan failed: ${err.message}`,
+          noBetReason: `Exchange engine error: ${err.message}`,
+          scanSummary: {
+            totalMarketsLoaded: marketsLoaded,
+            runnersInMemory: runnersLoaded,
+            pricedRunners,
+            debugScanMode: true,
+            engineError: err.message,
+            engineStack: err.stack,
+          },
+        };
+        const failLocalId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
+        setBotCycles(prev => [{ ...failedCycleRecord, id: failLocalId }, ...prev].slice(0, 100));
+        try {
+          const savedFailCycle = await base44.entities.BotCycle.create(failedCycleRecord);
+          if (savedFailCycle?.id) {
+            setBotCycles(prev => prev.map(c => c.id === failLocalId ? { ...c, id: savedFailCycle.id } : c));
+          }
+        } catch (dbErr) {
+          addAuditLog('Failed BotCycle DB Save Failed', 'system', 'error', `BotCycle creation failed: ${dbErr.message}`);
+        }
+
+        setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
+        setLastDebugScanError(err.message);
+
+        const failResult = {
+          success: false,
+          cycleCreated: false,
+          cycleNumber: cycleNum,
+          marketsLoaded,
+          eligibleMarkets: 0,
+          opportunitiesGenerated: 0,
+          error: err.message,
+          stack: err.stack,
+        };
+        setLastDebugScanResult(failResult);
+        return failResult;
+      } finally {
+        cycleInProgressRef.current = false;
     }
   };
 
@@ -2385,6 +2484,7 @@ export function AppProvider({ children }) {
     featherlessSettings, setFeatherlessSettings, updateFeatherlessSettings, aiDecisions,
     lastScanDiagnostics, calibration,
     exchangeOpportunities, lastExchangeDiagnostics,
+    lastDebugScanResult, lastDebugScanError, lastDebugScanAt,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

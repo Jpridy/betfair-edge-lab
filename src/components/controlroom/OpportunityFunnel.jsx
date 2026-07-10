@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { Zap, Play } from 'lucide-react';
+import { Zap } from 'lucide-react';
 
 /**
  * Displays the opportunity-generation funnel from the last exchange engine run.

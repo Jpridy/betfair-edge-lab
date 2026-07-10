@@ -18,7 +18,7 @@ import CurrentMarketFeed from '@/components/controlroom/CurrentMarketFeed';
 import OpportunityFunnel from '@/components/controlroom/OpportunityFunnel';
 
 export default function BotControlCentre() {
-  const { dataLoading, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
+  const { dataLoading, botCycles, exchangeOpportunities, paperOrders, markets, lastDebugScanResult, lastDebugScanError } = useApp();
 
   if (dataLoading) {
     return (
@@ -103,6 +103,15 @@ export default function BotControlCentre() {
         </TabsContent>
 
         <TabsContent value="debug" className="space-y-5">
+          {lastDebugScanError && (
+            <div className="bg-danger/5 border border-danger/25 rounded-lg p-4">
+              <h3 className="text-sm font-heading font-semibold text-danger mb-2">Last Debug Scan Failed</h3>
+              <p className="text-xs text-danger mb-2">{lastDebugScanError}</p>
+              {lastDebugScanResult?.stack && (
+                <pre className="text-[10px] font-mono text-muted-foreground bg-background/50 rounded p-2 overflow-x-auto max-h-48">{lastDebugScanResult.stack}</pre>
+              )}
+            </div>
+          )}
           <OpportunityFunnel />
           <DecisionLogPanel />
         </TabsContent>

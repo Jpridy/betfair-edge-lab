@@ -388,12 +388,39 @@ function buildMarketOnlyAIResult(cluster, marketRunners) {
  * @param {object} params.connectionState - Betfair connection state
  * @returns {object} { bestOpportunity, allOpportunities, eventClusters, diagnostics }
  */
-export async function runExchangeCycle({ markets, runners, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, emergencyStop, callAI, callExternalSearch, connectionState }) {
+export async function runExchangeCycle(params) {
+  let {
+    markets = [],
+    runners = [],
+    settings = {},
+    botSettings = {},
+    featherlessSettings = {},
+    bankrollStats = {},
+    paperOrders = [],
+    emergencyStop = false,
+    callAI = null,
+    callExternalSearch = null,
+    connectionState = {},
+  } = params || {};
+
+  // ── Safe argument defaults ──
+  markets = Array.isArray(markets) ? markets : [];
+  runners = Array.isArray(runners) ? runners : [];
+  paperOrders = Array.isArray(paperOrders) ? paperOrders : [];
+  settings = settings || {};
+  botSettings = botSettings || {};
+  featherlessSettings = featherlessSettings || {};
+  bankrollStats = bankrollStats || {};
+  connectionState = connectionState || {};
+
   // ── Build pre-filter diagnostics from ALL loaded markets ──
   const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners, connectionState);
 
   // ── Build time-window funnel ──
   const debugScanMode = featherlessSettings?.debugScanMode === true;
+
+  // ── Paper Proof Mode: declared BEFORE the event loop to avoid TDZ ReferenceError ──
+  const paperProofMode = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   // ── Build market filter funnel (full rejection breakdown) ──
   const marketFilterFunnel = buildMarketFilterFunnel(markets, runners, settings, debugScanMode);
@@ -596,23 +623,23 @@ export async function runExchangeCycle({ markets, runners, settings, botSettings
     }
 
     // ── Fallback to market-only probabilities when AI is unavailable ──
-    // This ensures the exchange engine ALWAYS generates opportunities:
+    // Ensures the engine ALWAYS generates opportunities when AI fails:
     //   - AI disabled (callAI = null) → market-only
-    //   - AI returned null → market-only (in paper/proof mode) or skip (in normal mode)
-    //   - AI errored/timed out → market-only (in paper/proof mode) or skip (in normal mode)
+    //   - AI returned null/errored → market-only (in proof/debug mode) or skip (normal mode)
+    const allowMarketOnlyFallback = paperProofMode || debugScanMode || !callAI;
     if (!aiResult) {
-      if (!callAI) {
+      if (allowMarketOnlyFallback) {
         aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
         usedMarketOnlyFallback = true;
         marketOnlyResultsCreated++;
-        aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only', success: true, reason: 'AI disabled — using market-implied probabilities' });
-      } else if (paperProofMode) {
-        aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
-        usedMarketOnlyFallback = true;
-        marketOnlyResultsCreated++;
-        aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only_fallback', success: true, reason: 'AI error/null in proof mode — using market-implied probabilities' });
+        const reason = !callAI
+          ? 'AI disabled — using market-implied probabilities'
+          : paperProofMode
+            ? 'Featherless unavailable in Paper Proof Mode'
+            : 'Featherless unavailable in Debug Scan — using market-implied probabilities';
+        const status = !callAI ? 'market_only' : 'market_only_fallback';
+        aiStatusLog.push({ eventId: cluster.eventId, status, success: true, reason });
       } else {
-        // AI was called but returned null or errored — skip this event in normal mode
         continue;
       }
     }
@@ -720,11 +747,6 @@ export async function runExchangeCycle({ markets, runners, settings, botSettings
 
   // 8. Rank all opportunities by EV
   const ranked = rankOpportunities(allOpportunities);
-
-  // ── Paper Proof Mode: check if active ──
-  // FIX: was passing {} as botSettings, which made liveTradingEnabled === false
-  // check fail (undefined !== false), so proof mode was always false inside the engine.
-  const paperProofMode = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   // 9. Choose best positive-EV opportunity
   // In debug scan mode, do NOT select any opportunity for order placement
@@ -968,6 +990,10 @@ export async function runExchangeCycle({ markets, runners, settings, botSettings
     timeWindowFunnel,
     loadedMarketsTable,
     connectionDiagnostics,
+    scanStage: 'completed',
+    lastCompletedStage: 'completed',
+    failedStage: null,
+    engineError: null,
     debugScanMode,
     totalMarketsLoaded,
     openPreRaceMarkets,

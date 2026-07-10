@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, Square, RefreshCw, Download, AlertOctagon, Zap, Clock, FileDown, CheckCircle2, XCircle } from 'lucide-react';
+import { Play, Pause, Square, RefreshCw, AlertOctagon, Zap, Clock, FileDown, CheckCircle2, XCircle } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,7 @@ export default function ControlBar() {
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,
     refreshBetfairData, refreshMarketState, botCycles, exchangeOpportunities, lastExchangeDiagnostics, paperOrders, markets,
     apiConnected,
+    lastDebugScanError, lastDebugScanAt,
   } = useApp();
 
   const [exporting, setExporting] = useState(false);
@@ -26,10 +27,18 @@ export default function ControlBar() {
     setDebugRunning(true);
     setLastAction(null);
     try {
-      await runDebugScanCycle();
-      setLastAction({ type: 'debug', success: true, message: 'Debug scan completed — no orders placed', time: new Date().toISOString() });
+      const result = await runDebugScanCycle();
+      if (!result?.success) {
+        throw new Error(result?.error || 'Debug scan failed');
+      }
+      setLastAction({
+        type: 'debug',
+        success: true,
+        message: `Debug scan completed — ${result.marketsLoaded} markets, ${result.opportunitiesGenerated} opportunities, no orders placed`,
+        time: new Date().toISOString(),
+      });
     } catch (err) {
-      setLastAction({ type: 'debug', success: false, message: err.message, time: new Date().toISOString() });
+      setLastAction({ type: 'debug', success: false, message: `Debug scan failed — ${err.message}`, time: new Date().toISOString() });
     } finally {
       setDebugRunning(false);
     }
@@ -192,6 +201,19 @@ export default function ControlBar() {
           <div className="flex items-center gap-1.5 ml-auto">
             <span className="text-muted-foreground">Next scan in:</span>
             <span className="font-mono tabular-nums font-bold text-primary">{botState.nextScanCountdown}s</span>
+          </div>
+        )}
+        {lastDebugScanAt && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Last debug scan:</span>
+            <span className={cn('font-body font-semibold', lastDebugScanError ? 'text-danger' : 'text-success')}>
+              {lastDebugScanError ? 'Failed' : 'Completed'}
+            </span>
+            {lastDebugScanError && (
+              <span className="text-[10px] text-danger max-w-[280px] truncate" title={lastDebugScanError}>
+                — {lastDebugScanError}
+              </span>
+            )}
           </div>
         )}
         {lastAction && (

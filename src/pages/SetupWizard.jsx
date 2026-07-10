@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2, RefreshCw, ArrowRight, ShieldCheck, Database, Radio, Stethoscope } from 'lucide-react';
+import { Loader2, RefreshCw, ArrowRight, ShieldCheck } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
