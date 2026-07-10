@@ -658,13 +658,13 @@ export async function runExchangeCycle(params) {
             if (externalSearchResult.searchStatus === 'timeout') extSearchTimeouts++;
             else if (externalSearchResult.searchStatus === 'error') extSearchErrors++;
             else if (externalSearchResult.searchStatus === 'no_results') extSearchNoResults++;
-            externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.searchStatus, sourceCount: externalSearchResult.sourceCount || 0, dataQuality: externalSearchResult.dataQuality || 0, runnersResearched: (externalSearchResult.runnerResearch || []).length, cacheHit: false });
+            externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.searchStatus, sourceCount: externalSearchResult.sourceCount || 0, dataQuality: externalSearchResult.dataQuality || 0, runnersResearched: (externalSearchResult.runnerResearch || []).length, cacheHit: false, errorMessage: externalSearchResult.errorMessage || null });
           }
         } catch (extErr) {
           const isTimeout = extErr.message?.toLowerCase().includes('timeout');
           if (isTimeout) extSearchTimeouts++; else extSearchErrors++;
           externalSearchResult = { searchStatus: isTimeout ? 'timeout' : 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: extErr.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
-          externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.searchStatus, sourceCount: 0, dataQuality: 0, runnersResearched: 0, cacheHit: false });
+          externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.searchStatus, sourceCount: 0, dataQuality: 0, runnersResearched: 0, cacheHit: false, errorMessage: extErr.message });
         }
       }
     }

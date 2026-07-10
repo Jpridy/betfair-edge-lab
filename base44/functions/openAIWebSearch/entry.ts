@@ -78,6 +78,11 @@ Deno.serve(async (req) => {
     const eventName = market.eventName || '';
     const maxAdjustment = settings?.maxExternalProbabilityAdjustment ?? 0.05;
 
+    // Detect country from event name or market country field — don't assume AU
+    const countryRaw = (market.country || '').toUpperCase();
+    const isNZ = countryRaw === 'NZ' || countryRaw === 'NZL' || /NZL|\(NZ\)|New Zealand/i.test(eventName);
+    const regionLabel = isNZ ? 'New Zealand' : 'Australian';
+
     const activeRunners = (runners || [])
       .filter((r) => r.status === 'ACTIVE' && r.runnerName)
       .slice(0, 20);
@@ -91,9 +96,9 @@ Deno.serve(async (req) => {
       return `${i + 1}. ${r.runnerName} (selectionId: ${selId})${r.horseNumber ? ' [#' + r.horseNumber + ']' : ''}`;
     }).join('\n');
 
-    const searchQuery = `Australian horse racing ${venue} Race ${raceNumber} ${dateStr} ${activeRunners.map(r => r.runnerName).join(' ')} tips form track condition scratchings`.trim();
+    const searchQuery = `${regionLabel} horse racing ${venue} Race ${raceNumber} ${dateStr} ${activeRunners.map(r => r.runnerName).join(' ')} tips form track condition scratchings`.trim();
 
-    const systemPrompt = `You are a horse racing research analyst for Australian races. You search the web for current public race-day information and return it as structured JSON.
+    const systemPrompt = `You are a horse racing research analyst for ${regionLabel} races. You search the web for current public race-day information and return it as structured JSON.
 
 CRITICAL RULES:
 1. Return ONLY valid JSON — no markdown, no code fences, no commentary.
@@ -108,7 +113,7 @@ CRITICAL RULES:
 7. confidenceAdjustment is a number between -20 and +20 (on a 0-100 scale).
 8. Each runner's sourceUrls must be real URLs from the web search results.`;
 
-    const userPrompt = `Research this Australian horse race using web search:
+    const userPrompt = `Research this ${regionLabel} horse race using web search:
 
 Event: ${eventName}
 Venue: ${venue}
