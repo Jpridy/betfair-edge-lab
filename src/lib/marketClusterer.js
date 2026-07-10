@@ -59,15 +59,19 @@ export function detectMarketType(market) {
 export function extractPlaceTerms(market) {
   const type = detectMarketType(market);
   if (type === 'H2H') return 1; // H2H: beat the opponent = 1 "place"
-  if (type !== 'PLACE') return 1;
 
   const name = (market.marketName || '').toLowerCase();
-  // Try to extract a number from "To Be Placed (N)" or "Top N"
+  // Try to extract a number from "To Be Placed (N)" or "Top N Finish" or "First N"
+  // Check this BEFORE the type gate — "Top 2 Finish" may not be detected as PLACE
+  // by detectMarketType, but it still carries explicit place terms.
   const match = name.match(/\((\d+)\)|top\s*(\d+)|first\s*(\d+)/i);
   if (match) {
     const n = parseInt(match[1] || match[2] || match[3]);
     if (n > 0) return n;
   }
+
+  if (type !== 'PLACE') return 1;
+
   // Default based on runner count
   const runnerCount = market.numberOfRunners || market.numberOfActiveRunners || 0;
   if (runnerCount >= 16) return 4;

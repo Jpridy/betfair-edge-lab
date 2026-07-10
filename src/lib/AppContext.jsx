@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { createBetfairStream } from '@/lib/betfairApi';
-import { BOT_STEPS, getEnabledStrategies, runRiskCheck, createPaperOrder, settleOrder, createSignal } from '@/lib/botEngine';
+import { BOT_STEPS, getEnabledStrategies, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
-import { runPreOrderChecks } from '@/lib/orderValidation';
+import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
 import { countTicksBetween } from '@/lib/tickLadder';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { buildScanDiagnostics } from './scanDiagnostics';
@@ -17,6 +17,7 @@ import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { runSettlementCheck } from '@/lib/settlementWatcher';
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
+import { safeEntityWrite, generateIdempotencyKey } from '@/lib/safePersistence';
 
 // ── Metadata fields to strip when loading settings from DB ──
 const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
@@ -421,7 +422,7 @@ export function AppProvider({ children }) {
       reason: extra.reason || null,
     };
     setAuditLogs(prev => [{ ...log, id: 'al' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 500));
-    base44.entities.AuditLog.create(log).catch(() => {});
+    safeEntityWrite({ entityName: 'AuditLog', operation: 'create', payload: log, idempotencyKey: generateIdempotencyKey('audit', log.action, log.timestamp), entityApi: base44.entities.AuditLog });
   };
 
   const addToBotActivity = (action, details) => {
@@ -485,11 +486,11 @@ export function AppProvider({ children }) {
   const resetAllPaperTrading = async () => {
     // Clear from database
     await Promise.all([
-      base44.entities.PaperOrder.deleteMany({}).catch(() => {}),
-      base44.entities.StrategySignal.deleteMany({}).catch(() => {}),
-      base44.entities.BotCycle.deleteMany({}).catch(() => {}),
-      base44.entities.StrategyStats.deleteMany({}).catch(() => {}),
-      base44.entities.FeatherlessAIDecision.deleteMany({}).catch(() => {}),
+      safeEntityWrite({ entityName: 'PaperOrder', operation: 'deleteMany', query: {}, entityApi: base44.entities.PaperOrder }),
+      safeEntityWrite({ entityName: 'StrategySignal', operation: 'deleteMany', query: {}, entityApi: base44.entities.StrategySignal }),
+      safeEntityWrite({ entityName: 'BotCycle', operation: 'deleteMany', query: {}, entityApi: base44.entities.BotCycle }),
+      safeEntityWrite({ entityName: 'StrategyStats', operation: 'deleteMany', query: {}, entityApi: base44.entities.StrategyStats }),
+      safeEntityWrite({ entityName: 'FeatherlessAIDecision', operation: 'deleteMany', query: {}, entityApi: base44.entities.FeatherlessAIDecision }),
     ]);
     // Clear local state
     setPaperOrders([]);
@@ -545,9 +546,9 @@ export function AppProvider({ children }) {
       const merged = { ...prev, dailyResetAt: resetAt };
       const payload = { ...merged, mode: 'demo' };
       if (settingsRecordId.current) {
-        base44.entities.AppSettings.update(settingsRecordId.current, payload).catch(() => {});
+        safeEntityWrite({ entityName: 'AppSettings', operation: 'update', payload: { ...payload, id: settingsRecordId.current }, entityApi: base44.entities.AppSettings });
       } else {
-        base44.entities.AppSettings.create(payload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+        safeEntityWrite({ entityName: 'AppSettings', operation: 'create', payload, entityApi: base44.entities.AppSettings }).then(r => { if (r.record?.id) settingsRecordId.current = r.record.id; });
       }
       return merged;
     });
@@ -574,13 +575,13 @@ export function AppProvider({ children }) {
 
   // ── Clear All Audit Logs ──
   const clearLogs = async () => {
-    await base44.entities.AuditLog.deleteMany({}).catch(() => {});
+    await safeEntityWrite({ entityName: 'AuditLog', operation: 'deleteMany', query: {}, entityApi: base44.entities.AuditLog });
     setAuditLogs([]);
   };
 
   // ── Clear Decision Log (Bot Cycles) ──
   const clearBotCycles = async () => {
-    await base44.entities.BotCycle.deleteMany({}).catch(() => {});
+    await safeEntityWrite({ entityName: 'BotCycle', operation: 'deleteMany', query: {}, entityApi: base44.entities.BotCycle });
     setBotCycles([]);
     addAuditLog('Decision Log Cleared', 'system', 'warning', 'All bot cycle decision logs cleared.');
   };
@@ -588,9 +589,9 @@ export function AppProvider({ children }) {
   // ── Reset Strategy Data Only ──
   const resetStrategyData = async () => {
     await Promise.all([
-      base44.entities.StrategyStats.deleteMany({}).catch(() => {}),
-      base44.entities.StrategySignal.deleteMany({}).catch(() => {}),
-      base44.entities.FeatherlessAIDecision.deleteMany({}).catch(() => {}),
+      safeEntityWrite({ entityName: 'StrategyStats', operation: 'deleteMany', query: {}, entityApi: base44.entities.StrategyStats }),
+      safeEntityWrite({ entityName: 'StrategySignal', operation: 'deleteMany', query: {}, entityApi: base44.entities.StrategySignal }),
+      safeEntityWrite({ entityName: 'FeatherlessAIDecision', operation: 'deleteMany', query: {}, entityApi: base44.entities.FeatherlessAIDecision }),
     ]);
     setStrategyStats([]);
     setStrategySignals([]);
@@ -609,9 +610,9 @@ export function AppProvider({ children }) {
       });
       const payload = { ...merged, mode: 'demo' };
       if (settingsRecordId.current) {
-        base44.entities.AppSettings.update(settingsRecordId.current, payload).catch(() => {});
+        safeEntityWrite({ entityName: 'AppSettings', operation: 'update', payload: { ...payload, id: settingsRecordId.current }, entityApi: base44.entities.AppSettings });
       } else {
-        base44.entities.AppSettings.create(payload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+        safeEntityWrite({ entityName: 'AppSettings', operation: 'create', payload, entityApi: base44.entities.AppSettings }).then(r => { if (r.record?.id) settingsRecordId.current = r.record.id; });
       }
       return merged;
     });
@@ -624,9 +625,9 @@ export function AppProvider({ children }) {
       addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
       const payload = { ...merged, botMode: 'demo' };
       if (botSettingsRecordId.current) {
-        base44.entities.BotSettings.update(botSettingsRecordId.current, payload).catch(() => {});
+        safeEntityWrite({ entityName: 'BotSettings', operation: 'update', payload: { ...payload, id: botSettingsRecordId.current }, entityApi: base44.entities.BotSettings });
       } else {
-        base44.entities.BotSettings.create(payload).then(rec => { if (rec) botSettingsRecordId.current = rec.id; }).catch(() => {});
+        safeEntityWrite({ entityName: 'BotSettings', operation: 'create', payload, entityApi: base44.entities.BotSettings }).then(r => { if (r.record?.id) botSettingsRecordId.current = r.record.id; });
       }
       return merged;
     });
@@ -637,9 +638,9 @@ export function AppProvider({ children }) {
     setFeatherlessSettings(prev => {
       const merged = { ...prev, ...patch };
       if (featherlessSettingsRecordId.current) {
-        base44.entities.FeatherlessSettings.update(featherlessSettingsRecordId.current, merged).catch(() => {});
+        safeEntityWrite({ entityName: 'FeatherlessSettings', operation: 'update', payload: { ...merged, id: featherlessSettingsRecordId.current }, entityApi: base44.entities.FeatherlessSettings });
       } else {
-        base44.entities.FeatherlessSettings.create(merged).then(rec => { if (rec) featherlessSettingsRecordId.current = rec.id; }).catch(() => {});
+        safeEntityWrite({ entityName: 'FeatherlessSettings', operation: 'create', payload: merged, entityApi: base44.entities.FeatherlessSettings }).then(r => { if (r.record?.id) featherlessSettingsRecordId.current = r.record.id; });
       }
       return merged;
     });
@@ -1295,7 +1296,7 @@ export function AppProvider({ children }) {
       placed_date: new Date().toISOString(),
     };
     setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
-    base44.entities.PaperOrder.create(order).catch(() => {});
+    safeEntityWrite({ entityName: 'PaperOrder', operation: 'create', payload: order, idempotencyKey: generateIdempotencyKey('order', order.customerRef || newOrder.id), entityApi: base44.entities.PaperOrder });
     addAuditLog('Paper Order Created', 'order', 'info', `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake} (${order.persistenceType})`, { objectName: order.runnerName });
     setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
   };
@@ -1316,7 +1317,7 @@ export function AppProvider({ children }) {
   const addStrategySignal = (signal) => {
     const newSignal = { ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) };
     setStrategySignals(prev => [newSignal, ...prev].slice(0, 100));
-    base44.entities.StrategySignal.create(signal).catch(() => {});
+    safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', newSignal.id), entityApi: base44.entities.StrategySignal });
     addAuditLog('Strategy Signal', 'strategy', 'info', `${signal.strategyName}: ${signal.reason || 'Signal generated'}`);
     setSyncState(prev => ({ ...prev, signalsGeneratedToday: prev.signalsGeneratedToday + 1 }));
   };
@@ -1324,7 +1325,7 @@ export function AppProvider({ children }) {
   const addBacktestRun = (run) => {
     const newRun = { ...run, id: 'bt' + Date.now() };
     setBacktestRuns(prev => [newRun, ...prev]);
-    base44.entities.BacktestRun.create(run).catch(() => {});
+    safeEntityWrite({ entityName: 'BacktestRun', operation: 'create', payload: run, idempotencyKey: generateIdempotencyKey('backtest', newRun.id), entityApi: base44.entities.BacktestRun });
     addAuditLog('Backtest Completed', 'system', 'info', `Backtest "${run.name}" completed: ${run.totalBets} bets, ROI ${run.roi}%`);
   };
 
@@ -1394,8 +1395,9 @@ export function AppProvider({ children }) {
         scanSummary: { marketsScanned: 0, totalMarketsLoaded: 0, noBetReason: noMarketsReason },
         selectedMarketName: null,
       };
-      setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-      base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+      const localBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
+      setBotCycles(prev => [{ ...cycleRecord, id: localBcId }, ...prev].slice(0, 100));
+      safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', localBcId), entityApi: base44.entities.BotCycle });
       setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
       addAuditLog(`Bot Cycle #${cycleNum} — No Markets`, 'system', 'warning', noMarketsReason);
       return;
@@ -1506,6 +1508,7 @@ export function AppProvider({ children }) {
 
           if (runner && market) {
             const strategyName = 'Featherless AI Value Decision Engine';
+            // Signal starts as 'proposed' — promoted to 'executed' or 'blocked' after validation
             const signal = opportunityToSignal(opp, s.settings);
             signal.runnerId = runner.id;
             signalCreated = signal;
@@ -1513,61 +1516,78 @@ export function AppProvider({ children }) {
             steps[4].status = 'passed';
             steps[4].reason = `${opp.marketType} ${opp.side} ${opp.runnerName} — EV $${opp.ev.toFixed(2)}, ROI ${(opp.roi * 100).toFixed(1)}%`;
 
-            setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-            if (!forceDebugOnly) base44.entities.StrategySignal.create(signal).catch(() => {});
+            const signalLocalId = 'ss' + Date.now() + Math.random().toString(36).slice(2, 6);
+            setStrategySignals(prev => [{ ...signal, id: signalLocalId }, ...prev].slice(0, 100));
+            if (!forceDebugOnly) safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
 
-            const connectionState = { apiConnected: s.apiConnected, betfairSessionToken: s.betfairSessionToken, dataFresh: s.betfairConnection?.dataFresh ?? true };
-            const strategy = s.strategyLibrary?.find(sl => sl.name === strategyName);
-            const preCheck = runPreOrderChecks(
-              { marketId: market.id, selectionId: runner.betfairSelectionId, runnerId: runner.id, side: signal.side, price: signal.odds, size: signal.stakeSuggestion, strategyName, persistenceType: signal.persistenceType, dataSource: signal.dataSource, eventId: opp.eventId },
-              market, runner, strategy, s.settings, s.bankrollStats, s.paperOrders, connectionState
-            );
+            // ── Route through centralized validated order creation ──
+            const canPlaceOrders = !s.botState.paused && s.botSettings.autoPaperTradingEnabled && !forceDebugOnly;
+            const { order: validatedOrder, rejected: wasRejected, reason: rejectionReason } = createValidatedPaperOrder({
+              market, runner,
+              side: signal.side,
+              stake: signal.stakeSuggestion,
+              odds: signal.odds,
+              strategyName,
+              source: 'bot',
+              settings: s.settings,
+              bankrollStats: s.bankrollStats,
+              existingOrders: s.paperOrders,
+              emergencyStop: s.emergencyStop,
+              apiConnected: s.apiConnected,
+              persistenceType: 'LAPSE',
+              expectedValue: signal.expectedValue,
+              entryReason: signal.reason,
+              dataSource: signal.dataSource,
+              botSettings: s.botSettings,
+              featherlessSettings: s.featherlessSettings,
+              marketType: opp.marketType,
+              marketTypeCode: opp.marketTypeCode,
+              eventId: opp.eventId,
+              eventName: opp.eventName,
+              numberOfWinners: opp.numberOfWinners,
+              placeTerms: opp.placeTerms,
+              proofMode: opp.proofMode || false,
+              proofReason: opp.proofReason || null,
+            });
 
-            if (!preCheck.passed) {
-              steps[5].status = 'blocked';
-              steps[5].reason = preCheck.failures[0].reason;
-              ordersBlocked = 1;
-              riskBlockedReason = preCheck.failures[0].reason;
-              rejectedOrder = preCheck.rejectedOrder;
-              notes.push(`Pre-order validation failed: ${preCheck.failures[0].reason}`);
-              addAuditLog('Order Rejected', 'order', 'warning', `${strategyName} on ${runner.runnerName}: ${preCheck.failures[0].reason}`, { objectName: runner.runnerName, reason: preCheck.failures[0].reason });
-              if (rejectedOrder) { setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100)); setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: preCheck.failures[0].reason })); }
-            } else {
-              steps[5].status = 'passed';
-              const risk = runRiskCheck(signal, s.settings, s.bankrollStats, s.paperOrders);
-              if (!risk.passed) {
-                steps[6].status = 'blocked';
-                steps[6].reason = risk.reasons[0];
+            if (wasRejected || !canPlaceOrders) {
+              // Signal is blocked — update status from proposed to blocked
+              signal.signalStatus = wasRejected ? 'blocked' : 'proposed';
+              signal.blocker = wasRejected ? rejectionReason : 'Bot paused or auto paper trading disabled';
+              setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
+              if (!forceDebugOnly) safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+
+              steps[5].status = wasRejected ? 'blocked' : 'passed';
+              steps[5].reason = wasRejected ? rejectionReason : 'Pre-order validation passed (order not placed — bot paused)';
+              if (wasRejected) {
                 ordersBlocked = 1;
-                riskBlockedReason = risk.reasons[0];
-                notes.push(`Risk blocked: ${risk.reasons[0]}`);
+                riskBlockedReason = rejectionReason;
+                rejectedOrder = validatedOrder;
+                notes.push(`Pre-order validation failed: ${rejectionReason}`);
+                addAuditLog('Order Rejected', 'order', 'warning', `${strategyName} on ${runner.runnerName}: ${rejectionReason}`, { objectName: runner.runnerName, reason: rejectionReason });
+                if (rejectedOrder) { setRejectedOrders(prev => [rejectedOrder, ...prev].slice(0, 100)); setSyncState(prev2 => ({ ...prev2, ordersRejectedToday: prev2.ordersRejectedToday + 1, lastRejectedReason: rejectionReason })); }
               } else {
                 steps[6].status = 'passed';
-                if (!s.botState.paused && s.botSettings.autoPaperTradingEnabled && !forceDebugOnly) {
-                  const order = createPaperOrder(signal, market, runner, s.settings);
-                  order.marketType = opp.marketType;
-                  order.eventId = opp.eventId;
-                  order.liability = opp.liability;
-                  order.commissionRateUsed = opp.commissionRate;
-                  // Force LAPSE in all bot-created orders
-                  order.persistenceType = 'LAPSE';
-                  // Pass through proof mode fields
-                  if (opp.proofMode) {
-                    order.proofMode = true;
-                    order.dataSource = 'MARKET_ONLY_PROOF';
-                  }
-                  orderCreated = order;
-                  ordersCreated = 1;
-                  steps[7].status = 'passed';
-                  steps[8].status = 'passed';
-                  setPaperOrders(prev => [{ ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
-                  if (!forceDebugOnly) base44.entities.PaperOrder.create(order).catch(() => {});
-                  setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
-                } else {
-                  steps[7].status = 'blocked';
-                  steps[7].reason = 'Bot is paused or auto paper trading is disabled.';
-                }
+                steps[6].reason = 'Risk checks passed (bot paused — no order placed)';
               }
+            } else {
+              // Signal promoted to executed
+              signal.signalStatus = 'executed';
+              setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
+              if (!forceDebugOnly) safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+
+              steps[5].status = 'passed';
+              steps[5].reason = 'Validation + risk checks passed (createValidatedPaperOrder)';
+              steps[6].status = 'passed';
+              steps[6].reason = 'Risk checks passed (createValidatedPaperOrder)';
+
+              orderCreated = validatedOrder;
+              ordersCreated = 1;
+              steps[7].status = 'passed';
+              steps[8].status = 'passed';
+              setPaperOrders(prev => [{ ...validatedOrder, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
+              if (!forceDebugOnly) safeEntityWrite({ entityName: 'PaperOrder', operation: 'create', payload: validatedOrder, idempotencyKey: generateIdempotencyKey('order', validatedOrder.customerRef), entityApi: base44.entities.PaperOrder });
+              setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
             }
           }
         } else {
@@ -1752,8 +1772,9 @@ export function AppProvider({ children }) {
             : diagnostics.selectedMarket.marketName)
           : null),
     };
-    setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-    base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+    const mainBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
+    setBotCycles(prev => [{ ...cycleRecord, id: mainBcId }, ...prev].slice(0, 100));
+    safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', mainBcId), entityApi: base44.entities.BotCycle });
 
     // Update lastScanDiagnostics with the actual cycle reason so the dashboard
     // WhyNoBetPanel shows the real blocker, not just the candidate-scoring reason.
@@ -1800,20 +1821,20 @@ export function AppProvider({ children }) {
     // Persist to DB
     const settingsPayload = { ...newSettings, mode: 'demo' };
     if (settingsRecordId.current) {
-      base44.entities.AppSettings.update(settingsRecordId.current, settingsPayload).catch(() => {});
+      safeEntityWrite({ entityName: 'AppSettings', operation: 'update', payload: { ...settingsPayload, id: settingsRecordId.current }, entityApi: base44.entities.AppSettings });
     } else {
-      base44.entities.AppSettings.create(settingsPayload).then(rec => { if (rec) settingsRecordId.current = rec.id; }).catch(() => {});
+      safeEntityWrite({ entityName: 'AppSettings', operation: 'create', payload: settingsPayload, entityApi: base44.entities.AppSettings }).then(r => { if (r.record?.id) settingsRecordId.current = r.record.id; });
     }
     const botPayload = { ...newBotSettings, botMode: 'paper_proof' };
     if (botSettingsRecordId.current) {
-      base44.entities.BotSettings.update(botSettingsRecordId.current, botPayload).catch(() => {});
+      safeEntityWrite({ entityName: 'BotSettings', operation: 'update', payload: { ...botPayload, id: botSettingsRecordId.current }, entityApi: base44.entities.BotSettings });
     } else {
-      base44.entities.BotSettings.create(botPayload).then(rec => { if (rec) botSettingsRecordId.current = rec.id; }).catch(() => {});
+      safeEntityWrite({ entityName: 'BotSettings', operation: 'create', payload: botPayload, entityApi: base44.entities.BotSettings }).then(r => { if (r.record?.id) botSettingsRecordId.current = r.record.id; });
     }
     if (featherlessSettingsRecordId.current) {
-      base44.entities.FeatherlessSettings.update(featherlessSettingsRecordId.current, newFeatherlessSettings).catch(() => {});
+      safeEntityWrite({ entityName: 'FeatherlessSettings', operation: 'update', payload: { ...newFeatherlessSettings, id: featherlessSettingsRecordId.current }, entityApi: base44.entities.FeatherlessSettings });
     } else {
-      base44.entities.FeatherlessSettings.create(newFeatherlessSettings).then(rec => { if (rec) featherlessSettingsRecordId.current = rec.id; }).catch(() => {});
+      safeEntityWrite({ entityName: 'FeatherlessSettings', operation: 'create', payload: newFeatherlessSettings, entityApi: base44.entities.FeatherlessSettings }).then(r => { if (r.record?.id) featherlessSettingsRecordId.current = r.record.id; });
     }
 
     addAuditLog('Paper Proof Mode Applied', 'mode', 'info',
@@ -1879,7 +1900,18 @@ export function AppProvider({ children }) {
           if (resp.data?.error) throw new Error(resp.data.error);
           return resp.data?.aiResult || null;
         } : null,
-        callExternalSearch: null, // Proof mode never uses external search
+        // Proof mode can use external search independently (paperProofExternalSearchEnabled)
+        callExternalSearch: s.featherlessSettings?.paperProofExternalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
+          try {
+            const resp = await base44.functions.invoke('openAIWebSearch', {
+              market: primaryMarket, runners: marketRunners, settings: s.featherlessSettings,
+            });
+            if (resp.data?.error) throw new Error(resp.data.error);
+            return resp.data?.externalSearchResult || null;
+          } catch (err) {
+            return { searchStatus: 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: err.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
+          }
+        } : null,
       });
 
       setExchangeOpportunities(result.allOpportunities);
@@ -1908,33 +1940,66 @@ export function AppProvider({ children }) {
           signal.runnerId = runner.id;
           signal.proofMode = true;
           signal.dataSource = 'MARKET_ONLY_PROOF';
+          signal.signalStatus = 'proposed';
 
-          setStrategySignals(prev => [{ ...signal, id: 'ss' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-          base44.entities.StrategySignal.create(signal).catch(() => {});
+          const signalLocalId = 'ss' + Date.now() + Math.random().toString(36).slice(2, 6);
+          setStrategySignals(prev => [{ ...signal, id: signalLocalId }, ...prev].slice(0, 100));
 
-          // Create paper order directly — bypass pre-order checks in proof mode
-          // (the exchange engine already validated hard blockers)
-          const order = createPaperOrder(signal, market, runner, s.settings);
-          order.marketType = opp.marketType;
-          order.eventId = opp.eventId;
-          order.liability = opp.liability;
-          order.commissionRateUsed = opp.commissionRate;
-          order.proofMode = true;
-          order.persistenceType = 'LAPSE'; // Force LAPSE
-          order.dataSource = 'MARKET_ONLY_PROOF';
+          // Route through centralized validated order creation (proof mode relaxes thresholds)
+          const { order: validatedOrder, rejected: wasRejected, reason: rejectionReason } = createValidatedPaperOrder({
+            market, runner,
+            side: signal.side,
+            stake: signal.stakeSuggestion,
+            odds: signal.odds,
+            strategyName: 'Featherless AI Value Decision Engine',
+            source: 'bot_proof',
+            settings: s.settings,
+            bankrollStats: s.bankrollStats,
+            existingOrders: s.paperOrders,
+            emergencyStop: s.emergencyStop,
+            apiConnected: s.apiConnected,
+            persistenceType: 'LAPSE',
+            expectedValue: signal.expectedValue,
+            entryReason: signal.reason,
+            dataSource: 'MARKET_ONLY_PROOF',
+            paperProofMode: true,
+            marketType: opp.marketType,
+            marketTypeCode: opp.marketTypeCode,
+            eventId: opp.eventId,
+            eventName: opp.eventName,
+            numberOfWinners: opp.numberOfWinners,
+            placeTerms: opp.placeTerms,
+            proofMode: true,
+            proofReason: opp.proofReason || null,
+          });
 
-          const newOrder = { ...order, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: new Date().toISOString(), placed_date: new Date().toISOString() };
-          setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
-          base44.entities.PaperOrder.create(order).catch(() => {});
-          setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
+          if (!wasRejected) {
+            // Signal promoted to executed
+            signal.signalStatus = 'executed';
+            setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
+            safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
 
-          paperOrderCreated = true;
-          orderStatus = order.status;
-          settlementStatus = order.status === 'matched' || order.status === 'partially_matched' ? 'awaiting_result' : 'not_applicable';
+            const newOrder = { ...validatedOrder, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: new Date().toISOString(), placed_date: new Date().toISOString() };
+            setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
+            safeEntityWrite({ entityName: 'PaperOrder', operation: 'create', payload: validatedOrder, idempotencyKey: generateIdempotencyKey('order', validatedOrder.customerRef), entityApi: base44.entities.PaperOrder });
+            setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
 
-          addAuditLog('Proof Order Created', 'order', 'info',
-            `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake} (${order.persistenceType}) — proof fallback: ${proofFallbackUsed}`);
-          addToBotActivity('Proof order created', `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake}`);
+            paperOrderCreated = true;
+            orderStatus = validatedOrder.status;
+            settlementStatus = validatedOrder.status === 'matched' || validatedOrder.status === 'partially_matched' ? 'awaiting_result' : 'not_applicable';
+
+            addAuditLog('Proof Order Created', 'order', 'info',
+              `${validatedOrder.side} ${validatedOrder.runnerName} @ ${validatedOrder.requestedOdds} × $${validatedOrder.requestedStake} (${validatedOrder.persistenceType}) — proof fallback: ${proofFallbackUsed}`);
+            addToBotActivity('Proof order created', `${validatedOrder.side} ${validatedOrder.runnerName} @ ${validatedOrder.requestedOdds} × $${validatedOrder.requestedStake}`);
+          } else {
+            // Signal blocked
+            signal.signalStatus = 'blocked';
+            signal.blocker = rejectionReason;
+            setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
+            safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+            addAuditLog('Proof Order Rejected', 'order', 'warning',
+              `${signal.side} ${signal.runnerName || opp.runnerName}: ${rejectionReason}`);
+          }
         }
       }
 
@@ -1999,8 +2064,9 @@ export function AppProvider({ children }) {
         },
         selectedMarketName: result.bestOpportunity?.marketName || null,
       };
-      setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
-      base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+      const proofBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
+      setBotCycles(prev => [{ ...cycleRecord, id: proofBcId }, ...prev].slice(0, 100));
+      safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', proofBcId), entityApi: base44.entities.BotCycle });
 
       setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
       addAuditLog('Proof Scan Complete', 'system', 'info',
@@ -2050,7 +2116,7 @@ export function AppProvider({ children }) {
         settings: s.settings,
         updateOrder: async (orderId, settledOrder) => {
           setPaperOrders(prev => prev.map(o => o.id === orderId ? settledOrder : o));
-          base44.entities.PaperOrder.update(orderId, settledOrder).catch(() => {});
+          safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...settledOrder, id: orderId }, entityApi: base44.entities.PaperOrder });
           if (settledOrder.netProfit != null) {
             setBankrollStats(prev => ({
               ...prev,
@@ -2296,7 +2362,7 @@ export function AppProvider({ children }) {
           if (order.status !== 'matched' && order.status !== 'partially_matched') {
             const lapsed = lapseUnmatchedOrder(order, `Market closed — order was not matched (${venue || ''} ${marketName || ''})`);
             setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
-            base44.entities.PaperOrder.update(order.id, lapsed).catch(() => {});
+            safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...lapsed, id: order.id }, entityApi: base44.entities.PaperOrder });
             addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — unmatched at market close (${venue || ''} ${marketName || ''})`);
             continue;
           }
@@ -2314,7 +2380,7 @@ export function AppProvider({ children }) {
               resultConfidence: 'unknown',
             };
             setPaperOrders(prev => prev.map(o => o.id === order.id ? awaiting : o));
-            base44.entities.PaperOrder.update(order.id, awaiting).catch(() => {});
+            safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...awaiting, id: order.id }, entityApi: base44.entities.PaperOrder });
             addAuditLog('Order Awaiting Result', 'order', 'warning', `${order.runnerName} — no winner data available (${venue || ''} ${marketName || ''})`);
             continue;
           }
@@ -2328,7 +2394,7 @@ export function AppProvider({ children }) {
             marketType: order.marketType || null,
           });
           setPaperOrders(prev => prev.map(o => o.id === order.id ? settled : o));
-          base44.entities.PaperOrder.update(order.id, settled).catch(() => {});
+          safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...settled, id: order.id }, entityApi: base44.entities.PaperOrder });
           setBankrollStats(prev => ({
             ...prev,
             bankroll: prev.bankroll + settled.netProfit,

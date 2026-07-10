@@ -125,6 +125,11 @@ describe('StrategySignal Schema Contract', () => {
     expect(requiredStatuses.length).toBe(6);
   });
 
+  it('opportunityToSignal writes blocker field when blocked', () => {
+    // The blocker field is written by the bot cycle when a signal is blocked
+    expect(STRATEGY_SIGNAL_SCHEMA_FIELDS).toContain('blocker');
+  });
+
   it('dataSource enum includes all written values', () => {
     const requiredSources = [
       'MARKET_ONLY', 'MARKET_ONLY_PROOF', 'BETFAIR_METADATA_PLUS_MARKET',
@@ -224,18 +229,33 @@ describe('PaperOrder Schema Contract', () => {
     const validatedOrderFields = [
       'strategyName', 'marketId', 'betfairMarketId', 'selectionId', 'runnerId',
       'runnerName', 'horseNumber', 'marketName', 'venue', 'raceNumber',
-      'marketStartTime', 'side', 'orderType', 'size', 'price',
+      'marketStartTime', 'eventName', 'eventId', 'marketType', 'marketTypeCode',
+      'side', 'orderType', 'size', 'price',
       'persistenceType', 'customerRef', 'customerStrategyRef', 'handicap',
-      'paper_mode', 'liveMode', 'requested_size', 'matched_size',
+      'paper_mode', 'liveMode', 'proofMode', 'proofReason',
+      'requested_size', 'matched_size',
       'remaining_size', 'average_price_matched', 'requested_price',
       'matched_price', 'placed_date', 'matched_date', 'requestedOdds',
       'matchedOdds', 'requestedStake', 'matchedStake', 'status',
+      'settlementStatus', 'liability', 'numberOfWinners', 'placeTerms',
       'expectedValue', 'result', 'grossProfit', 'commission', 'netProfit',
       'commissionRateUsed', 'commissionSource', 'commission_calculation_status',
       'entryReason', 'warningFlags', 'paperSimulationQuality', 'dataSource',
+      'validationRan', 'riskCheckRan', 'softOverridesApplied', 'hardBlockersChecked',
       'rejection_reason', 'failed_validation_field',
     ];
     const missing = checkFields(PAPER_ORDER_SCHEMA_FIELDS, validatedOrderFields, 'PaperOrder');
+    expect(missing).toEqual([]);
+  });
+
+  it('createValidatedPaperOrder rejected order includes all lifecycle fields', () => {
+    // Fields written only in the rejected-order branch
+    const rejectedOrderFields = [
+      'settlementStatus', 'liability', 'validationRan', 'riskCheckRan',
+      'softOverridesApplied', 'hardBlockersChecked', 'proofMode', 'proofReason',
+      'eventName', 'eventId', 'marketType', 'marketTypeCode',
+    ];
+    const missing = checkFields(PAPER_ORDER_SCHEMA_FIELDS, rejectedOrderFields, 'PaperOrder');
     expect(missing).toEqual([]);
   });
 });
