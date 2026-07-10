@@ -4,6 +4,8 @@ import { base44 } from '@/api/base44Client';
 import { scanEligibleMarkets, runExchangeCycle } from '@/lib/exchangeOpportunityEngine';
 import { getBestByCategory, MARKET_TYPE_THRESHOLDS } from '@/lib/crossMarketValueScanner';
 import ExchangeDebugPanel from '@/components/exchange/ExchangeDebugPanel';
+import FeatherlessRaceDecisionPanel from '@/components/controlroom/FeatherlessRaceDecisionPanel';
+import RacePackDebugViewer from '@/components/controlroom/RacePackDebugViewer';
 import { Panel, StatCard, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -78,6 +80,14 @@ export default function ExchangeOpportunities() {
       {/* Exchange Engine Debug Panel */}
       {showDebug && (
         <ExchangeDebugPanel diagnostics={diagnostics} eventClusters={eventClusters} opportunities={opportunities} />
+      )}
+
+      {/* Featherless Race Assessment + Race Pack Viewer */}
+      {diagnostics && (
+        <>
+          <FeatherlessRaceDecisionPanel diagnostics={diagnostics} />
+          <RacePackDebugViewer diagnostics={diagnostics} />
+        </>
       )}
 
       {/* Best by category */}

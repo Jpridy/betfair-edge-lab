@@ -16,6 +16,8 @@ import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
 import CurrentMarketFeed from '@/components/controlroom/CurrentMarketFeed';
 import OpportunityFunnel from '@/components/controlroom/OpportunityFunnel';
+import FeatherlessRaceDecisionPanel from '@/components/controlroom/FeatherlessRaceDecisionPanel';
+import RacePackDebugViewer from '@/components/controlroom/RacePackDebugViewer';
 
 export default function BotControlCentre() {
   const { dataLoading, botCycles, exchangeOpportunities, paperOrders, markets, lastDebugScanResult, lastDebugScanError } = useApp();
@@ -75,6 +77,8 @@ export default function BotControlCentre() {
         <TabsContent value="control" className="space-y-5">
           <CurrentMarketFeed />
           <LatestDecision />
+          <FeatherlessRaceDecisionPanel />
+          <RacePackDebugViewer />
           <DecisionTimeline />
           <OpportunityFunnel />
           <SystemHealthRow />
@@ -86,6 +90,8 @@ export default function BotControlCentre() {
         </TabsContent>
 
         <TabsContent value="ai" className="space-y-5">
+          <FeatherlessRaceDecisionPanel />
+          <RacePackDebugViewer />
           <AIResearchPanel />
         </TabsContent>
 
