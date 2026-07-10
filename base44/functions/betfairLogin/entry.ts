@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
       return Response.json({
         ...config,
         status: 'error',
-        error: 'BETFAIR_PROXY_URL not configured. Deploy a Cloudflare Worker proxy and set the URL as the BETFAIR_PROXY_URL secret.',
+        error: 'BETFAIR_PROXY_URL not configured. Set it to the deployed Railway proxy URL.',
       });
     }
 

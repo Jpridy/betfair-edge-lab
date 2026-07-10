@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
     const errors = [];
     if (!appKey) errors.push('BETFAIR_APP_KEY missing. Configure BETFAIR_APP_KEY secret.');
     if (!sessionToken) errors.push('Betfair session token missing. Open Setup and connect with session token.');
-    if (!proxyUrl) errors.push('BETFAIR_PROXY_URL missing. Configure Cloudflare Worker proxy.');
+    if (!proxyUrl) errors.push('BETFAIR_PROXY_URL missing. Configure the Railway proxy URL.');
 
     if (!appKey || !sessionToken || !proxyUrl) {
       return Response.json({
