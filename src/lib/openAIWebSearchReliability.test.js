@@ -55,7 +55,7 @@ describe('OpenAI web search reliability', () => {
   });
 
   it('refuses an unclear normalized name match', () => {
-    const runners = [{ selectionId: '101', runnerName: 'O’Brien' }, { selectionId: '202', runnerName: 'O Brien' }];
+    const runners = [{ selectionId: '101', runnerName: 'O’Brien' }, { selectionId: '202', runnerName: 'Obrien' }];
     expect(resolveRunnerSelectionId('OBrien', '', runners)).toBeNull();
   });
 

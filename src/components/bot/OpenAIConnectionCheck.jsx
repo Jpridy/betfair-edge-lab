@@ -10,9 +10,14 @@ export default function OpenAIConnectionCheck() {
 
   const runTest = async () => {
     setTesting(true);
-    const response = await base44.functions.invoke('openAIWebSearch', { action: 'web_search_test' });
-    setResult(response.data?.webSearchTest || { success: false, errorMessage: response.data?.error || 'No test result returned' });
-    setTesting(false);
+    try {
+      const response = await base44.functions.invoke('openAIWebSearch', { action: 'web_search_test' });
+      setResult(response.data?.webSearchTest || { success: false, errorMessage: response.data?.error || 'No test result returned' });
+    } catch (error) {
+      setResult({ success: false, errorMessage: error.response?.data?.error || error.message });
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
