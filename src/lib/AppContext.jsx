@@ -1064,6 +1064,7 @@ export function AppProvider({ children }) {
             noBetReason: result.diagnostics.noBetReason,
             debugScanMode: true,
             marketFeedDiagnostics: result.diagnostics.marketFeedDiagnostics ?? null,
+            marketFilterFunnel: result.diagnostics.marketFilterFunnel ?? null,
             timeWindowFunnel: result.diagnostics.timeWindowFunnel ?? null,
             loadedMarketsTable: result.diagnostics.loadedMarketsTable ?? null,
             connectionDiagnostics: result.diagnostics.connectionDiagnostics ?? null,
@@ -1146,6 +1147,32 @@ export function AppProvider({ children }) {
 
       setMarkets(merged.markets);
       setRunners(merged.runners);
+
+      // ── Update stateRef immediately so bot cycles see the new data ──
+      // React setState is async — stateRef.current won't update until the
+      // next render. If a bot cycle runs before that, it would see stale
+      // (empty) arrays and report "0 markets loaded".
+      stateRef.current = {
+        ...stateRef.current,
+        markets: merged.markets,
+        runners: merged.runners,
+        apiConnected: true,
+        betfairConnection: {
+          ...stateRef.current.betfairConnection,
+          lastMarketSyncTime: now,
+          dataFresh: true,
+          lastCatalogueRefreshAt: now,
+          lastPriceFetchAt: now,
+          catalogueMarketsCount: catMarkets.length,
+          catalogueRunnersCount: catRunners.length,
+          marketsWithPriceData,
+          marketCatalogueError: null,
+          priceFeedStale: pricedRunners === 0,
+          apiValidationStatus: 'api_connected',
+          loginStatus: 'connected',
+          sessionTokenStatus: 'connected',
+        },
+      };
 
       // Mark the app as connected — without this, the stream effect treats
       // the app as disconnected and marks all data as stale/cached, even
@@ -1297,13 +1324,16 @@ export function AppProvider({ children }) {
       const now = new Date().toISOString();
       const catError = s.betfairConnection?.marketCatalogueError;
       const streamStatus = s.betfairConnection?.streamConnectionStatus || 'disconnected';
+      const catCount = s.betfairConnection?.catalogueMarketsCount || 0;
       const noMarketsReason = catError
         ? `No markets loaded — catalogue fetch failed: ${catError}`
-        : streamStatus === 'connecting' || streamStatus === 'authenticating'
-          ? `No markets loaded — stream is still ${streamStatus}. Wait a few seconds or click "Refresh Markets".`
-          : streamStatus === 'error'
-            ? 'No markets loaded — stream connection failed. Check your session token and proxy.'
-            : 'No markets loaded — click "Refresh Markets" or reconnect your Betfair session.';
+        : catCount > 0
+          ? `Market data was fetched (${catCount} markets in catalogue) but not loaded into bot state. Click "Refresh Markets" to reload.`
+          : streamStatus === 'connecting' || streamStatus === 'authenticating'
+            ? `No markets loaded — stream is still ${streamStatus}. Wait a few seconds or click "Refresh Markets".`
+            : streamStatus === 'error'
+              ? 'No markets loaded — stream connection failed. Check your session token and proxy.'
+              : 'No markets loaded — click "Refresh Markets" or reconnect your Betfair session.';
 
       const cycleRecord = {
         cycleNumber: cycleNum,
@@ -1668,6 +1698,7 @@ export function AppProvider({ children }) {
         noBetReason: exchangeDiag.noBetReason,
         debugScanMode: exchangeDiag.debugScanMode ?? false,
         marketFeedDiagnostics: exchangeDiag.marketFeedDiagnostics ?? null,
+        marketFilterFunnel: exchangeDiag.marketFilterFunnel ?? null,
         timeWindowFunnel: exchangeDiag.timeWindowFunnel ?? null,
         loadedMarketsTable: exchangeDiag.loadedMarketsTable ?? null,
         connectionDiagnostics: exchangeDiag.connectionDiagnostics ?? null,
@@ -2117,6 +2148,12 @@ export function AppProvider({ children }) {
 
         setMarkets(merged.markets);
         setRunners(merged.runners);
+        // Update stateRef immediately so bot cycles see the new data
+        stateRef.current = {
+          ...stateRef.current,
+          markets: merged.markets,
+          runners: merged.runners,
+        };
         const now = new Date().toISOString();
         setBetfairConnection(prev => ({
           ...prev,
@@ -2161,6 +2198,12 @@ export function AppProvider({ children }) {
 
         setMarkets(merged.markets);
         setRunners(merged.runners);
+        // Update stateRef immediately so bot cycles see the new data
+        stateRef.current = {
+          ...stateRef.current,
+          markets: merged.markets,
+          runners: merged.runners,
+        };
         setBetfairConnection(prev => ({
           ...prev,
           lastMarketSyncTime: new Date().toISOString(),

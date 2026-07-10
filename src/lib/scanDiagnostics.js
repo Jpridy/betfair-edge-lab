@@ -67,9 +67,10 @@ export function buildScanDiagnostics(markets, runners, settings, aiSettings, pap
   let selectedMarket = null;
 
   for (const { market, secsBefore } of sorted) {
-    const marketRunners = runners.filter(r =>
-      (r.marketId === market.id || r.marketId === market.betfairMarketId) && r.status === 'ACTIVE'
-    );
+    const marketRunners = runners.filter(r => {
+      const rmid = String(r.marketId || '');
+      return ((String(market.id || '') && rmid === String(market.id)) || (String(market.betfairMarketId || '') && rmid === String(market.betfairMarketId))) && r.status === 'ACTIVE';
+    });
     if (marketRunners.length === 0) continue;
 
     // Skip market if strategy already has an open order here

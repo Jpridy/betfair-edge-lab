@@ -70,7 +70,7 @@ export default function MarketFeedPanel() {
   const missingPriceData = Math.max(0, totalLoaded - withPriceData);
 
   const displayMarkets = markets.slice(0, showAll ? 50 : 20).map(m => {
-    const marketRunners = runners.filter(r => r.marketId === m.id || r.marketId === m.betfairMarketId);
+    const marketRunners = runners.filter(r => String(r.marketId || '') === String(m.id || '') || String(r.marketId || '') === String(m.betfairMarketId || ''));
     return {
       eventName: m.eventName || '',
       marketName: m.marketName || '',

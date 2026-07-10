@@ -28,6 +28,18 @@ const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'p
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
 
 /**
+ * Match a runner to a market using string-normalised IDs.
+ * Prevents silent join failures when marketId is stored as a number
+ * in one source and a string in another.
+ */
+function matchRunnerToMarket(runner, market) {
+  const rmid = String(runner.marketId || '');
+  const mid = String(market.id || '');
+  const bmid = String(market.betfairMarketId || '');
+  return (mid && rmid === mid) || (bmid && rmid === bmid);
+}
+
+/**
  * Scan all eligible pre-race markets.
  * @returns {Array} Eligible markets (OPEN, not in-play, 2+ runners, in time window)
  */
@@ -41,7 +53,7 @@ export function scanEligibleMarkets(markets, runners, settings, debugScanMode = 
     if (m.inPlay && !settings.allowInPlay) return false;
 
     const marketRunners = runners.filter(r =>
-      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
     );
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount < 2) return false;
@@ -97,7 +109,7 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
     if (m.startTime || m.marketStartTime) withStartTime++; else withoutStartTime++;
 
     const marketRunners = runners.filter(r =>
-      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
     );
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount >= 2) withRunners++;
@@ -161,6 +173,72 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
     lastCatalogueRefreshAt,
     priceFeedStale,
     marketDataSource,
+  };
+}
+
+/**
+ * Build market filter funnel — full rejection breakdown showing exactly
+ * why markets are rejected at each stage of the eligibility pipeline.
+ */
+function buildMarketFilterFunnel(markets, runners, settings, debugScanMode) {
+  const windowStart = settings.defaultTimeWindowStartSeconds || 500;
+  const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
+  const nowMs = Date.now();
+
+  let open = 0, closed = 0, suspended = 0;
+  let inPlay = 0, notInPlay = 0;
+  let withStartTime = 0, withoutStartTime = 0;
+  let insideTimeWindow = 0;
+  let withTwoRunners = 0, withPriceData = 0;
+  let eligible = 0;
+  let rejClosed = 0, rejInPlay = 0, rejNoStart = 0, rejTooEarly = 0, rejTooLate = 0, rejNoRunners = 0, rejNoPrices = 0;
+
+  for (const m of markets) {
+    if (m.status !== 'OPEN') { if (m.status === 'SUSPENDED') suspended++; else closed++; rejClosed++; continue; }
+    open++;
+    if (m.inPlay && !settings.allowInPlay) { inPlay++; rejInPlay++; continue; }
+    notInPlay++;
+
+    const start = m.startTime ? new Date(m.startTime).getTime() : (m.marketStartTime ? new Date(m.marketStartTime).getTime() : NaN);
+    if (isNaN(start)) { withoutStartTime++; rejNoStart++; continue; }
+    withStartTime++;
+
+    if (!debugScanMode) {
+      const secsBefore = (start - nowMs) / 1000;
+      if (secsBefore <= windowEnd) { rejTooLate++; continue; }
+      if (secsBefore > windowStart * 2) { rejTooEarly++; continue; }
+    }
+    insideTimeWindow++;
+
+    const marketRunners = runners.filter(r => matchRunnerToMarket(r, m) && r.status === 'ACTIVE');
+    const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
+    if (runnerCount < 2) { rejNoRunners++; continue; }
+    withTwoRunners++;
+
+    const hasPrice = marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
+    if (!hasPrice) { rejNoPrices++; continue; }
+    withPriceData++;
+    eligible++;
+  }
+
+  return {
+    totalCurrentMarkets: markets.length,
+    openMarkets: open,
+    suspendedMarkets: suspended,
+    closedMarkets: closed,
+    nonInPlayMarkets: notInPlay,
+    marketsWithStartTime: withStartTime,
+    marketsInsideTimeWindow: insideTimeWindow,
+    marketsWithTwoActiveRunners: withTwoRunners,
+    marketsWithPriceData: withPriceData,
+    eligibleMarkets: eligible,
+    rejectedBecauseClosed: rejClosed,
+    rejectedBecauseInPlay: rejInPlay,
+    rejectedBecauseNoStartTime: rejNoStart,
+    rejectedBecauseTooEarly: rejTooEarly,
+    rejectedBecauseTooLate: rejTooLate,
+    rejectedBecauseNoRunners: rejNoRunners,
+    rejectedBecauseNoPrices: rejNoPrices,
   };
 }
 
@@ -243,7 +321,7 @@ function buildLoadedMarketsTable(markets, runners) {
   const nowMs = Date.now();
   return markets.slice(0, 50).map(m => {
     const marketRunners = runners.filter(r =>
-      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
     );
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     const hasPriceData = marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
@@ -260,6 +338,8 @@ function buildLoadedMarketsTable(markets, runners) {
       marketStartTime: m.startTime || m.marketStartTime || null,
       secondsToJump,
       runnerCount,
+      runnerCountByMarketId: runners.filter(r => String(r.marketId || '') === String(m.id || '') && r.status === 'ACTIVE').length,
+      runnerCountByBetfairMarketId: runners.filter(r => String(r.marketId || '') === String(m.betfairMarketId || '') && r.status === 'ACTIVE').length,
       hasPriceData,
       totalMatched: m.totalMatched || 0,
     };
@@ -325,6 +405,10 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
   // ── Build time-window funnel ──
   const debugScanMode = featherlessSettings?.debugScanMode === true;
+
+  // ── Build market filter funnel (full rejection breakdown) ──
+  const marketFilterFunnel = buildMarketFilterFunnel(markets, runners, settings, debugScanMode);
+
   const timeWindowFunnel = buildTimeWindowFunnel(markets, settings, debugScanMode);
 
   // ── Build loaded markets debug table (first 50) ──
@@ -372,7 +456,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     if (m.status !== 'OPEN') return false;
     if (m.inPlay && !settings.allowInPlay) return false;
     const marketRunners = runners.filter(r =>
-      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
     );
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     return runnerCount >= 2;
@@ -380,7 +464,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
   const eligibleAfterPriceFilter = eligibleMarkets.filter(m => {
     const marketRunners = runners.filter(r =>
-      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
     );
     return marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
   }).length;
@@ -403,6 +487,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
         marketsScanned: 0,
         eventsScanned: 0,
         marketFeedDiagnostics,
+        marketFilterFunnel,
         timeWindowFunnel,
         loadedMarketsTable,
         connectionDiagnostics,
@@ -425,7 +510,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
   const marketDetectionLog = eligibleMarkets.map(m => {
     const detectedMarketType = detectMarketType(m);
     const marketRunners = runners.filter(r =>
-      (r.marketId === m.id || r.marketId === m.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
     );
     return {
       marketId: m.betfairMarketId || m.id,
@@ -483,7 +568,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
 
     // Get runners for the primary market
     const marketRunners = runners.filter(r =>
-      (r.marketId === primaryMarket.id || r.marketId === primaryMarket.betfairMarketId) && r.status === 'ACTIVE'
+      matchRunnerToMarket(r, primaryMarket) && r.status === 'ACTIVE'
     );
 
     if (marketRunners.length === 0) continue;
@@ -804,6 +889,7 @@ export async function runExchangeCycle({ markets, runners, settings, featherless
     aiDecisions,
     // ── New diagnostic layers ──
     marketFeedDiagnostics,
+    marketFilterFunnel,
     timeWindowFunnel,
     loadedMarketsTable,
     connectionDiagnostics,

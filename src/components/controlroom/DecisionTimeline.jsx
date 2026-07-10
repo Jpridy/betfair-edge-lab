@@ -14,6 +14,14 @@ export default function DecisionTimeline() {
   const cycleSawZeroMarkets = (lastCycle?.marketsScanned || 0) === 0 && (lastCycle?.scanSummary?.totalMarketsLoaded || 0) === 0;
   const isStaleCycle = cycleSawZeroMarkets && markets.length > 0;
 
+  // Determine data source label for accurate wording
+  const marketSourceLabel = markets.length > 0
+    ? (markets.some(m => m.source === 'merged') ? 'merged stream + catalogue'
+      : markets.some(m => m.source === 'stream') ? 'stream'
+      : markets.some(m => m.source === 'catalogue') ? 'REST catalogue/book'
+      : 'cached')
+    : '';
+
   if (!lastCycle) {
     return (
       <Panel title="Decision Timeline">
@@ -37,7 +45,9 @@ export default function DecisionTimeline() {
       name: 'Markets Loaded',
       status: marketsLoaded > 0 ? 'passed' : 'failed',
       count: marketsLoaded,
-      reason: `${marketsLoaded} markets loaded from Betfair stream`,
+      reason: marketsLoaded > 0
+        ? `${marketsLoaded} markets loaded from ${marketSourceLabel || 'Betfair'}`
+        : `0 markets available to bot during this cycle${isStaleCycle ? ` — ${markets.length} markets are now loaded from ${marketSourceLabel}` : ''}`,
       detail: scan.marketFeedDiagnostics ? JSON.stringify(scan.marketFeedDiagnostics, null, 2) : null,
     },
     {
@@ -46,7 +56,9 @@ export default function DecisionTimeline() {
       status: marketsSent > 0 ? 'passed' : 'failed',
       count: marketsSent,
       reason: `${scan.openPreRaceMarkets ?? diag?.openPreRaceMarkets ?? 0} open pre-race, ${scan.marketsInsideTimeWindow ?? diag?.marketsInsideTimeWindow ?? 0} inside time window`,
-      detail: scan.timeWindowFunnel ? JSON.stringify(scan.timeWindowFunnel, null, 2) : null,
+      detail: scan.marketFilterFunnel || diag?.marketFilterFunnel
+        ? JSON.stringify(scan.marketFilterFunnel || diag?.marketFilterFunnel, null, 2)
+        : (scan.timeWindowFunnel ? JSON.stringify(scan.timeWindowFunnel, null, 2) : null),
     },
     {
       id: 3,

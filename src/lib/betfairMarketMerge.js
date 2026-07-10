@@ -143,7 +143,7 @@ export function mergeBetfairMarkets({
   const mergedMarkets = [...marketMap.values()].map(m => {
     const mid = m.betfairMarketId || m.id;
     const marketRunners = runnerList.filter(r =>
-      r.marketId === mid || r.marketId === m.id
+      String(r.marketId || '') === String(mid || '') || String(r.marketId || '') === String(m.id || '')
     );
     const hasPriceData = marketRunners.some(r =>
       (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)

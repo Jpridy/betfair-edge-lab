@@ -14,6 +14,7 @@ import RiskOrdersPanel from '@/components/controlroom/RiskOrdersPanel';
 import SettlementPanel from '@/components/controlroom/SettlementPanel';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
+import CurrentMarketFeed from '@/components/controlroom/CurrentMarketFeed';
 
 export default function BotControlCentre() {
   const { dataLoading, botCycles, exchangeOpportunities, paperOrders, markets } = useApp();
@@ -67,6 +68,7 @@ export default function BotControlCentre() {
         </TabsList>
 
         <TabsContent value="control" className="space-y-5">
+          <CurrentMarketFeed />
           <LatestDecision />
           <DecisionTimeline />
           <SystemHealthRow />
