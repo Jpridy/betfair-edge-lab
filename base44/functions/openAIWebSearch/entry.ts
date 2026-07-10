@@ -281,52 +281,58 @@ Return ONLY this JSON structure:
       }, { status: 200 });
     }
 
-    // Parse JSON from the output
+    // Parse JSON from the output — robust multi-strategy extraction
+    // The model sometimes wraps JSON in conversational text or code fences,
+    // and may include multiple { } blocks. We try several strategies.
     let parsed;
-    try {
-      const cleaned = outputText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      parsed = JSON.parse(cleaned);
-    } catch (_) {
-      const match = outputText.match(/\{[\s\S]*\}/);
-      if (match) {
-        try { parsed = JSON.parse(match[0]); } catch (__) {
-          return Response.json({
-            externalSearchResult: {
-              eventId: market.eventId || '',
-              eventName,
-              marketStartTime: startTime,
-              searchStatus: 'error',
-              searchProvider: 'openai_web_search',
-              searchQuery,
-              searchedAt: new Date().toISOString(),
-              sourceCount: extractedSources.length,
-              sources: extractedSources,
-              runnerResearch: [],
-              raceLevelNotes: '',
-              dataQuality: 0,
-              errorMessage: 'Failed to parse OpenAI response JSON',
-            }
-          }, { status: 200 });
-        }
-      } else {
-        return Response.json({
-          externalSearchResult: {
-            eventId: market.eventId || '',
-            eventName,
-            marketStartTime: startTime,
-            searchStatus: 'no_results',
-            searchProvider: 'openai_web_search',
-            searchQuery,
-            searchedAt: new Date().toISOString(),
-            sourceCount: extractedSources.length,
-            sources: extractedSources,
-            runnerResearch: [],
-            raceLevelNotes: '',
-            dataQuality: 0,
-            errorMessage: 'No JSON found in OpenAI output',
-          }
-        }, { status: 200 });
+    const tryParse = (str) => { try { return JSON.parse(str); } catch (_) { return null; } };
+
+    // Strategy 1: Strip code fences, try direct parse
+    const cleaned = outputText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    parsed = tryParse(cleaned);
+
+    // Strategy 2: Find all top-level { ... } blocks and try each (largest first)
+    if (!parsed) {
+      const blocks = [];
+      let depth = 0, start = -1, inStr = false, esc = false;
+      for (let i = 0; i < outputText.length; i++) {
+        const ch = outputText[i];
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '{') { if (depth === 0) start = i; depth++; }
+        else if (ch === '}') { depth--; if (depth === 0 && start >= 0) { blocks.push(outputText.slice(start, i + 1)); start = -1; } }
       }
+      blocks.sort((a, b) => b.length - a.length);
+      for (const block of blocks) { parsed = tryParse(block); if (parsed) break; }
+    }
+
+    // Strategy 3: Greedy regex fallback
+    if (!parsed) {
+      const match = outputText.match(/\{[\s\S]*\}/);
+      if (match) parsed = tryParse(match[0]);
+    }
+
+    if (!parsed) {
+      return Response.json({
+        externalSearchResult: {
+          eventId: market.eventId || '',
+          eventName,
+          marketStartTime: startTime,
+          searchStatus: 'error',
+          searchProvider: 'openai_web_search',
+          searchQuery,
+          searchedAt: new Date().toISOString(),
+          sourceCount: extractedSources.length,
+          sources: extractedSources,
+          runnerResearch: [],
+          raceLevelNotes: '',
+          dataQuality: 0,
+          errorMessage: 'Failed to parse OpenAI response JSON',
+          rawOutputSnippet: outputText.slice(0, 1000),
+        }
+      }, { status: 200 });
     }
 
     // Merge extracted URL citations with parsed sources
@@ -501,32 +507,35 @@ Return ONLY this JSON:
       }
     }
 
-    // Parse JSON from output
+    // Parse JSON from output — robust multi-strategy extraction
     let parsed;
-    try {
-      const cleaned = outputText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      parsed = JSON.parse(cleaned);
-    } catch (_) {
-      const match = outputText.match(/\{[\s\S]*\}/);
-      if (match) {
-        try { parsed = JSON.parse(match[0]); } catch (__) {
-          return Response.json({
-            resultLookup: {
-              resultLookupStatus: 'no_results',
-              resultSource: 'openai_result_lookup',
-              sourceUrls: extractedUrls,
-              winnerSelectionIds: [],
-              placedSelectionIds: [],
-              selectedRunnerFinishPosition: null,
-              opponentFinishPosition: null,
-              resultConfidence: 'unknown',
-              voided: false,
-              voidReason: null,
-              errorMessage: 'Failed to parse result lookup response',
-            }
-          }, { status: 200 });
-        }
+    const tryParse = (str) => { try { return JSON.parse(str); } catch (_) { return null; } };
+
+    // Strategy 1: Strip code fences, try direct parse
+    const cleaned = outputText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    parsed = tryParse(cleaned);
+
+    // Strategy 2: Find all top-level { ... } blocks, try largest first
+    if (!parsed) {
+      const blocks = [];
+      let depth = 0, start = -1, inStr = false, esc = false;
+      for (let i = 0; i < outputText.length; i++) {
+        const ch = outputText[i];
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '{') { if (depth === 0) start = i; depth++; }
+        else if (ch === '}') { depth--; if (depth === 0 && start >= 0) { blocks.push(outputText.slice(start, i + 1)); start = -1; } }
       }
+      blocks.sort((a, b) => b.length - a.length);
+      for (const block of blocks) { parsed = tryParse(block); if (parsed) break; }
+    }
+
+    // Strategy 3: Greedy regex fallback
+    if (!parsed) {
+      const match = outputText.match(/\{[\s\S]*\}/);
+      if (match) parsed = tryParse(match[0]);
     }
 
     if (!parsed) {
@@ -542,6 +551,8 @@ Return ONLY this JSON:
           resultConfidence: 'unknown',
           voided: false,
           voidReason: null,
+          errorMessage: 'Failed to parse result lookup response',
+          rawOutputSnippet: outputText.slice(0, 1000),
         }
       }, { status: 200 });
     }
