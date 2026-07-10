@@ -2,13 +2,17 @@ import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
 import { Panel } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, ChevronDown, ChevronRight, MinusCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, ChevronDown, ChevronRight, MinusCircle, Info } from 'lucide-react';
 
 export default function DecisionTimeline() {
-  const { botCycles, lastExchangeDiagnostics } = useApp();
+  const { botCycles, lastExchangeDiagnostics, markets } = useApp();
   const [expanded, setExpanded] = useState(null);
   const lastCycle = botCycles[0];
   const diag = lastExchangeDiagnostics;
+
+  // Detect stale cycle — ran when 0 markets were loaded, but markets are now available
+  const cycleSawZeroMarkets = (lastCycle?.marketsScanned || 0) === 0 && (lastCycle?.scanSummary?.totalMarketsLoaded || 0) === 0;
+  const isStaleCycle = cycleSawZeroMarkets && markets.length > 0;
 
   if (!lastCycle) {
     return (
@@ -134,6 +138,15 @@ export default function DecisionTimeline() {
 
   return (
     <Panel title={`Decision Timeline — Cycle #${lastCycle.cycleNumber}`}>
+      {isStaleCycle && (
+        <div className="flex items-start gap-2.5 text-xs bg-info/8 text-info border-b border-info/20 p-3">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-body font-semibold">This cycle ran with 0 markets loaded — {markets.length} markets are now in memory.</div>
+            <div className="mt-0.5 text-[10px] opacity-80 font-body">Run a new scan (Debug Scan or start the bot) to see live decision steps.</div>
+          </div>
+        </div>
+      )}
       <div className="divide-y divide-border">
         {steps.map(step => {
           const config = statusConfig[step.status] || statusConfig.skipped;
