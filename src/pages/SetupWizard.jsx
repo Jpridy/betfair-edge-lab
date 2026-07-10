@@ -156,15 +156,73 @@ export default function SetupWizard() {
           break;
         }
 
-        case 'betfair_stream':
-          if (betfairConnection.streamConnectionStatus === 'connected' || betfairConnection.streamConnectionStatus === 'polling') {
-            result = { status: 'passed', message: `Stream: ${betfairConnection.streamConnectionStatus}, ${markets.length} markets live`, timestamp: new Date().toISOString() };
-          } else if (apiConnected) {
-            result = { status: 'warning', message: `Connected but stream status: ${betfairConnection.streamConnectionStatus}. REST catalogue data still works.`, timestamp: new Date().toISOString() };
-          } else {
-            result = { status: 'failed', message: 'Betfair not connected', timestamp: new Date().toISOString() };
+        case 'betfair_stream': {
+          const streamStatus = betfairConnection.streamConnectionStatus;
+          if (streamStatus === 'connected' || streamStatus === 'polling') {
+            result = { status: 'passed', message: `Stream: ${streamStatus}, ${markets.length} markets live`, timestamp: new Date().toISOString() };
+            break;
+          }
+
+          // Stream is not connected — run worker diagnostic to find out why
+          const proxyUrl = betfairConnection?.appKey ? null : null; // We don't have direct access to proxyUrl, use the betfairLogin function
+          let diagParts = [`Stream status: ${streamStatus}`];
+
+          try {
+            // Get proxy URL from betfairLogin function
+            const loginResp = await base44.functions.invoke('betfairLogin', { sessionToken: betfairSessionToken });
+            const proxyUrlFromBackend = loginResp.data?.proxyUrl;
+
+            if (!proxyUrlFromBackend) {
+              diagParts.push('No BETFAIR_PROXY_URL configured — cannot test stream bridge');
+              result = { status: 'failed', message: diagParts.join('. ') + '. REST catalogue data still works.', timestamp: new Date().toISOString(), detail: { streamStatus, proxyUrlPresent: false } };
+              break;
+            }
+
+            // 1. Check worker health — does it support WebSocket upgrades?
+            const healthUrl = proxyUrlFromBackend.replace(/\/$/, '') + '/health';
+            const healthRes = await fetch(healthUrl);
+            const healthData = await healthRes.json();
+            diagParts.push(`Worker v${healthData.version || '?'}`);
+            const hasStreamBridge = healthData.features?.includes('websocket-stream-bridge') || healthData.version?.includes('unified') || healthData.version?.includes('3');
+
+            if (!hasStreamBridge) {
+              diagParts.push('Worker does NOT support WebSocket stream bridge');
+              result = {
+                status: 'failed',
+                message: `${diagParts.join('. ')}. The deployed Cloudflare Worker is an older version (REST-only). Redeploy with the latest worker code (v6-unified) from src/cloudflare-worker/betfair-proxy.js to enable the stream.`,
+                timestamp: new Date().toISOString(),
+                detail: { streamStatus, workerVersion: healthData.version, workerFeatures: healthData.features, proxyUrl: proxyUrlFromBackend, actionRequired: 'Redeploy Cloudflare Worker with v6-unified code' },
+              };
+              break;
+            }
+
+            // 2. Test TCP connectivity to Betfair Stream API
+            const streamTestUrl = proxyUrlFromBackend.replace(/\/$/, '') + '/stream-test';
+            const streamTestRes = await fetch(streamTestUrl);
+            const streamTestData = await streamTestRes.json();
+            diagParts.push(`TCP to stream-api.betfair.com: ${streamTestData.status === 'ok' ? '✓' : '✗ ' + (streamTestData.message || '')}`);
+
+            if (streamTestData.status === 'ok') {
+              result = {
+                status: 'warning',
+                message: `${diagParts.join('. ')}. Worker supports WebSocket bridge and TCP works, but stream is ${streamStatus}. Check Betfair session token validity and app key permissions for streaming.`,
+                timestamp: new Date().toISOString(),
+                detail: { streamStatus, workerVersion: healthData.version, workerFeatures: healthData.features, streamTcpTest: streamTestData, proxyUrl: proxyUrlFromBackend },
+              };
+            } else {
+              result = {
+                status: 'failed',
+                message: `${diagParts.join('. ')}. The worker cannot reach Betfair's Stream API via TCP. REST still works because it uses a different endpoint.`,
+                timestamp: new Date().toISOString(),
+                detail: { streamStatus, workerVersion: healthData.version, streamTcpTest: streamTestData, proxyUrl: proxyUrlFromBackend },
+              };
+            }
+          } catch (err) {
+            diagParts.push(`Worker diagnostic failed: ${err.message}`);
+            result = { status: 'warning', message: `${diagParts.join('. ')}. REST catalogue data still works.`, timestamp: new Date().toISOString(), detail: { streamStatus, error: err.message } };
           }
           break;
+        }
 
         case 'openai_api': {
           try {

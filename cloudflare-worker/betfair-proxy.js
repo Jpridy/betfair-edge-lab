@@ -1,11 +1,20 @@
 /**
- * Betfair CORS Proxy — Cloudflare Worker (fetch-based)
+ * Betfair CORS Proxy + Stream Bridge — Cloudflare Worker (v6: unified)
  *
- * Uses standard fetch() with browser-like headers instead of raw TCP sockets.
- * The raw cloudflare:sockets approach was returning "Stream was cancelled" errors.
+ * Combines:
+ * - Raw TLS TCP for REST API (v5, no allowHalfOpen — avoids "Stream was cancelled")
+ * - WebSocket ↔ TCP bridge for Stream API (v3, with socket.opened await)
  *
- * DEPLOY: Paste into Cloudflare Worker, set URL as BETFAIR_PROXY_URL secret.
+ * DEPLOY: dash.cloudflare.com → Workers & Pages → your worker → Edit code →
+ * paste this entire file → Save and deploy.
+ *
+ * Verify after deploy: visit https://<your-worker>.workers.dev/health
  */
+
+import { connect } from "cloudflare:sockets";
+
+const BETFAIR_STREAM_HOST = "stream-api.betfair.com";
+const BETFAIR_STREAM_PORT = 443;
 
 const ALLOWED_HOSTS = new Set([
   "api.betfair.com",
@@ -25,6 +34,11 @@ const CORS_HEADERS = {
 
 export default {
   async fetch(request) {
+    const upgradeHeader = request.headers.get("Upgrade");
+    if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket") {
+      return handleStreamBridge(request);
+    }
+
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
@@ -35,8 +49,13 @@ export default {
       return jsonResponse(200, {
         status: "ok",
         service: "betfair-proxy",
-        version: "4-fetch",
+        version: "6-unified",
+        features: ["raw-tcp-rest", "websocket-stream-bridge"],
       });
+    }
+
+    if (url.pathname === "/stream-test") {
+      return handleStreamTest();
     }
 
     const targetUrl = url.searchParams.get("url");
@@ -47,21 +66,25 @@ export default {
       return jsonResponse(403, { error: "Target host not allowed", host: target.hostname });
     }
 
-    const body =
+    const reqBody =
       request.method !== "GET" && request.method !== "HEAD"
         ? await request.text()
-        : undefined;
+        : null;
 
     const isAu = target.hostname.endsWith(".com.au");
-    const origin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
+    const betfairOrigin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
 
     const headers = {
       "Content-Type": request.headers.get("Content-Type") || "application/json",
       Accept: "application/json",
       "Accept-Language": "en-AU,en;q=0.9",
+      "Accept-Encoding": "identity",
       "User-Agent": BROWSER_UA,
-      Origin: origin,
-      Referer: origin + "/",
+      Origin: betfairOrigin,
+      Referer: betfairOrigin + "/",
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-site",
     };
 
     const appKey = request.headers.get("X-Application");
@@ -70,25 +93,16 @@ export default {
     if (auth) headers["X-Authentication"] = auth;
 
     try {
-      const upstream = await fetch(targetUrl, {
-        method: request.method,
-        headers,
-        body,
-      });
-
-      const responseText = await upstream.text();
-
-      return new Response(responseText, {
-        status: upstream.status,
+      const result = await rawTcpRequest(target, request.method, headers, reqBody);
+      return new Response(result.body, {
+        status: result.status,
         headers: {
-          "Content-Type": upstream.headers.get("Content-Type") || "application/json",
+          "Content-Type": result.contentType,
           ...CORS_HEADERS,
         },
       });
     } catch (error) {
-      return jsonResponse(502, {
-        error: "Proxy fetch failed: " + error.message,
-      });
+      return jsonResponse(502, { error: "TCP proxy error: " + error.message });
     }
   },
 };
@@ -98,4 +112,246 @@ function jsonResponse(status, data) {
     status,
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
+}
+
+async function rawTcpRequest(target, method, headers, body) {
+  const host = target.hostname;
+  const port = Number(target.port || 443);
+  const path = target.pathname + target.search;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  let rawRequest = `${method} ${path} HTTP/1.1\r\nHost: ${host}\r\n`;
+  for (const [name, value] of Object.entries(headers)) {
+    rawRequest += `${name}: ${value}\r\n`;
+  }
+  if (body) rawRequest += `Content-Length: ${encoder.encode(body).length}\r\n`;
+  rawRequest += "Connection: close\r\n\r\n";
+  if (body) rawRequest += body;
+
+  const socket = connect(
+    { hostname: host, port },
+    { secureTransport: "on" }
+  );
+
+  await Promise.race([
+    socket.opened,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Socket open timeout (10s)")), 10000)
+    ),
+  ]);
+
+  const writer = socket.writable.getWriter();
+  await writer.write(encoder.encode(rawRequest));
+  writer.releaseLock();
+
+  const reader = socket.readable.getReader();
+  const chunks = [];
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (chunks.length === 0) {
+    throw new Error(`No response from ${host}`);
+  }
+
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const response = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    response.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  let headerEnd = -1;
+  for (let i = 0; i < response.length - 3; i++) {
+    if (response[i] === 13 && response[i + 1] === 10 && response[i + 2] === 13 && response[i + 3] === 10) {
+      headerEnd = i;
+      break;
+    }
+  }
+  if (headerEnd < 0) throw new Error("Invalid HTTP response — no header terminator");
+
+  const headerText = decoder.decode(response.slice(0, headerEnd));
+  const lines = headerText.split("\r\n");
+  const status = Number.parseInt(lines[0].split(" ")[1], 10) || 502;
+  const responseHeaders = {};
+  for (const line of lines.slice(1)) {
+    const separator = line.indexOf(":");
+    if (separator > 0) {
+      responseHeaders[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
+    }
+  }
+
+  let bodyBytes = response.slice(headerEnd + 4);
+  if (responseHeaders["transfer-encoding"]?.includes("chunked")) {
+    bodyBytes = dechunk(bodyBytes);
+  }
+
+  return {
+    status,
+    body: decoder.decode(bodyBytes),
+    contentType: responseHeaders["content-type"] || "text/plain",
+  };
+}
+
+function dechunk(bytes) {
+  const decoder = new TextDecoder();
+  const output = [];
+  let position = 0;
+  while (position < bytes.length) {
+    let lineEnd = position;
+    while (lineEnd < bytes.length - 1 && !(bytes[lineEnd] === 13 && bytes[lineEnd + 1] === 10)) lineEnd++;
+    if (lineEnd >= bytes.length - 1) break;
+    const size = Number.parseInt(decoder.decode(bytes.slice(position, lineEnd)).trim(), 16);
+    if (!Number.isFinite(size) || size === 0) break;
+    const chunkStart = lineEnd + 2;
+    output.push(bytes.slice(chunkStart, chunkStart + size));
+    position = chunkStart + size + 2;
+  }
+  const length = output.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of output) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+async function handleStreamTest() {
+  try {
+    const socket = connect(
+      { hostname: BETFAIR_STREAM_HOST, port: BETFAIR_STREAM_PORT },
+      { secureTransport: "on" }
+    );
+    await Promise.race([
+      socket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Socket open timeout (10s)")), 10000)
+      ),
+    ]);
+    socket.close().catch(() => {});
+    return jsonResponse(200, {
+      status: "ok",
+      message: "TCP connection to stream-api.betfair.com:443 succeeded",
+      host: BETFAIR_STREAM_HOST,
+      port: BETFAIR_STREAM_PORT,
+    });
+  } catch (err) {
+    return jsonResponse(502, {
+      status: "error",
+      message: `TCP connection to stream-api.betfair.com:443 failed: ${err.message}`,
+      host: BETFAIR_STREAM_HOST,
+      port: BETFAIR_STREAM_PORT,
+    });
+  }
+}
+
+async function handleStreamBridge(request) {
+  const pair = new WebSocketPair();
+  const client = pair[0];
+  const server = pair[1];
+  server.accept();
+
+  let betfairSocket = null;
+  let writer = null;
+  let reader = null;
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  let closed = false;
+
+  function sendDiag(message) {
+    try {
+      server.send(JSON.stringify({ op: "diag", message }));
+    } catch (_) {}
+  }
+
+  try {
+    betfairSocket = connect(
+      { hostname: BETFAIR_STREAM_HOST, port: BETFAIR_STREAM_PORT },
+      { secureTransport: "on" }
+    );
+
+    await Promise.race([
+      betfairSocket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Stream socket open timeout (10s)")), 10000)
+      ),
+    ]);
+
+    writer = betfairSocket.writable.getWriter();
+    reader = betfairSocket.readable.getReader();
+    sendDiag("TLS TCP socket connected to " + BETFAIR_STREAM_HOST + ":" + BETFAIR_STREAM_PORT);
+  } catch (err) {
+    sendDiag("Stream TCP connect failed: " + (err?.message || String(err)));
+    try { server.close(1011, "TCP connection to Betfair Stream failed"); } catch (_) {}
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  server.addEventListener("message", (event) => {
+    if (closed) return;
+    const data = typeof event.data === "string" ? event.data + "\r\n" : null;
+    if (data) {
+      writer.write(encoder.encode(data)).catch((err) => {
+        sendDiag("TCP write failed: " + (err?.message || String(err)));
+        if (!closed) {
+          closed = true;
+          try { server.close(1011, "TCP write failed"); } catch (_) {}
+        }
+      });
+    }
+  });
+
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          sendDiag("Betfair stream TCP connection ended");
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\r\n")) >= 0) {
+          const line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          if (line.trim()) {
+            try {
+              server.send(line);
+            } catch (err) {
+              sendDiag("WebSocket send failed: " + (err?.message || String(err)));
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      sendDiag("TCP read error: " + (e?.message || String(e)));
+    }
+    if (!closed) {
+      closed = true;
+      try { server.close(1000, "Betfair stream ended"); } catch (_) {}
+    }
+  })();
+
+  server.addEventListener("close", () => {
+    closed = true;
+    if (writer) writer.close().catch(() => {});
+    if (reader) reader.cancel().catch(() => {});
+  });
+  server.addEventListener("error", () => {
+    closed = true;
+    if (writer) writer.close().catch(() => {});
+    if (reader) reader.cancel().catch(() => {});
+  });
+
+  return new Response(null, { status: 101, webSocket: client });
 }

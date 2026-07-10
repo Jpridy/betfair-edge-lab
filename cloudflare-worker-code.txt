@@ -1,21 +1,20 @@
 /**
- * Betfair CORS Proxy + Stream Bridge — Cloudflare Worker (v3: raw TCP for REST)
+ * Betfair CORS Proxy + Stream Bridge — Cloudflare Worker (v6: unified)
  *
- * CHANGES IN v3:
- * REST API requests now use raw TLS TCP sockets (cloudflare:sockets) instead
- * of fetch(). Betfair's WAF fingerprints the fetch() TLS/HTTP stack and blocks
- * it with HTML 403. By constructing HTTP/1.1 manually over a raw TLS socket,
- * there is no fetch-level fingerprint to detect.
- *
- * The WebSocket stream bridge is unchanged (already uses raw TCP).
+ * Combines:
+ * - Raw TLS TCP for REST API (v5, no allowHalfOpen — avoids "Stream was cancelled")
+ * - WebSocket ↔ TCP bridge for Stream API (v3, with socket.opened await)
  *
  * DEPLOY: dash.cloudflare.com → Workers & Pages → your worker → Edit code →
  * paste this entire file → Save and deploy.
+ *
+ * Verify after deploy: visit https://<your-worker>.workers.dev/health
  */
 
 import { connect } from "cloudflare:sockets";
 
-const BETFAIR_STREAM_HOST = "stream-api.betfair.com:443";
+const BETFAIR_STREAM_HOST = "stream-api.betfair.com";
+const BETFAIR_STREAM_PORT = 443;
 
 const ALLOWED_HOSTS = new Set([
   "api.betfair.com",
@@ -24,62 +23,79 @@ const ALLOWED_HOSTS = new Set([
   "identitysso-cert.betfair.com",
 ]);
 
-const BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
+};
 
 export default {
   async fetch(request) {
     // ── WebSocket upgrade → Stream API TCP bridge ──
-    if (request.headers.get("Upgrade") === "websocket") {
+    const upgradeHeader = request.headers.get("Upgrade");
+    if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket") {
       return handleStreamBridge(request);
     }
 
     // ── CORS preflight ──
     if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
-        },
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    const url = new URL(request.url);
+
+    // ── Health check ──
+    if (url.pathname === "/health") {
+      return jsonResponse(200, {
+        status: "ok",
+        service: "betfair-proxy",
+        version: "6-unified",
+        features: ["raw-tcp-rest", "websocket-stream-bridge"],
       });
     }
 
-    // ── REST API via raw TLS TCP socket ──
-    const url = new URL(request.url);
-    const targetUrl = url.searchParams.get("url");
-
-    if (!targetUrl) {
-      return json({ error: "Missing url parameter" }, 400);
+    // ── Stream test — checks if TCP to stream-api.betfair.com works ──
+    if (url.pathname === "/stream-test") {
+      return handleStreamTest();
     }
+
+    // ── REST API via raw TLS TCP socket ──
+    const targetUrl = url.searchParams.get("url");
+    if (!targetUrl) return jsonResponse(400, { error: "Missing url parameter" });
 
     const target = new URL(targetUrl);
     if (!ALLOWED_HOSTS.has(target.hostname)) {
-      return json({ error: "Target host not allowed", host: target.hostname }, 403);
+      return jsonResponse(403, { error: "Target host not allowed", host: target.hostname });
     }
 
-    const reqBody = request.method !== "GET" && request.method !== "HEAD"
-      ? await request.text()
-      : null;
+    const reqBody =
+      request.method !== "GET" && request.method !== "HEAD"
+        ? await request.text()
+        : null;
 
     const isAu = target.hostname.endsWith(".com.au");
     const betfairOrigin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
 
-    const headers = {};
+    const headers = {
+      "Content-Type": request.headers.get("Content-Type") || "application/json",
+      Accept: "application/json",
+      "Accept-Language": "en-AU,en;q=0.9",
+      "Accept-Encoding": "identity",
+      "User-Agent": BROWSER_UA,
+      Origin: betfairOrigin,
+      Referer: betfairOrigin + "/",
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-site",
+    };
+
     const appKey = request.headers.get("X-Application");
     const auth = request.headers.get("X-Authentication");
     if (appKey) headers["X-Application"] = appKey;
     if (auth) headers["X-Authentication"] = auth;
-    headers["Content-Type"] = "application/json";
-    headers["Accept"] = "application/json";
-    headers["User-Agent"] = BROWSER_UA;
-    headers["Accept-Language"] = "en-AU,en;q=0.9";
-    headers["Accept-Encoding"] = "identity";
-    headers["Origin"] = betfairOrigin;
-    headers["Referer"] = betfairOrigin + "/";
-    headers["Sec-Fetch-Dest"] = "empty";
-    headers["Sec-Fetch-Mode"] = "cors";
-    headers["Sec-Fetch-Site"] = "same-site";
 
     try {
       const result = await rawTcpRequest(target, request.method, headers, reqBody);
@@ -87,147 +103,162 @@ export default {
         status: result.status,
         headers: {
           "Content-Type": result.contentType,
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
+          ...CORS_HEADERS,
         },
       });
-    } catch (err) {
-      return json({ error: "TCP proxy error: " + err.message }, 502);
+    } catch (error) {
+      return jsonResponse(502, { error: "TCP proxy error: " + error.message });
     }
   },
 };
 
-function json(data, status = 200) {
+function jsonResponse(status, data) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
 // ── Raw HTTP/1.1 client over TLS TCP socket ──
-// Bypasses fetch() entirely. Cloudflare Workers' fetch() has a recognizable
-// TLS/HTTP fingerprint that Betfair's WAF blocks with HTML 403. By building
-// the HTTP request manually over a raw TLS socket, there is no fetch-level
-// fingerprint. The TLS handshake is done by cloudflare:sockets connect(),
-// which uses a different code path than fetch().
 async function rawTcpRequest(target, method, headers, body) {
   const host = target.hostname;
-  const port = target.port || 443;
+  const port = Number(target.port || 443);
   const path = target.pathname + target.search;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  // Build raw HTTP/1.1 request
-  let req = `${method} ${path} HTTP/1.1\r\nHost: ${host}\r\n`;
-  for (const [k, v] of Object.entries(headers)) {
-    req += `${k}: ${v}\r\n`;
+  let rawRequest = `${method} ${path} HTTP/1.1\r\nHost: ${host}\r\n`;
+  for (const [name, value] of Object.entries(headers)) {
+    rawRequest += `${name}: ${value}\r\n`;
   }
-  if (body) {
-    req += `Content-Length: ${encoder.encode(body).length}\r\n`;
-  }
-  req += "Connection: close\r\n\r\n";
-  if (body) req += body;
+  if (body) rawRequest += `Content-Length: ${encoder.encode(body).length}\r\n`;
+  rawRequest += "Connection: close\r\n\r\n";
+  if (body) rawRequest += body;
 
-  // Connect via raw TLS TCP and observe both lifecycle promises. An ignored
-  // socket.closed rejection is surfaced by Workers as "Stream was cancelled".
   const socket = connect(
-    { hostname: host, port: Number(port) },
-    { secureTransport: "on", allowHalfOpen: true }
+    { hostname: host, port },
+    { secureTransport: "on" }
   );
-  let socketCloseError = null;
-  const socketClosed = socket.closed.catch((error) => {
-    socketCloseError = error;
-  });
-  await socket.opened;
+
+  await Promise.race([
+    socket.opened,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Socket open timeout (10s)")), 10000)
+    ),
+  ]);
 
   const writer = socket.writable.getWriter();
-  await writer.write(encoder.encode(req));
+  await writer.write(encoder.encode(rawRequest));
   writer.releaseLock();
 
   const reader = socket.readable.getReader();
   const chunks = [];
-  let readError = null;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
     }
-  } catch (error) {
-    readError = error;
   } finally {
     reader.releaseLock();
   }
-  await socketClosed;
 
   if (chunks.length === 0) {
-    const cause = socketCloseError?.message || readError?.message || "connection closed without data";
-    throw new Error(`No response from ${host}: ${cause}`);
+    throw new Error(`No response from ${host}`);
   }
 
-  // Combine chunks into one byte array
-  let totalLen = 0;
-  for (const c of chunks) totalLen += c.length;
-  const all = new Uint8Array(totalLen);
-  let off = 0;
-  for (const c of chunks) { all.set(c, off); off += c.length; }
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const response = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    response.set(chunk, offset);
+    offset += chunk.length;
+  }
 
-  // Find header/body boundary (\r\n\r\n)
-  let hdrEnd = -1;
-  for (let i = 0; i < all.length - 3; i++) {
-    if (all[i] === 13 && all[i+1] === 10 && all[i+2] === 13 && all[i+3] === 10) {
-      hdrEnd = i;
+  let headerEnd = -1;
+  for (let i = 0; i < response.length - 3; i++) {
+    if (response[i] === 13 && response[i + 1] === 10 && response[i + 2] === 13 && response[i + 3] === 10) {
+      headerEnd = i;
       break;
     }
   }
-  if (hdrEnd < 0) throw new Error("Invalid HTTP response — no header terminator");
+  if (headerEnd < 0) throw new Error("Invalid HTTP response — no header terminator");
 
-  const hdrStr = decoder.decode(all.slice(0, hdrEnd));
-  let bodyBytes = all.slice(hdrEnd + 4);
-
-  const hdrLines = hdrStr.split("\r\n");
-  const httpStatus = parseInt(hdrLines[0].split(" ")[1]) || 0;
-
-  const respHeaders = {};
-  for (let i = 1; i < hdrLines.length; i++) {
-    const ci = hdrLines[i].indexOf(":");
-    if (ci > 0) respHeaders[hdrLines[i].slice(0, ci).trim().toLowerCase()] = hdrLines[i].slice(ci + 1).trim();
+  const headerText = decoder.decode(response.slice(0, headerEnd));
+  const lines = headerText.split("\r\n");
+  const status = Number.parseInt(lines[0].split(" ")[1], 10) || 502;
+  const responseHeaders = {};
+  for (const line of lines.slice(1)) {
+    const separator = line.indexOf(":");
+    if (separator > 0) {
+      responseHeaders[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
+    }
   }
 
-  // Dechunk if needed
-  if (respHeaders["transfer-encoding"]?.includes("chunked")) {
+  let bodyBytes = response.slice(headerEnd + 4);
+  if (responseHeaders["transfer-encoding"]?.includes("chunked")) {
     bodyBytes = dechunk(bodyBytes);
   }
 
   return {
-    status: httpStatus,
+    status,
     body: decoder.decode(bodyBytes),
-    contentType: respHeaders["content-type"] || "text/plain",
+    contentType: responseHeaders["content-type"] || "text/plain",
   };
 }
 
 function dechunk(bytes) {
-  const out = [];
-  let pos = 0;
-  while (pos < bytes.length) {
-    let le = pos;
-    while (le < bytes.length - 1 && !(bytes[le] === 13 && bytes[le+1] === 10)) le++;
-    if (le >= bytes.length - 1) break;
-    const sz = parseInt(new TextDecoder().decode(bytes.slice(pos, le)).trim(), 16);
-    if (isNaN(sz) || sz === 0) break;
-    const cs = le + 2;
-    const ce = Math.min(cs + sz, bytes.length);
-    out.push(bytes.slice(cs, ce));
-    pos = ce + 2;
-    if (pos >= bytes.length) break;
+  const decoder = new TextDecoder();
+  const output = [];
+  let position = 0;
+  while (position < bytes.length) {
+    let lineEnd = position;
+    while (lineEnd < bytes.length - 1 && !(bytes[lineEnd] === 13 && bytes[lineEnd + 1] === 10)) lineEnd++;
+    if (lineEnd >= bytes.length - 1) break;
+    const size = Number.parseInt(decoder.decode(bytes.slice(position, lineEnd)).trim(), 16);
+    if (!Number.isFinite(size) || size === 0) break;
+    const chunkStart = lineEnd + 2;
+    output.push(bytes.slice(chunkStart, chunkStart + size));
+    position = chunkStart + size + 2;
   }
-  let tl = 0;
-  for (const r of out) tl += r.length;
-  const comb = new Uint8Array(tl);
-  let o = 0;
-  for (const r of out) { comb.set(r, o); o += r.length; }
-  return comb;
+  const length = output.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of output) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+// ── Stream test ──
+async function handleStreamTest() {
+  try {
+    const socket = connect(
+      { hostname: BETFAIR_STREAM_HOST, port: BETFAIR_STREAM_PORT },
+      { secureTransport: "on" }
+    );
+    await Promise.race([
+      socket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Socket open timeout (10s)")), 10000)
+      ),
+    ]);
+    socket.close().catch(() => {});
+    return jsonResponse(200, {
+      status: "ok",
+      message: "TCP connection to stream-api.betfair.com:443 succeeded",
+      host: BETFAIR_STREAM_HOST,
+      port: BETFAIR_STREAM_PORT,
+    });
+  } catch (err) {
+    return jsonResponse(502, {
+      status: "error",
+      message: `TCP connection to stream-api.betfair.com:443 failed: ${err.message}`,
+      host: BETFAIR_STREAM_HOST,
+      port: BETFAIR_STREAM_PORT,
+    });
+  }
 }
 
 // ── WebSocket ↔ TCP bridge for Betfair Stream API ──
@@ -237,24 +268,39 @@ async function handleStreamBridge(request) {
   const server = pair[1];
   server.accept();
 
-  let betfairSocket, writer, reader;
+  let betfairSocket = null;
+  let writer = null;
+  let reader = null;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
   let closed = false;
 
   function sendDiag(message) {
-    try { server.send(JSON.stringify({ op: "diag", message })); } catch (_) {}
+    try {
+      server.send(JSON.stringify({ op: "diag", message }));
+    } catch (_) {}
   }
 
   try {
-    betfairSocket = connect(BETFAIR_STREAM_HOST, { secureTransport: "on" });
+    betfairSocket = connect(
+      { hostname: BETFAIR_STREAM_HOST, port: BETFAIR_STREAM_PORT },
+      { secureTransport: "on" }
+    );
+
+    await Promise.race([
+      betfairSocket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Stream socket open timeout (10s)")), 10000)
+      ),
+    ]);
+
     writer = betfairSocket.writable.getWriter();
     reader = betfairSocket.readable.getReader();
-    sendDiag("TCP socket created to " + BETFAIR_STREAM_HOST);
+    sendDiag("TLS TCP socket connected to " + BETFAIR_STREAM_HOST + ":" + BETFAIR_STREAM_PORT);
   } catch (err) {
-    sendDiag("TCP connect() threw: " + err.message);
-    server.close(1011, "TCP connection failed");
+    sendDiag("Stream TCP connect failed: " + (err?.message || String(err)));
+    try { server.close(1011, "TCP connection to Betfair Stream failed"); } catch (_) {}
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -264,7 +310,10 @@ async function handleStreamBridge(request) {
     if (data) {
       writer.write(encoder.encode(data)).catch((err) => {
         sendDiag("TCP write failed: " + (err?.message || String(err)));
-        if (!closed) { closed = true; server.close(1011, "TCP write failed"); }
+        if (!closed) {
+          closed = true;
+          try { server.close(1011, "TCP write failed"); } catch (_) {}
+        }
       });
     }
   });
@@ -273,26 +322,43 @@ async function handleStreamBridge(request) {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) { sendDiag("TCP stream ended"); break; }
+        if (done) {
+          sendDiag("Betfair stream TCP connection ended");
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         let idx;
         while ((idx = buffer.indexOf("\r\n")) >= 0) {
           const line = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
-          if (line.trim()) server.send(line);
+          if (line.trim()) {
+            try {
+              server.send(line);
+            } catch (err) {
+              sendDiag("WebSocket send failed: " + (err?.message || String(err)));
+              break;
+            }
+          }
         }
       }
     } catch (e) {
       sendDiag("TCP read error: " + (e?.message || String(e)));
     }
-    if (!closed) { closed = true; server.close(1000, "Betfair stream ended"); }
+    if (!closed) {
+      closed = true;
+      try { server.close(1000, "Betfair stream ended"); } catch (_) {}
+    }
   })();
 
   server.addEventListener("close", () => {
-    closed = true; writer.close().catch(() => {}); reader.cancel().catch(() => {});
+    closed = true;
+    if (writer) writer.close().catch(() => {});
+    if (reader) reader.cancel().catch(() => {});
   });
   server.addEventListener("error", () => {
-    closed = true; writer.close().catch(() => {}); reader.cancel().catch(() => {});
+    closed = true;
+    if (writer) writer.close().catch(() => {});
+    if (reader) reader.cancel().catch(() => {});
   });
 
   return new Response(null, { status: 101, webSocket: client });

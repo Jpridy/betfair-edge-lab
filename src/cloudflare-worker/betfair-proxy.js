@@ -1,19 +1,20 @@
 /**
- * Betfair CORS Proxy — Cloudflare Worker (raw TCP, v5)
+ * Betfair CORS Proxy + Stream Bridge — Cloudflare Worker (v6: unified)
  *
- * Uses cloudflare:sockets with raw TLS to bypass Betfair's WAF fingerprinting.
- * Standard fetch() is blocked by Betfair's WAF (returns HTML 403).
+ * Combines:
+ * - Raw TLS TCP for REST API (v5, no allowHalfOpen — avoids "Stream was cancelled")
+ * - WebSocket ↔ TCP bridge for Stream API (v3, with socket.opened await)
  *
- * Key fixes from v3:
- * - Removed allowHalfOpen (was causing "Stream was cancelled")
- * - Added connection timeout
- * - Simplified socket lifecycle
- * - Processes response incrementally
+ * DEPLOY: dash.cloudflare.com → Workers & Pages → your worker → Edit code →
+ * paste this entire file → Save and deploy.
  *
- * DEPLOY: Paste into Cloudflare Worker, set URL as BETFAIR_PROXY_URL secret.
+ * Verify after deploy: visit https://<your-worker>.workers.dev/health
  */
 
 import { connect } from "cloudflare:sockets";
+
+const BETFAIR_STREAM_HOST = "stream-api.betfair.com";
+const BETFAIR_STREAM_PORT = 443;
 
 const ALLOWED_HOSTS = new Set([
   "api.betfair.com",
@@ -33,20 +34,35 @@ const CORS_HEADERS = {
 
 export default {
   async fetch(request) {
+    // ── WebSocket upgrade → Stream API TCP bridge ──
+    const upgradeHeader = request.headers.get("Upgrade");
+    if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket") {
+      return handleStreamBridge(request);
+    }
+
+    // ── CORS preflight ──
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
     const url = new URL(request.url);
 
+    // ── Health check ──
     if (url.pathname === "/health") {
       return jsonResponse(200, {
         status: "ok",
         service: "betfair-proxy",
-        version: "5-raw-tcp",
+        version: "6-unified",
+        features: ["raw-tcp-rest", "websocket-stream-bridge"],
       });
     }
 
+    // ── Stream test — checks if TCP to stream-api.betfair.com works ──
+    if (url.pathname === "/stream-test") {
+      return handleStreamTest();
+    }
+
+    // ── REST API via raw TLS TCP socket ──
     const targetUrl = url.searchParams.get("url");
     if (!targetUrl) return jsonResponse(400, { error: "Missing url parameter" });
 
@@ -55,13 +71,13 @@ export default {
       return jsonResponse(403, { error: "Target host not allowed", host: target.hostname });
     }
 
-    const body =
+    const reqBody =
       request.method !== "GET" && request.method !== "HEAD"
         ? await request.text()
         : null;
 
     const isAu = target.hostname.endsWith(".com.au");
-    const origin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
+    const betfairOrigin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
 
     const headers = {
       "Content-Type": request.headers.get("Content-Type") || "application/json",
@@ -69,8 +85,8 @@ export default {
       "Accept-Language": "en-AU,en;q=0.9",
       "Accept-Encoding": "identity",
       "User-Agent": BROWSER_UA,
-      Origin: origin,
-      Referer: origin + "/",
+      Origin: betfairOrigin,
+      Referer: betfairOrigin + "/",
       "Sec-Fetch-Dest": "empty",
       "Sec-Fetch-Mode": "cors",
       "Sec-Fetch-Site": "same-site",
@@ -82,7 +98,7 @@ export default {
     if (auth) headers["X-Authentication"] = auth;
 
     try {
-      const result = await rawTcpRequest(target, request.method, headers, body);
+      const result = await rawTcpRequest(target, request.method, headers, reqBody);
       return new Response(result.body, {
         status: result.status,
         headers: {
@@ -91,9 +107,7 @@ export default {
         },
       });
     } catch (error) {
-      return jsonResponse(502, {
-        error: "TCP proxy error: " + error.message,
-      });
+      return jsonResponse(502, { error: "TCP proxy error: " + error.message });
     }
   },
 };
@@ -105,6 +119,7 @@ function jsonResponse(status, data) {
   });
 }
 
+// ── Raw HTTP/1.1 client over TLS TCP socket ──
 async function rawTcpRequest(target, method, headers, body) {
   const host = target.hostname;
   const port = Number(target.port || 443);
@@ -120,7 +135,7 @@ async function rawTcpRequest(target, method, headers, body) {
   rawRequest += "Connection: close\r\n\r\n";
   if (body) rawRequest += body;
 
-  // Create socket — no allowHalfOpen (was causing "Stream was cancelled")
+  // No allowHalfOpen — it was causing "Stream was cancelled" errors in v3.
   const socket = connect(
     { hostname: host, port },
     { secureTransport: "on" }
@@ -134,12 +149,10 @@ async function rawTcpRequest(target, method, headers, body) {
     ),
   ]);
 
-  // Write the request
   const writer = socket.writable.getWriter();
   await writer.write(encoder.encode(rawRequest));
   writer.releaseLock();
 
-  // Read the response — collect all chunks until done
   const reader = socket.readable.getReader();
   const chunks = [];
   try {
@@ -220,4 +233,151 @@ function dechunk(bytes) {
     offset += chunk.length;
   }
   return result;
+}
+
+// ── Stream test — verifies TCP connectivity to Betfair Stream API ──
+async function handleStreamTest() {
+  try {
+    const socket = connect(
+      { hostname: BETFAIR_STREAM_HOST, port: BETFAIR_STREAM_PORT },
+      { secureTransport: "on" }
+    );
+    await Promise.race([
+      socket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Socket open timeout (10s)")), 10000)
+      ),
+    ]);
+    // Close immediately — we just wanted to verify connectivity
+    socket.close().catch(() => {});
+    return jsonResponse(200, {
+      status: "ok",
+      message: "TCP connection to stream-api.betfair.com:443 succeeded",
+      host: BETFAIR_STREAM_HOST,
+      port: BETFAIR_STREAM_PORT,
+    });
+  } catch (err) {
+    return jsonResponse(502, {
+      status: "error",
+      message: `TCP connection to stream-api.betfair.com:443 failed: ${err.message}`,
+      host: BETFAIR_STREAM_HOST,
+      port: BETFAIR_STREAM_PORT,
+    });
+  }
+}
+
+// ── WebSocket ↔ TCP bridge for Betfair Stream API ──
+// WebSocketPair is a Cloudflare Workers global, not an import.
+/* global WebSocketPair */
+// Betfair's Stream API uses raw TCP with line-delimited JSON (NOT WebSocket).
+// The browser can't do raw TCP, so this function:
+// 1. Accepts a WebSocket from the browser
+// 2. Opens a raw TLS TCP socket to stream-api.betfair.com:443
+// 3. Forwards browser WebSocket messages → Betfair TCP (appending \r\n)
+// 4. Forwards Betfair TCP responses → browser WebSocket (splitting on \r\n)
+async function handleStreamBridge(request) {
+  const pair = new WebSocketPair();
+  const client = pair[0];
+  const server = pair[1];
+  server.accept();
+
+  let betfairSocket = null;
+  let writer = null;
+  let reader = null;
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  let closed = false;
+
+  function sendDiag(message) {
+    try {
+      server.send(JSON.stringify({ op: "diag", message }));
+    } catch (_) {}
+  }
+
+  // Connect to Betfair Stream API via raw TLS TCP
+  try {
+    betfairSocket = connect(
+      { hostname: BETFAIR_STREAM_HOST, port: BETFAIR_STREAM_PORT },
+      { secureTransport: "on" }
+    );
+
+    // Wait for TLS handshake to complete before using the socket
+    await Promise.race([
+      betfairSocket.opened,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Stream socket open timeout (10s)")), 10000)
+      ),
+    ]);
+
+    writer = betfairSocket.writable.getWriter();
+    reader = betfairSocket.readable.getReader();
+    sendDiag("TLS TCP socket connected to " + BETFAIR_STREAM_HOST + ":" + BETFAIR_STREAM_PORT);
+  } catch (err) {
+    sendDiag("Stream TCP connect failed: " + (err?.message || String(err)));
+    try { server.close(1011, "TCP connection to Betfair Stream failed"); } catch (_) {}
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // Browser → Betfair: forward WebSocket messages as raw TCP lines
+  server.addEventListener("message", (event) => {
+    if (closed) return;
+    const data = typeof event.data === "string" ? event.data + "\r\n" : null;
+    if (data) {
+      writer.write(encoder.encode(data)).catch((err) => {
+        sendDiag("TCP write failed: " + (err?.message || String(err)));
+        if (!closed) {
+          closed = true;
+          try { server.close(1011, "TCP write failed"); } catch (_) {}
+        }
+      });
+    }
+  });
+
+  // Betfair → Browser: read TCP stream, split on \r\n, send each line as WS message
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          sendDiag("Betfair stream TCP connection ended");
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\r\n")) >= 0) {
+          const line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          if (line.trim()) {
+            try {
+              server.send(line);
+            } catch (err) {
+              sendDiag("WebSocket send failed: " + (err?.message || String(err)));
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      sendDiag("TCP read error: " + (e?.message || String(e)));
+    }
+    if (!closed) {
+      closed = true;
+      try { server.close(1000, "Betfair stream ended"); } catch (_) {}
+    }
+  })();
+
+  // Cleanup on browser disconnect
+  server.addEventListener("close", () => {
+    closed = true;
+    if (writer) writer.close().catch(() => {});
+    if (reader) reader.cancel().catch(() => {});
+  });
+  server.addEventListener("error", () => {
+    closed = true;
+    if (writer) writer.close().catch(() => {});
+    if (reader) reader.cancel().catch(() => {});
+  });
+
+  return new Response(null, { status: 101, webSocket: client });
 }
