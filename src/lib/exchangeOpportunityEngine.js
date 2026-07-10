@@ -4,14 +4,15 @@
 // Orchestrates the full bot cycle:
 //   1. Scan all open pre-race markets
 //   2. Group by race/event
-//   3. Fetch/enrich public form data (via AI callback)
-//   4. Call AI for probabilities (pWin, pPlace, pBeatsOpponent)
-//   5. Generate BACK and LAY opportunities for WIN, PLACE, H2H
-//   6. Run exchange EV maths (deterministic — no AI bypass)
-//   7. Run safety gates
-//   8. Rank all positive-EV opportunities
-//   9. Choose best opportunity
-//  10. Return best opportunity + all opportunities + diagnostics
+//   3. Sort by nearest start time, scan only the first N (default 1)
+//   4. Fetch/enrich public form data (via AI callback)
+//   5. Call AI for probabilities (pWin, pPlace, pBeatsOpponent)
+//   6. Generate BACK and LAY opportunities for WIN, PLACE, H2H
+//   7. Run exchange EV maths (deterministic — no AI bypass)
+//   8. Run safety gates
+//   9. Rank all positive-EV opportunities
+//  10. Choose best opportunity
+//  11. Return best opportunity + all opportunities + diagnostics
 //
 // The AI call is delegated to a callback so this engine stays pure.
 // ============================================================================
@@ -28,42 +29,72 @@ import { matchRunnerToMarket } from './marketIdMatcher';
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
 
+// ── Runner-by-market lookup map ──
+// Pre-builds a Map<marketIdString, runner[]> in a single O(runners) pass.
+// Replaces N×M filter calls (runners.filter(r => matchRunnerToMarket(r, m)))
+// with O(1) lookups — massive speedup when markets=400, runners=1000+.
+function buildRunnerByMarketMap(runners) {
+  const map = new Map();
+  for (const r of runners) {
+    if (r.status !== 'ACTIVE') continue;
+    const ids = [r.marketId, r.betfairMarketId, r.market_id].filter(Boolean).map(String);
+    for (const id of ids) {
+      let arr = map.get(id);
+      if (!arr) { arr = []; map.set(id, arr); }
+      arr.push(r);
+    }
+  }
+  return map;
+}
+
+function getRunnersForMarket(market, runnersByMarket) {
+  if (!market) return [];
+  const ids = [market.id, market.marketId, market.betfairMarketId].filter(Boolean).map(String);
+  if (ids.length === 0) return [];
+  const seen = new Set();
+  const result = [];
+  for (const id of ids) {
+    const arr = runnersByMarket.get(id);
+    if (arr) {
+      for (const r of arr) {
+        if (!seen.has(r)) { seen.add(r); result.push(r); }
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Scan all eligible pre-race markets.
  * @returns {Array} Eligible markets (OPEN, not in-play, 2+ runners, in time window)
  */
-export function scanEligibleMarkets(markets, runners, settings, debugScanMode = false) {
+export function scanEligibleMarkets(markets, runners, settings, debugScanMode = false, runnersByMarket = null) {
   const windowStart = settings.defaultTimeWindowStartSeconds || 500;
   const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
   const nowMs = Date.now();
+  const rMap = runnersByMarket || buildRunnerByMarketMap(runners);
 
   return markets.filter(m => {
     if (m.status !== 'OPEN') return false;
     if (m.inPlay && !settings.allowInPlay) return false;
 
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
-    );
+    const marketRunners = getRunnersForMarket(m, rMap);
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount < 2) return false;
 
-    // In debug scan mode, skip the time window filter entirely
     if (debugScanMode) return true;
 
-    // Time window: include markets that are within or approaching the window
     const start = m.startTime ? new Date(m.startTime).getTime() : NaN;
-    if (isNaN(start)) return true; // No start time — include (will be filtered later)
+    if (isNaN(start)) return true;
     const secsBefore = (start - nowMs) / 1000;
-    // Include markets from windowEnd to windowStart * 2 (gives buffer for scanning)
     return secsBefore > windowEnd && secsBefore < windowStart * 2;
   });
 }
 
 /**
  * Build pre-filter market feed diagnostics from ALL loaded markets.
- * Runs before any eligibility filtering to show the raw state of the market feed.
  */
-function buildMarketFeedDiagnostics(markets, runners, connectionState) {
+function buildMarketFeedDiagnostics(markets, runners, connectionState, runnersByMarket) {
   const nowMs = Date.now();
   let open = 0, closed = 0, suspended = 0, inPlay = 0, notInPlay = 0;
   let withStartTime = 0, withoutStartTime = 0;
@@ -71,7 +102,6 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
   let streamCount = 0, catalogueCount = 0, mergedCount = 0;
   let runnersWithBackPrice = 0, runnersWithLayPrice = 0, runnersWithBackOrLay = 0;
 
-  // Count markets by source
   for (const m of markets) {
     const src = m.source || 'cached';
     if (src === 'stream') streamCount++;
@@ -79,7 +109,6 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
     else if (src === 'merged') { mergedCount++; streamCount++; catalogueCount++; }
   }
 
-  // Count runners with price data
   for (const r of runners) {
     const hasBack = r.bestBackPrice && r.bestBackPrice > 0;
     const hasLay = r.bestLayPrice && r.bestLayPrice > 0;
@@ -92,14 +121,10 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
     if (m.status === 'OPEN') open++;
     else if (m.status === 'CLOSED' || m.status === 'SETTLED') closed++;
     else if (m.status === 'SUSPENDED') suspended++;
-
     if (m.inPlay) inPlay++; else notInPlay++;
-
     if (m.startTime || m.marketStartTime) withStartTime++; else withoutStartTime++;
 
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
-    );
+    const marketRunners = getRunnersForMarket(m, runnersByMarket);
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount >= 2) withRunners++;
 
@@ -107,7 +132,6 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
     if (hasPriceData) withPriceData++; else missingPriceData++;
   }
 
-  // Determine price feed staleness
   const lastStreamUpdateAt = connectionState?.lastStreamUpdateAt ?? null;
   const lastCatalogueRefreshAt = connectionState?.lastCatalogueRefreshAt ?? null;
   const streamConnected = connectionState?.streamConnected ?? false;
@@ -116,24 +140,14 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
   let priceFeedStale = false;
   let marketDataSource = 'none';
 
-  if (markets.length === 0) {
-    marketDataSource = 'none';
-  } else if (streamConnected && mergedCount > 0) {
-    marketDataSource = 'merged';
-  } else if (streamCount > 0 && !catalogueCount) {
-    marketDataSource = 'stream_live';
-  } else if (catalogueCount > 0 && !streamCount) {
-    marketDataSource = 'rest_catalogue';
-  } else if (mergedCount > 0) {
-    marketDataSource = 'merged';
-  } else {
-    marketDataSource = 'cached_stale';
-  }
+  if (markets.length === 0) marketDataSource = 'none';
+  else if (streamConnected && mergedCount > 0) marketDataSource = 'merged';
+  else if (streamCount > 0 && !catalogueCount) marketDataSource = 'stream_live';
+  else if (catalogueCount > 0 && !streamCount) marketDataSource = 'rest_catalogue';
+  else if (mergedCount > 0) marketDataSource = 'merged';
+  else marketDataSource = 'cached_stale';
 
-  // Stale if: connected but no price updates in 60s (stream) or 5min (catalogue only)
-  if (apiConnected && withPriceData === 0) {
-    priceFeedStale = true;
-  }
+  if (apiConnected && withPriceData === 0) priceFeedStale = true;
   if (lastStreamUpdateAt && streamConnected) {
     const ageMs = nowMs - new Date(lastStreamUpdateAt).getTime();
     if (ageMs > 60000) priceFeedStale = true;
@@ -166,10 +180,9 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState) {
 }
 
 /**
- * Build market filter funnel — full rejection breakdown showing exactly
- * why markets are rejected at each stage of the eligibility pipeline.
+ * Build market filter funnel — full rejection breakdown.
  */
-function buildMarketFilterFunnel(markets, runners, settings, debugScanMode) {
+function buildMarketFilterFunnel(markets, runners, settings, debugScanMode, runnersByMarket) {
   const windowStart = settings.defaultTimeWindowStartSeconds || 500;
   const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
   const nowMs = Date.now();
@@ -199,7 +212,7 @@ function buildMarketFilterFunnel(markets, runners, settings, debugScanMode) {
     }
     insideTimeWindow++;
 
-    const marketRunners = runners.filter(r => matchRunnerToMarket(r, m) && r.status === 'ACTIVE');
+    const marketRunners = getRunnersForMarket(m, runnersByMarket);
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount < 2) { rejNoRunners++; continue; }
     withTwoRunners++;
@@ -233,7 +246,6 @@ function buildMarketFilterFunnel(markets, runners, settings, debugScanMode) {
 
 /**
  * Build time-window funnel for all OPEN non-inplay markets.
- * Shows exactly why markets are rejected by the time window.
  */
 function buildTimeWindowFunnel(markets, settings, debugScanMode) {
   const windowStart = settings.defaultTimeWindowStartSeconds || 500;
@@ -283,7 +295,6 @@ function buildTimeWindowFunnel(markets, settings, debugScanMode) {
     });
   }
 
-  // Sort by secondsToJump (nulls last) and take nearest 20
   nearestMarkets.sort((a, b) => {
     if (a.secondsToJump === null && b.secondsToJump === null) return 0;
     if (a.secondsToJump === null) return 1;
@@ -306,16 +317,16 @@ function buildTimeWindowFunnel(markets, settings, debugScanMode) {
 /**
  * Build a debug table of the first 50 loaded markets with full details.
  */
-function buildLoadedMarketsTable(markets, runners) {
+function buildLoadedMarketsTable(markets, runnersByMarket) {
   const nowMs = Date.now();
   return markets.slice(0, 50).map(m => {
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
-    );
+    const marketRunners = getRunnersForMarket(m, runnersByMarket);
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     const hasPriceData = marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
     const start = m.startTime ? new Date(m.startTime).getTime() : (m.marketStartTime ? new Date(m.marketStartTime).getTime() : NaN);
     const secondsToJump = isNaN(start) ? null : Math.round((start - nowMs) / 1000);
+    const runnerCountByMarketId = runnersByMarket.get(String(m.id || ''))?.length || 0;
+    const runnerCountByBetfairMarketId = runnersByMarket.get(String(m.betfairMarketId || ''))?.length || 0;
     return {
       marketId: m.betfairMarketId || m.id,
       eventName: m.eventName || '',
@@ -327,8 +338,8 @@ function buildLoadedMarketsTable(markets, runners) {
       marketStartTime: m.startTime || m.marketStartTime || null,
       secondsToJump,
       runnerCount,
-      runnerCountByMarketId: runners.filter(r => String(r.marketId || '') === String(m.id || '') && r.status === 'ACTIVE').length,
-      runnerCountByBetfairMarketId: runners.filter(r => String(r.marketId || '') === String(m.betfairMarketId || '') && r.status === 'ACTIVE').length,
+      runnerCountByMarketId,
+      runnerCountByBetfairMarketId,
       hasPriceData,
       totalMatched: m.totalMatched || 0,
     };
@@ -337,8 +348,6 @@ function buildLoadedMarketsTable(markets, runners) {
 
 /**
  * Build a market-only AI result when Featherless AI is disabled.
- * Derives win probabilities from Betfair back/lay prices (implied probability).
- * Lower data quality (30) and confidence (25) to ensure safety gates flag these.
  */
 function buildMarketOnlyAIResult(cluster, marketRunners) {
   const runnerProbabilities = [];
@@ -357,7 +366,6 @@ function buildMarketOnlyAIResult(cluster, marketRunners) {
       });
     }
   }
-  // Normalize pWin to sum to ~1
   const totalP = runnerProbabilities.reduce((s, r) => s + r.pWin, 0);
   if (totalP > 0) {
     for (const r of runnerProbabilities) {
@@ -386,6 +394,7 @@ function buildMarketOnlyAIResult(cluster, marketRunners) {
  * @param {boolean} params.emergencyStop - Emergency stop active
  * @param {Function} params.callAI - async (cluster, primaryMarket, marketRunners) => aiResult
  * @param {object} params.connectionState - Betfair connection state
+ * @param {number} params.maxEventsToScan - Max events to call AI for (default 1 — nearest race only)
  * @returns {object} { bestOpportunity, allOpportunities, eventClusters, diagnostics }
  */
 export async function runExchangeCycle(params) {
@@ -401,6 +410,7 @@ export async function runExchangeCycle(params) {
     callAI = null,
     callExternalSearch = null,
     connectionState = {},
+    maxEventsToScan = 1,
   } = params || {};
 
   // ── Safe argument defaults ──
@@ -413,24 +423,26 @@ export async function runExchangeCycle(params) {
   bankrollStats = bankrollStats || {};
   connectionState = connectionState || {};
 
-  // ── Build pre-filter diagnostics from ALL loaded markets ──
-  const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners, connectionState);
+  // ── Pre-build runner-by-market lookup (single O(runners) pass) ──
+  // Replaces N×M runners.filter() calls with O(1) map lookups.
+  const runnersByMarket = buildRunnerByMarketMap(runners);
 
-  // ── Build time-window funnel ──
+  // ── Build pre-filter diagnostics from ALL loaded markets ──
+  const marketFeedDiagnostics = buildMarketFeedDiagnostics(markets, runners, connectionState, runnersByMarket);
+
   const debugScanMode = featherlessSettings?.debugScanMode === true;
 
-  // ── Paper Proof Mode: declared BEFORE the event loop to avoid TDZ ReferenceError ──
+  // ── Paper Proof Mode ──
   const paperProofMode = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
-  // ── Build market filter funnel (full rejection breakdown) ──
-  const marketFilterFunnel = buildMarketFilterFunnel(markets, runners, settings, debugScanMode);
+  // ── Build market filter funnel ──
+  const marketFilterFunnel = buildMarketFilterFunnel(markets, runners, settings, debugScanMode, runnersByMarket);
 
   const timeWindowFunnel = buildTimeWindowFunnel(markets, settings, debugScanMode);
 
   // ── Build loaded markets debug table (first 50) ──
-  const loadedMarketsTable = buildLoadedMarketsTable(markets, runners);
+  const loadedMarketsTable = buildLoadedMarketsTable(markets, runnersByMarket);
 
-  // ── Connection state ──
   const connectionDiagnostics = {
     betfairApiConnected: connectionState?.apiConnected ?? false,
     streamConnected: connectionState?.streamConnected ?? false,
@@ -459,29 +471,16 @@ export async function runExchangeCycle(params) {
     };
   }
 
-  // ── Separated scan counts ──
   const totalMarketsLoaded = markets.length;
   const openPreRaceMarkets = markets.filter(m => m.status === 'OPEN' && !m.inPlay).length;
   const marketsInsideTimeWindow = timeWindowFunnel.insideWindowMarkets;
 
   // 1. Scan all eligible pre-race markets
-  const eligibleMarkets = scanEligibleMarkets(markets, runners, settings, debugScanMode);
+  const eligibleMarkets = scanEligibleMarkets(markets, runners, settings, debugScanMode, runnersByMarket);
 
-  // Count eligible after runner filter
-  const eligibleAfterRunnerFilter = markets.filter(m => {
-    if (m.status !== 'OPEN') return false;
-    if (m.inPlay && !settings.allowInPlay) return false;
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
-    );
-    const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
-    return runnerCount >= 2;
-  }).length;
-
+  const eligibleAfterRunnerFilter = eligibleMarkets.length;
   const eligibleAfterPriceFilter = eligibleMarkets.filter(m => {
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
-    );
+    const marketRunners = getRunnersForMarket(m, runnersByMarket);
     return marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
   }).length;
 
@@ -522,12 +521,23 @@ export async function runExchangeCycle(params) {
   // 2. Group by event/race
   const eventClusters = clusterMarketsByEvent(eligibleMarkets);
 
-  // ── Market detection log: record detected type for every scanned market ──
+  // ── Sort clusters by nearest start time — scan the most imminent race first ──
+  eventClusters.sort((a, b) => {
+    const aStart = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+    const bStart = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+    return aStart - bStart;
+  });
+
+  // ── Only scan the first maxEventsToScan events (default 1) ──
+  // This is the single biggest speedup: 1 AI call instead of N.
+  // All clusters are still reported in diagnostics for transparency.
+  const totalEventClusters = eventClusters.length;
+  const clustersToScan = eventClusters.slice(0, maxEventsToScan);
+
+  // ── Market detection log ──
   const marketDetectionLog = eligibleMarkets.map(m => {
     const detectedMarketType = detectMarketType(m);
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, m) && r.status === 'ACTIVE'
-    );
+    const marketRunners = getRunnersForMarket(m, runnersByMarket);
     return {
       marketId: m.betfairMarketId || m.id,
       marketName: m.marketName || '',
@@ -555,7 +565,6 @@ export async function runExchangeCycle(params) {
   let proofFallbackCreated = false;
   let proofFallbackBlockedReason = null;
 
-  // ── External search diagnostics ──
   const externalSearchPerEvent = [];
   let extSearchCalls = 0;
   let extSearchCacheHits = 0;
@@ -573,7 +582,6 @@ export async function runExchangeCycle(params) {
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extCacheTtlMs = (featherlessSettings?.externalSearchCacheTtlMinutes || 5) * 60 * 1000;
 
-  // Count market types detected
   const marketTypeCounts = eligibleMarkets.reduce((acc, m) => {
     const type = detectMarketType(m);
     if (type === 'WIN') acc.winMarketsFound++;
@@ -583,16 +591,13 @@ export async function runExchangeCycle(params) {
     return acc;
   }, { winMarketsFound: 0, placeMarketsFound: 0, h2hMarketsFound: 0, unknownMarketsFound: 0 });
 
-  for (const cluster of eventClusters) {
+  for (const cluster of clustersToScan) {
     eventsScanned++;
     const primaryMarket = getPrimaryMarket(cluster);
     if (!primaryMarket) continue;
     clustersWithPrimaryMarket++;
 
-    // Get runners for the primary market
-    const marketRunners = runners.filter(r =>
-      matchRunnerToMarket(r, primaryMarket) && r.status === 'ACTIVE'
-    );
+    const marketRunners = getRunnersForMarket(primaryMarket, runnersByMarket);
 
     if (marketRunners.length === 0) continue;
     clustersWithMatchedRunners++;
@@ -622,10 +627,6 @@ export async function runExchangeCycle(params) {
       aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
     }
 
-    // ── Fallback to market-only probabilities when AI is unavailable ──
-    // Ensures the engine ALWAYS generates opportunities when AI fails:
-    //   - AI disabled (callAI = null) → market-only
-    //   - AI returned null/errored → market-only (in proof/debug mode) or skip (normal mode)
     const allowMarketOnlyFallback = paperProofMode || debugScanMode || !callAI;
     if (!aiResult) {
       if (allowMarketOnlyFallback) {
@@ -644,13 +645,12 @@ export async function runExchangeCycle(params) {
       }
     }
 
-    // ── External search: call OpenAI web search for this event ──
+    // ── External search ──
     let externalSearchResult = null;
     if (extSearchEnabled && callExternalSearch) {
       const eventName = cluster.eventName || primaryMarket.eventName || '';
       const marketStartTime = primaryMarket.startTime || primaryMarket.marketStartTime || '';
 
-      // Check cache first
       const cached = getCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners);
       if (cached) {
         extSearchCacheHits++;
@@ -712,9 +712,7 @@ export async function runExchangeCycle(params) {
     );
     allOpportunities.push(...opportunities);
 
-    // ── Track probability changes and decision changes from external search ──
     if (externalSearchResult && externalSearchResult.searchStatus === 'success') {
-      // Find pre-search and post-search best opportunities
       const oppsWithDelta = opportunities.filter(o => Math.abs(o.probabilityDelta || 0) > 0.001);
       for (const opp of oppsWithDelta) {
         extProbabilityChanges.push({
@@ -728,7 +726,6 @@ export async function runExchangeCycle(params) {
         });
       }
 
-      // Check if best runner changed
       const sortedPre = [...opportunities].sort((a, b) => (b.preSearchProbability || 0) - (a.preSearchProbability || 0));
       const sortedPost = [...opportunities].sort((a, b) => (b.postSearchProbability || 0) - (a.postSearchProbability || 0));
       const bestPre = sortedPre[0];
@@ -749,10 +746,9 @@ export async function runExchangeCycle(params) {
   const ranked = rankOpportunities(allOpportunities);
 
   // 9. Choose best positive-EV opportunity
-  // In debug scan mode, do NOT select any opportunity for order placement
   let bestOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
 
-  // ── Paper Proof Fallback: if no positive-EV opportunity and proof mode is active ──
+  // ── Paper Proof Fallback ──
   if (!debugScanMode && !bestOpportunity && paperProofMode) {
     proofFallbackAttempted = true;
     const proofOpp = buildProofOpportunity(eventClusters, runners, paperOrders, settings);
@@ -761,7 +757,6 @@ export async function runExchangeCycle(params) {
       allOpportunities.push(proofOpp);
       proofFallbackCreated = true;
     } else {
-      // Determine the exact reason the fallback failed
       if (eventClusters.length === 0) {
         proofFallbackBlockedReason = 'no eligible event clusters';
       } else {
@@ -776,7 +771,7 @@ export async function runExchangeCycle(params) {
             if (market.status !== 'OPEN') continue;
             hasOpenMarket = true;
             if (market.inPlay) continue;
-            const marketRunners = runners.filter(r => matchRunnerToMarket(r, market) && r.status === 'ACTIVE');
+            const marketRunners = getRunnersForMarket(market, runnersByMarket);
             if (marketRunners.length > 0) hasMatchedRunners = true;
             for (const runner of marketRunners) {
               hasActiveRunners = true;
@@ -804,7 +799,7 @@ export async function runExchangeCycle(params) {
     }
   }
 
-  // ── Top 20 opportunities by EV (for export and diagnostics) ──
+  // ── Top 20 opportunities by EV ──
   const topOpportunities = ranked.slice(0, 20).map(o => ({
     opportunityId: o.opportunityId,
     eventId: o.eventId,
@@ -867,7 +862,7 @@ export async function runExchangeCycle(params) {
     finalProbabilityUsedInEV: o.finalProbabilityUsedInEV ?? o.modelProbability,
   }));
 
-  // ── Top 10 rejected opportunities (for no-bet logs) ──
+  // ── Top 10 rejected opportunities ──
   const rejectedOpps = ranked
     .filter(o => o.decision === 'NO_BET')
     .slice(0, 10)
@@ -925,10 +920,11 @@ export async function runExchangeCycle(params) {
       finalProbabilityUsedInEV: o.finalProbabilityUsedInEV ?? o.modelProbability,
     }));
 
-  // Build diagnostics
   const diagnostics = {
     marketsScanned: eligibleMarkets.length,
     eventsScanned,
+    totalEventClusters,
+    maxEventsToScan,
     eventsWithAI,
     cacheHits,
     aiCallsMade: eventsWithAI,
@@ -948,7 +944,6 @@ export async function runExchangeCycle(params) {
     totalOpportunities: allOpportunities.length,
     backOpportunities: allOpportunities.filter(o => o.side === 'BACK').length,
     layOpportunities: allOpportunities.filter(o => o.side === 'LAY').length,
-    // ── Opportunity-generation funnel ──
     opportunityFunnel: {
       currentMarketsInAppContext: markets.length,
       currentRunnersInAppContext: runners.length,
@@ -984,7 +979,6 @@ export async function runExchangeCycle(params) {
         : `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`)),
     bestByCategory: getBestByCategory(allOpportunities),
     aiDecisions,
-    // ── New diagnostic layers ──
     marketFeedDiagnostics,
     marketFilterFunnel,
     timeWindowFunnel,
@@ -1001,7 +995,6 @@ export async function runExchangeCycle(params) {
     eligibleMarketsAfterRunnerFilter: eligibleAfterRunnerFilter,
     eligibleMarketsAfterPriceFilter: eligibleAfterPriceFilter,
     marketsSentToExchangeEngine: eligibleMarkets.length,
-    // ── External search diagnostics ──
     externalSearchDiagnostics: {
       enabled: extSearchEnabled,
       callsThisCycle: extSearchCalls,
@@ -1039,7 +1032,7 @@ export function opportunityToSignal(opportunity, settings) {
     marketId: opportunity.marketId,
     betfairMarketId: opportunity.betfairMarketId,
     selectionId: opportunity.selectionId,
-    runnerId: opportunity.runnerName, // Will be resolved by caller
+    runnerId: opportunity.runnerName,
     side: opportunity.side,
     odds: opportunity.odds,
     stakeSuggestion: opportunity.stake,
@@ -1050,7 +1043,7 @@ export function opportunityToSignal(opportunity, settings) {
     expectedValue: opportunity.ev,
     confidence: opportunity.confidence,
     signalStatus: 'active',
-    persistenceType: 'LAPSE', // Always LAPSE — never PERSIST
+    persistenceType: 'LAPSE',
     spreadTicks: opportunity.spreadTicks,
     reason: opportunity.reasons.join('; '),
     dataSource: opportunity.proofMode ? 'MARKET_ONLY_PROOF' : 'BETFAIR_METADATA_PLUS_MARKET',

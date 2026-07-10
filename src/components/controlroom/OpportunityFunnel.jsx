@@ -59,6 +59,7 @@ export default function OpportunityFunnel() {
     { label: 'Markets with Price Data', value: f.marketsWithPriceData, ok: f.marketsWithPriceData > 0 },
     { label: 'Eligible Markets (passed all filters)', value: f.eligibleMarkets, ok: f.eligibleMarkets > 0 },
     { label: 'Event Clusters Created', value: f.eventClustersCreated, ok: f.eventClustersCreated > 0 },
+    { label: `Events Scanned (of ${diag?.totalEventClusters ?? f.eventClustersCreated ?? '?'}, max ${diag?.maxEventsToScan ?? 1})`, value: diag?.eventsScanned ?? f.clustersWithMatchedRunners ?? 0, ok: true, highlight: true },
     { label: 'Clusters with Primary Market', value: f.clustersWithPrimaryMarket, ok: f.clustersWithPrimaryMarket > 0 },
     { label: 'Clusters with Matched Runners', value: f.clustersWithMatchedRunners, ok: f.clustersWithMatchedRunners > 0 },
     { label: 'AI Results Created', value: f.aiResultsCreated, ok: true },
