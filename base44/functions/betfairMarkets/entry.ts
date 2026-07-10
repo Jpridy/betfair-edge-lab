@@ -358,7 +358,7 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+    const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
 
     let catalogues = [];
     const catalogueErrors = [];
