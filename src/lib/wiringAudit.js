@@ -113,7 +113,20 @@ export function buildLiveWiringStatus(appContext) {
   const lastRejectedDate = rejectedOrders?.[0]?.id || null;
   const lastStreamUpdate = betfairConnection?.lastMarketSyncTime || syncState?.lastCatalogueSync || null;
   const streamStatus = betfairConnection?.streamConnectionStatus || 'disconnected';
-  const isStale = lastStreamUpdate ? (Date.now() - new Date(lastStreamUpdate).getTime()) > 45000 : true;
+  const lastCatalogueRefresh = betfairConnection?.lastCatalogueRefreshAt || lastStreamUpdate;
+  const marketCount = appContext.markets?.length || 0;
+  const streamActuallyConnected = streamStatus === 'connected' || streamStatus === 'polling';
+
+  // Staleness logic depends on data source:
+  // - Stream connected: stale if no update in 45s (stream should push frequently)
+  // - Stream not connected but REST catalogue loaded: stale only after 5 min
+  //   (catalogue refreshes every 5 min; data is valid between refreshes)
+  // - No markets at all: always stale
+  const isStale = marketCount === 0
+    ? true
+    : streamActuallyConnected
+      ? (lastStreamUpdate ? (Date.now() - new Date(lastStreamUpdate).getTime()) > 45000 : true)
+      : (lastCatalogueRefresh ? (Date.now() - new Date(lastCatalogueRefresh).getTime()) > 300000 : true);
 
   // Truthful API status: token present ≠ API connected
   // API is only "connected" when a real Betfair API call returned valid JSON
@@ -135,14 +148,14 @@ export function buildLiveWiringStatus(appContext) {
     },
     {
       serviceName: 'Betfair Stream/Price Feed',
-      connected: streamStatus === 'connected' || streamStatus === 'polling',
+      connected: streamActuallyConnected || marketCount > 0,
       lastSuccessfulCallAt: lastStreamUpdate,
       lastAttemptedCallAt: lastStreamUpdate,
       lastError: streamStatus === 'error' ? 'Stream error' : null,
       latestLatencyMs: null,
-      recordsReturned: appContext.markets?.length || 0,
+      recordsReturned: marketCount,
       dataUsedByBot: true,
-      status: !apiConnected ? 'disconnected' : isStale ? 'stale' : streamStatus,
+      status: !apiConnected ? 'disconnected' : isStale ? 'stale' : streamActuallyConnected ? streamStatus : (marketCount > 0 ? 'connected' : 'disconnected'),
     },
     {
       serviceName: 'Betfair Market Catalogue',
