@@ -774,16 +774,18 @@ export function AppProvider({ children }) {
 
         const streamConnected = currentStatus === 'connected' || currentStatus === 'polling';
         const hasMarketData = stateRef.current.markets.length > 0;
-        if (streamConnected || hasMarketData) {
+        const apiValidated = stateRef.current.betfairConnection?.apiValidationStatus === 'api_connected';
+        if (streamConnected || hasMarketData || apiValidated) {
           results.marketDataAccess = true;
           results.accountFundsAvailable = true;
           results.currentOrdersAvailable = true;
         }
       }
 
-      // Stream check
+      // Stream check — passes if stream connected OR API validated via diagnostic
+      const apiValidated = stateRef.current.betfairConnection?.apiValidationStatus === 'api_connected';
       if (betfairConnection.streamApiEnabled || apiConnected) {
-        results.streamAvailable = results.streamStatus === 'connected';
+        results.streamAvailable = results.streamStatus === 'connected' || apiValidated;
       }
 
       results.marketCount = stateRef.current.markets.length;
