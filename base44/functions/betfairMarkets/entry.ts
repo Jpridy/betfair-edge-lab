@@ -86,6 +86,20 @@ Deno.serve(async (req) => {
           return result;
         }
 
+        // Betfair SOAP-style fault (ANGX-xxxx errors)?
+        // Format: {"faultcode":"Client","faultstring":"ANGX-0003","detail":{"APINGException":{"errorCode":"INVALID_SESSION_INFORMATION"}}}
+        if (parsed && typeof parsed === 'object' && parsed.faultcode) {
+          const apingErr = parsed.detail?.APINGException;
+          const errorCode = apingErr?.errorCode || parsed.faultstring || 'UNKNOWN_FAULT';
+          result.betfairErrorCode = errorCode;
+          if (errorCode.includes('INVALID_SESSION') || errorCode.includes('NO_SESSION')) {
+            result.failureReason = 'Session token expired or invalid (INVALID_SESSION_INFORMATION)';
+          } else {
+            result.failureReason = `Betfair API fault: ${errorCode}`;
+          }
+          return result;
+        }
+
         // Betfair error object?
         if (parsed && typeof parsed === 'object' && parsed.error) {
           const errStr = JSON.stringify(parsed);
