@@ -137,15 +137,25 @@ async function rawTcpRequest(target, method, headers, body) {
   // Send request
   await writer.write(encoder.encode(req));
 
-  // Read full response (Connection: close → server closes when done)
+  // Read full response — Connection: close means server closes when done.
+  // Wrap in try/catch: "Stream was cancelled" can be thrown when the server
+  // closes the connection, but we may still have all the data we need.
+  // Do NOT call reader.cancel() or writer.close() — they return Promises that,
+  // if not awaited, cause unhandled rejection crashes in the Worker runtime.
   const chunks = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+  } catch (_) {
+    // Stream cancelled — use whatever data we received
   }
-  try { writer.close(); } catch (_) {}
-  try { reader.cancel(); } catch (_) {}
+
+  if (chunks.length === 0) {
+    throw new Error("No response data received from " + host);
+  }
 
   // Combine chunks into one byte array
   let totalLen = 0;
