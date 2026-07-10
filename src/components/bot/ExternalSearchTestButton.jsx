@@ -5,7 +5,8 @@ import { FlaskConical, Loader2, ExternalLink, ArrowRight } from 'lucide-react';
 import { useApp } from '@/lib/AppContext';
 import { base44 } from '@/api/base44Client';
 import { scanEligibleMarkets } from '@/lib/exchangeOpportunityEngine';
-import { detectMarketType } from '@/lib/marketClusterer';
+import { clusterMarketsByEvent, detectMarketType } from '@/lib/marketClusterer';
+import { buildRacePack } from '@/lib/racePackBuilder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact } from '@/lib/externalSearchIntegration';
 
 export default function ExternalSearchTestButton() {
@@ -20,31 +21,33 @@ export default function ExternalSearchTestButton() {
     setResult(null);
 
     try {
-      // Find nearest open race
-      const debugScanMode = featherlessSettings?.debugScanMode === true;
-      const eligible = scanEligibleMarkets(markets, runners, settings, true); // force true to get all open markets
+      // Find nearest open race — cluster markets by event, sort by start time
+      const eligible = scanEligibleMarkets(markets, runners, settings, true);
       if (eligible.length === 0) {
         setError('No open markets with 2+ runners found. Connect to Betfair and ensure markets are loaded.');
         return;
       }
 
-      // Sort by start time (nearest first)
+      const eventClusters = clusterMarketsByEvent(eligible);
       const nowMs = Date.now();
-      const sorted = eligible
-        .filter(m => m.startTime || m.marketStartTime)
-        .map(m => {
-          const start = new Date(m.startTime || m.marketStartTime).getTime();
-          return { market: m, secsToJump: Math.round((start - nowMs) / 1000) };
-        })
+      const sortedClusters = eventClusters
+        .filter(c => c.startTime)
+        .map(c => ({ cluster: c, secsToJump: Math.round((new Date(c.startTime).getTime() - nowMs) / 1000) }))
         .sort((a, b) => a.secsToJump - b.secsToJump);
 
-      if (sorted.length === 0) {
-        setError('No markets with start times found.');
+      if (sortedClusters.length === 0) {
+        setError('No event clusters with start times found.');
         return;
       }
 
-      const nearest = sorted[0];
-      const market = nearest.market;
+      const nearest = sortedClusters[0];
+      const cluster = nearest.cluster;
+
+      // Find primary market and its runners for the OpenAI search call
+      const clusterMarkets = eligible.filter(m =>
+        (m.eventId || '') === (cluster.eventId || '')
+      );
+      const market = clusterMarkets.find(m => detectMarketType(m) === 'WIN') || clusterMarkets[0];
       const marketRunners = runners.filter(r =>
         (r.marketId === market.id || r.marketId === market.betfairMarketId) && r.status === 'ACTIVE'
       );
@@ -54,21 +57,30 @@ export default function ExternalSearchTestButton() {
         return;
       }
 
+      // Build race pack for Featherless AI
+      const bankrollStats = { bankroll: settings.paperBankroll || settings.bankroll || 10000 };
+      const racePack = buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStats, [], null, {
+        paperMode: true,
+        paperProofMode: false,
+      });
+
+      if (!racePack) {
+        setError('Failed to build race pack for AI analysis.');
+        return;
+      }
+
       // Step 1: Get pre-search probabilities from Featherless AI
       let preSearchAISet = null;
       try {
         const aiResp = await base44.functions.invoke('featherlessAI', {
-          market,
-          runners: marketRunners,
+          racePack,
           settings,
           strategySettings: featherlessSettings,
-          bankrollStats: { bankroll: settings.paperBankroll || settings.bankroll || 10000 },
-          raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-          allEventMarkets: [market],
+          bankrollStats,
         });
         preSearchAISet = aiResp.data?.aiResult || null;
       } catch (aiErr) {
-        setError(`AI probability call failed: ${aiErr.message}. Cannot compare pre/post search without AI probabilities.`);
+        setError(`AI probability call failed: ${aiErr.response?.data?.error || aiErr.message}. Cannot compare pre/post search without AI probabilities.`);
         return;
       }
 
@@ -145,9 +157,9 @@ export default function ExternalSearchTestButton() {
       setResult({
         market: {
           betfairMarketId: market.betfairMarketId || market.id,
-          eventName: market.eventName || '',
+          eventName: cluster.eventName || market.eventName || '',
           marketName: market.marketName || '',
-          marketStartTime: market.startTime || market.marketStartTime,
+          marketStartTime: cluster.startTime || market.startTime || market.marketStartTime,
           secondsToJump: nearest.secsToJump,
           runnerCount: marketRunners.length,
           detectedMarketType: detectMarketType(market),
