@@ -444,7 +444,7 @@ export default function MockFeatherlessRun() {
         racePack: MOCK_RACE_PACK,
         settings: { mode: 'demo', defaultCommissionRate: 0.05, bankroll: 10000, maxStake: 500, maxLayLiability: 1500 },
         strategySettings: {
-          modelName: 'deepseek-ai/DeepSeek-V4-Flash',
+          modelName: 'deepseek-ai/DeepSeek-V4-Pro',
           temperature: 0.1,
           maxTokens: 4000,
           timeoutSeconds: 120,

@@ -320,7 +320,7 @@ Deno.serve(async (req) => {
       }, { status: 200 });
     }
 
-    const modelName = strategySettings?.modelName || 'deepseek-ai/DeepSeek-V4-Flash';
+    const modelName = strategySettings?.modelName || 'deepseek-ai/DeepSeek-V4-Pro';
     const temperature = strategySettings?.temperature ?? 0.1;
     const maxTokens = strategySettings?.maxTokens || 4000;
     const timeoutMs = strategySettings?.featherlessTimeoutMs || (strategySettings?.timeoutSeconds || 90) * 1000;

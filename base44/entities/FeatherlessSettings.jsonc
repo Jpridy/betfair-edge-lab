@@ -8,7 +8,7 @@
     },
     "modelName": {
       "type": "string",
-      "default": "deepseek-ai/DeepSeek-V4-Flash"
+      "default": "deepseek-ai/DeepSeek-V4-Pro"
     },
     "temperature": {
       "type": "number",
@@ -20,7 +20,7 @@
     },
     "timeoutSeconds": {
       "type": "number",
-      "default": 60
+      "default": 120
     },
     "minConfidence": {
       "type": "number",
@@ -252,7 +252,7 @@
     },
     "featherlessTimeoutMs": {
       "type": "number",
-      "default": 30000
+      "default": 120000
     },
     "featherlessStrictJson": {
       "type": "boolean",
