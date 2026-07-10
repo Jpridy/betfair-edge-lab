@@ -486,19 +486,21 @@ Deno.serve(async (req) => {
     }
 
     // ── Step 3: List Market Book — get live prices ──
-    // Use smaller batches (40) to stay well under Betfair's 200-point data
-    // weighting limit (EX_BEST_OFFERS=1pt + EX_TRADED=0.5pt per market = 1.5pt;
-    // 40 × 1.5 = 60pt, comfortably under the cap).
+    // Horse racing markets have many runners (5-20+), so EX_BEST_OFFERS +
+    // EX_TRADED + virtualisation triggers TOO_MUCH_DATA even at 40 markets.
+    // Request EX_BEST_OFFERS only, no virtualisation, in batches of 10 to
+    // keep each response small. Traded volume can be fetched separately
+    // for specific markets if needed.
     const marketIds = catalogues.map(c => c.marketId);
     let books = [];
-    const BATCH_SIZE = 40;
+    const BATCH_SIZE = 10;
     for (let i = 0; i < marketIds.length; i += BATCH_SIZE) {
       const batchIds = marketIds.slice(i, i + BATCH_SIZE);
       const bookBody = {
         marketIds: batchIds,
         priceProjection: {
-          priceData: ['EX_BEST_OFFERS', 'EX_TRADED'],
-          virtualise: 'true',
+          priceData: ['EX_BEST_OFFERS'],
+          virtualise: 'false',
         },
       };
       try {
