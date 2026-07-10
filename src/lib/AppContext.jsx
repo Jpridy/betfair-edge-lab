@@ -1147,6 +1147,11 @@ export function AppProvider({ children }) {
       setMarkets(merged.markets);
       setRunners(merged.runners);
 
+      // Mark the app as connected — without this, the stream effect treats
+      // the app as disconnected and marks all data as stale/cached, even
+      // though we just fetched 422 markets successfully.
+      setApiConnected(true);
+
       setBetfairConnection(prev => ({
         ...prev,
         lastMarketSyncTime: now,
