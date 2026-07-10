@@ -31,7 +31,7 @@ const server = http.createServer(async (request, response) => {
 
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   if (requestUrl.pathname === "/health") {
-    sendJson(response, 200, { status: "ok", service: "betfair-rest-proxy", version: "4-standard-fetch" });
+    sendJson(response, 200, { status: "ok", service: "betfair-rest-proxy", version: "5-minimal-headers" });
     return;
   }
 
@@ -57,19 +57,11 @@ const server = http.createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
-  const isAustralianEndpoint = target.hostname.endsWith(".com.au");
-  const betfairOrigin = isAustralianEndpoint ? "https://www.betfair.com.au" : "https://www.betfair.com";
+  // Minimal API-client headers — no browser fingerprint headers
+  // (Origin/Referer/Sec-Fetch-* trigger Betfair's WAF on server-side requests)
   const headers = {
-    accept: "application/json",
-    "accept-language": "en-AU,en;q=0.9",
-    "accept-encoding": "identity",
+    "accept": "application/json",
     "content-type": request.headers["content-type"] || "application/json",
-    "user-agent": browserUserAgent,
-    origin: betfairOrigin,
-    referer: `${betfairOrigin}/`,
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-site",
   };
   if (request.headers["x-application"]) headers["x-application"] = request.headers["x-application"];
   if (request.headers["x-authentication"]) headers["x-authentication"] = request.headers["x-authentication"];
