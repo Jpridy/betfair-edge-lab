@@ -28,62 +28,9 @@ function stripDbMeta(rec) {
   return clean;
 }
 
-// ── Safe defaults for Featherless AI — never allow live handoff by default ──
-const DEFAULT_FEATHERLESS_SETTINGS = {
-  enabled: false,
-  modelName: 'deepseek-ai/DeepSeek-V4-Flash',
-  temperature: 0.1,
-  maxTokens: 4000,
-  timeoutSeconds: 60,
-  minConfidence: 50,
-  minEdge: 3,
-  minExpectedROI: 1,
-  paperTradeOnly: true,
-  allowLiveHandoff: false,
-  storeLogs: true,
-  minOdds: 1.5,
-  maxOdds: 50,
-  minLiquidity: 20,
-  timeWindowStart: 500,
-  timeWindowEnd: 30,
-  stakingMode: 'confidence_weighted_fractional_kelly',
-  webResearchEnabled: false,
-  aiDecisionMode: 'strict',
-  requireExternalFormData: false,
-  targetPaperBetsPerDay: 'low',
-  maxSpread: 7,
-  winMinOdds: 1.5, winMaxOdds: 50, winMinLiquidity: 20, winMaxSpreadTicks: 7, winMinEdge: 3, winMinROI: 1,
-  placeMinOdds: 1.2, placeMaxOdds: 30, placeMinLiquidity: 10, placeMaxSpreadTicks: 7, placeMinEdge: 2, placeMinROI: 1,
-  h2hMinOdds: 1.2, h2hMaxOdds: 15, h2hMinLiquidity: 10, h2hMaxSpreadTicks: 5, h2hMinEdge: 3, h2hMinROI: 1,
-  allowHedging: false,
-  debugScanMode: false,
-  externalSearchEnabled: false,
-  maxExternalProbabilityAdjustment: 0.05,
-  minExternalSourceCount: 2,
-  minExternalDataQuality: 50,
-  requireExternalSearchForLiveBetting: false,
-  externalSearchCacheTtlMinutes: 5,
-};
+import { DEFAULT_FEATHERLESS_SETTINGS, DEFAULT_BOT_SETTINGS } from '@/lib/appDefaultSettings';
 
 const AppContext = createContext(null);
-
-const DEFAULT_BOT_SETTINGS = {
-  botEnabled: false,
-  botMode: 'demo',
-  scanIntervalSeconds: 30,
-  selectedStrategies: ['Featherless AI Value Decision Engine'],
-  autoPaperTradingEnabled: true,
-  liveTradingLocked: true,
-  liveTradingEnabled: false,
-  requireLiveConfirmationText: true,
-  confirmationText: 'ENABLE LIVE TRADING',
-  maxBotCyclesPerHour: 60,
-  stopOnApiError: true,
-  stopOnDailyLoss: true,
-  stopOnMaxDrawdown: true,
-  stopOnLosingStreak: true,
-  stopOnEmergency: true,
-};
 
 export function AppProvider({ children }) {
   const [emergencyStop, setEmergencyStop] = useState(false);
@@ -1698,6 +1645,10 @@ export function AppProvider({ children }) {
       startedAt: now,
       finishedAt: new Date().toISOString(),
       status: errors > 0 ? 'failed' : ordersBlocked > 0 ? 'blocked' : 'completed',
+      scanStage: exchangeDiag?.scanStage || 'completed',
+      lastCompletedStage: exchangeDiag?.lastCompletedStage || 'completed',
+      failedStage: exchangeDiag?.failedStage || null,
+      cycleSteps: steps.map(st => ({ step: st.name, status: st.status, reason: st.reason || null, itemsProcessed: 0, result: null })),
       marketsScanned: useExchange ? (exchangeDiag.totalMarketsLoaded ?? exchangeDiag.marketsScanned ?? 0) : marketsScanned,
       marketsPassedFilters: useExchange ? (exchangeDiag.marketsSentToExchangeEngine ?? marketsPassed) : marketsPassed,
       signalsCreated,
