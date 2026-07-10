@@ -40,10 +40,7 @@ export default {
 
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get("url");
-
-    if (!targetUrl) {
-      return json({ error: "Missing url parameter" }, 400);
-    }
+    if (!targetUrl) return json({ error: "Missing url parameter" }, 400);
 
     const target = new URL(targetUrl);
     if (!ALLOWED_HOSTS.has(target.hostname)) {
@@ -53,49 +50,38 @@ export default {
     const body = request.method !== "GET" && request.method !== "HEAD"
       ? await request.text()
       : null;
-
     const isAu = target.hostname.endsWith(".com.au");
-    const betfairOrigin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
-
-    const headers = new Headers();
+    const origin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
+    const headers = {
+      "Content-Type": request.headers.get("Content-Type") || "application/json",
+      "Accept": "application/json",
+      "User-Agent": BROWSER_UA,
+      "Accept-Language": "en-AU,en;q=0.9",
+      "Accept-Encoding": "identity",
+      "Origin": origin,
+      "Referer": origin + "/",
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-site",
+    };
     const appKey = request.headers.get("X-Application");
     const auth = request.headers.get("X-Authentication");
-    if (appKey) headers.set("X-Application", appKey);
-    if (auth) headers.set("X-Authentication", auth);
-    headers.set("Content-Type", "application/json");
-    headers.set("Accept", "application/json");
-    headers.set("User-Agent", BROWSER_UA);
-    headers.set("Accept-Language", "en-AU,en;q=0.9");
-    headers.set("Accept-Encoding", "gzip, deflate, br");
-    headers.set("Origin", betfairOrigin);
-    headers.set("Referer", betfairOrigin + "/");
-    headers.set("Sec-Fetch-Dest", "empty");
-    headers.set("Sec-Fetch-Mode", "cors");
-    headers.set("Sec-Fetch-Site", "same-site");
-    headers.set("sec-ch-ua", '"Chromium";v="125", "Not.A/Brand";v="24", "Google Chrome";v="125"');
-    headers.set("sec-ch-ua-mobile", "?0");
-    headers.set("sec-ch-ua-platform", '"Windows"');
+    if (appKey) headers["X-Application"] = appKey;
+    if (auth) headers["X-Authentication"] = auth;
 
     try {
-      const upstream = await fetch(targetUrl, {
-        method: request.method,
-        headers,
-        body,
-      });
-
-      const text = await upstream.text();
-
-      return new Response(text, {
-        status: upstream.status,
+      const result = await rawTcpRequest(target, request.method, headers, body);
+      return new Response(result.body, {
+        status: result.status,
         headers: {
-          "Content-Type": upstream.headers.get("Content-Type") || "text/plain",
+          "Content-Type": result.contentType,
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "POST, OPTIONS",
           "Access-Control-Allow-Headers": "Content-Type, X-Application, X-Authentication",
         },
       });
-    } catch (err) {
-      return json({ error: err.message }, 502);
+    } catch (error) {
+      return json({ error: "TCP proxy error: " + error.message }, 502);
     }
   },
 };
@@ -105,6 +91,120 @@ function json(data, status = 200) {
     status,
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
   });
+}
+
+async function rawTcpRequest(target, method, headers, body) {
+  const host = target.hostname;
+  const port = Number(target.port || 443);
+  const path = target.pathname + target.search;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  let rawRequest = `${method} ${path} HTTP/1.1\r\nHost: ${host}\r\n`;
+  for (const [name, value] of Object.entries(headers)) {
+    rawRequest += `${name}: ${value}\r\n`;
+  }
+  if (body) rawRequest += `Content-Length: ${encoder.encode(body).length}\r\n`;
+  rawRequest += "Connection: close\r\n\r\n";
+  if (body) rawRequest += body;
+
+  const socket = connect(
+    { hostname: host, port },
+    { secureTransport: "on", allowHalfOpen: true }
+  );
+  let socketCloseError = null;
+  const socketClosed = socket.closed.catch((error) => {
+    socketCloseError = error;
+  });
+  await socket.opened;
+
+  const writer = socket.writable.getWriter();
+  await writer.write(encoder.encode(rawRequest));
+  writer.releaseLock();
+
+  const reader = socket.readable.getReader();
+  const chunks = [];
+  let readError = null;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+  } catch (error) {
+    readError = error;
+  } finally {
+    reader.releaseLock();
+  }
+  await socketClosed;
+
+  if (chunks.length === 0) {
+    const cause = socketCloseError?.message || readError?.message || "connection closed without data";
+    throw new Error(`No response from ${host}: ${cause}`);
+  }
+
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const response = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    response.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  let headerEnd = -1;
+  for (let i = 0; i < response.length - 3; i++) {
+    if (response[i] === 13 && response[i + 1] === 10 && response[i + 2] === 13 && response[i + 3] === 10) {
+      headerEnd = i;
+      break;
+    }
+  }
+  if (headerEnd < 0) throw new Error("Invalid HTTP response — no header terminator");
+
+  const headerText = decoder.decode(response.slice(0, headerEnd));
+  const lines = headerText.split("\r\n");
+  const status = Number.parseInt(lines[0].split(" ")[1], 10) || 502;
+  const responseHeaders = {};
+  for (const line of lines.slice(1)) {
+    const separator = line.indexOf(":");
+    if (separator > 0) {
+      responseHeaders[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
+    }
+  }
+
+  let bodyBytes = response.slice(headerEnd + 4);
+  if (responseHeaders["transfer-encoding"]?.includes("chunked")) {
+    bodyBytes = dechunk(bodyBytes);
+  }
+
+  return {
+    status,
+    body: decoder.decode(bodyBytes),
+    contentType: responseHeaders["content-type"] || "text/plain",
+  };
+}
+
+function dechunk(bytes) {
+  const decoder = new TextDecoder();
+  const output = [];
+  let position = 0;
+  while (position < bytes.length) {
+    let lineEnd = position;
+    while (lineEnd < bytes.length - 1 && !(bytes[lineEnd] === 13 && bytes[lineEnd + 1] === 10)) lineEnd++;
+    if (lineEnd >= bytes.length - 1) break;
+    const size = Number.parseInt(decoder.decode(bytes.slice(position, lineEnd)).trim(), 16);
+    if (!Number.isFinite(size) || size === 0) break;
+    const chunkStart = lineEnd + 2;
+    output.push(bytes.slice(chunkStart, chunkStart + size));
+    position = chunkStart + size + 2;
+  }
+  const length = output.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of output) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }
 
 async function handleStreamBridge(request) {

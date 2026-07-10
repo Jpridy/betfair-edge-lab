@@ -129,32 +129,41 @@ async function rawTcpRequest(target, method, headers, body) {
   req += "Connection: close\r\n\r\n";
   if (body) req += body;
 
-  // Connect via raw TLS TCP
-  const socket = connect(`${host}:${port}`, { secureTransport: "on" });
+  // Connect via raw TLS TCP and observe both lifecycle promises. An ignored
+  // socket.closed rejection is surfaced by Workers as "Stream was cancelled".
+  const socket = connect(
+    { hostname: host, port: Number(port) },
+    { secureTransport: "on", allowHalfOpen: true }
+  );
+  let socketCloseError = null;
+  const socketClosed = socket.closed.catch((error) => {
+    socketCloseError = error;
+  });
+  await socket.opened;
+
   const writer = socket.writable.getWriter();
-  const reader = socket.readable.getReader();
-
-  // Send request
   await writer.write(encoder.encode(req));
+  writer.releaseLock();
 
-  // Read full response — Connection: close means server closes when done.
-  // Wrap in try/catch: "Stream was cancelled" can be thrown when the server
-  // closes the connection, but we may still have all the data we need.
-  // Do NOT call reader.cancel() or writer.close() — they return Promises that,
-  // if not awaited, cause unhandled rejection crashes in the Worker runtime.
+  const reader = socket.readable.getReader();
   const chunks = [];
+  let readError = null;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
     }
-  } catch (_) {
-    // Stream cancelled — use whatever data we received
+  } catch (error) {
+    readError = error;
+  } finally {
+    reader.releaseLock();
   }
+  await socketClosed;
 
   if (chunks.length === 0) {
-    throw new Error("No response data received from " + host);
+    const cause = socketCloseError?.message || readError?.message || "connection closed without data";
+    throw new Error(`No response from ${host}: ${cause}`);
   }
 
   // Combine chunks into one byte array
