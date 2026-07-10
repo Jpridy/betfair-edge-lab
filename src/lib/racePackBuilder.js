@@ -14,6 +14,7 @@
 import { detectMarketType, extractPlaceTerms, getAllMarketsInCluster } from './marketClusterer';
 import { matchRunnerToMarket } from './marketIdMatcher';
 import { calculateSpreadTicks } from './tickLadder';
+import { calculateFavouriteContext, calculateRunnerContextScores } from './favouriteValueContext';
 
 /**
  * Build a full RacePack for a single event cluster.
@@ -159,6 +160,83 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
   const totalMatched = marketObjects.reduce((s, m) => s + (m.totalMatched || 0), 0);
   const primaryMarket = winMarket || placeMarket || h2hMarkets[0] || marketObjects[0];
 
+  // ── Favourite Value Context ──
+  // Calculate favourite context from WIN market runners for the race pack
+  let favouriteValueContext = null;
+  let fieldStrengthContext = null;
+  let runnerContextScores = [];
+
+  if (winMarket && winMarket.runners && winMarket.runners.length > 0) {
+    // Reconstruct runner objects with the shape calculateFavouriteContext expects
+    const winRunnersForCtx = winMarket.runners.map(r => ({
+      betfairSelectionId: r.selectionId,
+      runnerName: r.runnerName,
+      status: r.status || 'ACTIVE',
+      bestBackPrice: r.bestBackPrice || 0,
+      bestLayPrice: r.bestLayPrice || 0,
+      bestBackSize: r.bestBackSize || 0,
+      bestLaySize: r.bestLaySize || 0,
+      tradedVolumeAmount: r.tradedVolume || 0,
+      raceFormProfile: runnerMap.get(r.selectionId) || null,
+    }));
+
+    favouriteValueContext = calculateFavouriteContext(winRunnersForCtx);
+    fieldStrengthContext = favouriteValueContext ? {
+      fieldStrengthCategory: favouriteValueContext.fieldStrengthCategory,
+      favouriteDominanceScore: favouriteValueContext.favouriteDominanceScore,
+      qualityThreatCount: favouriteValueContext.qualityThreatCount,
+      fieldRunnerCount: favouriteValueContext.fieldRunnerCount,
+      fieldAveragePrice: favouriteValueContext.fieldAveragePrice,
+      favouriteLooksStrong: favouriteValueContext.favouriteLooksStrong,
+      favouriteLooksVulnerable: favouriteValueContext.favouriteLooksVulnerable,
+    } : null;
+    runnerContextScores = calculateRunnerContextScores(winRunnersForCtx, favouriteValueContext, externalResearch);
+  }
+
+  // ── Microstructure context (compact summary) ──
+  const microstructureContext = {
+    winMarketTotalMatched: winMarket?.totalMatched || 0,
+    placeMarketTotalMatched: placeMarket?.totalMatched || 0,
+    h2hMarketCount: h2hMarkets.length,
+    totalMatched,
+    marketBaseRate: primaryMarket?.marketBaseRate ?? null,
+    runnersWithBackPrice: Array.from(runnerMap.values()).filter(r => r.bestBackPrice > 0).length,
+    runnersWithLayPrice: Array.from(runnerMap.values()).filter(r => r.bestLayPrice > 0).length,
+    avgSpreadTicks: (() => {
+      const spreads = Array.from(runnerMap.values()).map(r => r.spreadTicks || 0).filter(s => s > 0);
+      return spreads.length > 0 ? Math.round(spreads.reduce((a, b) => a + b, 0) / spreads.length) : 0;
+    })(),
+  };
+
+  // ── External research context (compact) ──
+  const externalResearchContext = {
+    searchUsed: !!externalResearch,
+    searchStatus: externalResearch?.searchStatus || 'not_called',
+    sourceCount: externalResearch?.sourceCount || 0,
+    dataQuality: externalResearch?.dataQuality || 0,
+    runnersResearched: (externalResearch?.runnerResearch || []).length,
+  };
+
+  // ── Decision context (compact summary for AI) ──
+  const decisionContext = {
+    favouriteValueContext: favouriteValueContext ? {
+      favouriteSelectionId: favouriteValueContext.favouriteSelectionId,
+      favouriteName: favouriteValueContext.favouriteName,
+      favouriteOdds: favouriteValueContext.favouriteOdds,
+      fieldStrengthCategory: favouriteValueContext.fieldStrengthCategory,
+      favouriteDominanceScore: favouriteValueContext.favouriteDominanceScore,
+    } : null,
+    fieldStrengthCategory: fieldStrengthContext?.fieldStrengthCategory || null,
+    topRunnerContextScores: runnerContextScores.slice(0, 5).map(s => ({
+      selectionId: s.selectionId,
+      runnerName: s.runnerName,
+      totalContextScore: s.totalContextScore,
+      isFavourite: s.isFavourite,
+    })),
+    microstructureSummary: microstructureContext,
+    externalResearchSummary: externalResearchContext,
+  };
+
   // ── Race context ──
   const startTime = eventCluster.startTime || primaryMarket?.marketStartTime || null;
   const secondsToJump = startTime ? Math.round((new Date(startTime).getTime() - Date.now()) / 1000) : null;
@@ -198,6 +276,25 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
 
     markets: marketObjects,
     runners: Array.from(runnerMap.values()),
+
+    // ── Favourite Value Context (compact, for AI + diagnostics) ──
+    favouriteValueContext,
+    fieldStrengthContext,
+    runnerContextScores: runnerContextScores.slice(0, maxRunners).map(s => ({
+      selectionId: s.selectionId,
+      runnerName: s.runnerName,
+      marketScore: s.marketScore,
+      formScore: s.formScore,
+      suitabilityScore: s.suitabilityScore,
+      connectionsScore: s.connectionsScore,
+      pressureScore: s.pressureScore,
+      totalContextScore: s.totalContextScore,
+      dataQuality: s.dataQuality,
+      isFavourite: s.isFavourite,
+    })),
+    microstructureContext,
+    externalResearchContext,
+    decisionContext,
 
     externalResearch: includeOpenAIResearch ? {
       openAiSearchUsed: !!externalResearch,
@@ -290,5 +387,8 @@ export function summarizeRacePack(racePack) {
     externalResearchUsed: racePack.externalResearch?.openAiSearchUsed || false,
     riskContextIncluded: !!racePack.botContext,
     totalMatched: racePack.marketSummary?.totalMatched || 0,
+    favouriteDetected: !!racePack.favouriteValueContext,
+    fieldStrengthCategory: racePack.fieldStrengthContext?.fieldStrengthCategory || null,
+    favouriteDominanceScore: racePack.favouriteValueContext?.favouriteDominanceScore ?? null,
   };
 }

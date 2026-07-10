@@ -27,6 +27,7 @@ import { buildProofOpportunity } from './paperProofScanner';
 import { matchRunnerToMarket } from './marketIdMatcher';
 import { buildRacePack, summarizeRacePack } from './racePackBuilder';
 import { checkMarketEligibility } from './marketEligibility';
+import { buildFavouriteValueDiagnostics, generateSpecificNoBetReason } from './favouriteValueContext';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -823,6 +824,25 @@ export async function runExchangeCycle(params) {
     });
   }
 
+  // ── Collect favourite contexts from opportunities (for diagnostics) ──
+  const favouriteContextsDetected = [];
+  const seenFavSelectionIds = new Set();
+  for (const opp of allOpportunities) {
+    if (opp.favouriteSelectionId && !seenFavSelectionIds.has(opp.favouriteSelectionId)) {
+      seenFavSelectionIds.add(opp.favouriteSelectionId);
+      favouriteContextsDetected.push({
+        favouriteSelectionId: opp.favouriteSelectionId,
+        favouriteName: opp.favouriteName,
+        favouriteOdds: opp.favouriteOdds,
+        favouriteDominanceScore: opp.favouriteDominanceScore,
+        fieldStrengthCategory: opp.fieldStrengthCategory,
+        qualityThreatCount: opp.qualityThreatCount,
+        favouriteLooksStrong: opp.fieldStrengthCategory === 'DOMINANT' || opp.fieldStrengthCategory === 'STRONG',
+        favouriteLooksVulnerable: opp.fieldStrengthCategory === 'VULNERABLE' || opp.fieldStrengthCategory === 'WEAK',
+      });
+    }
+  }
+
   // 8. Rank all opportunities by EV
   const ranked = rankOpportunities(allOpportunities);
 
@@ -952,6 +972,23 @@ export async function runExchangeCycle(params) {
     marketOnlyProbability: o.marketOnlyProbability ?? null,
     openAIProbabilityAdjustment: o.openAIProbabilityAdjustment ?? 0,
     finalProbabilityUsedInEV: o.finalProbabilityUsedInEV ?? o.modelProbability,
+    // ── Favourite Value Context fields ──
+    favouriteSelectionId: o.favouriteSelectionId ?? null,
+    favouriteName: o.favouriteName ?? null,
+    isFavourite: o.isFavourite ?? false,
+    favouriteOdds: o.favouriteOdds ?? null,
+    favouriteDominanceScore: o.favouriteDominanceScore ?? null,
+    fieldStrengthCategory: o.fieldStrengthCategory ?? null,
+    qualityThreatCount: o.qualityThreatCount ?? null,
+    runnerContextScore: o.runnerContextScore ?? null,
+    marketScore: o.marketScore ?? null,
+    formScore: o.formScore ?? null,
+    pressureScore: o.pressureScore ?? null,
+    baseProbability: o.baseProbability ?? o.modelProbability,
+    favouriteContextAdjustment: o.favouriteContextAdjustment ?? 0,
+    contextAdjustmentReason: o.contextAdjustmentReason ?? null,
+    favouriteValueWarning: o.favouriteValueWarning ?? null,
+    specificNoBetReason: o.specificNoBetReason ?? null,
   }));
 
   // ── Top 10 rejected opportunities ──
@@ -1010,6 +1047,23 @@ export async function runExchangeCycle(params) {
       marketOnlyProbability: o.marketOnlyProbability ?? null,
       openAIProbabilityAdjustment: o.openAIProbabilityAdjustment ?? 0,
       finalProbabilityUsedInEV: o.finalProbabilityUsedInEV ?? o.modelProbability,
+      // ── Favourite Value Context fields ──
+      favouriteSelectionId: o.favouriteSelectionId ?? null,
+      favouriteName: o.favouriteName ?? null,
+      isFavourite: o.isFavourite ?? false,
+      favouriteOdds: o.favouriteOdds ?? null,
+      favouriteDominanceScore: o.favouriteDominanceScore ?? null,
+      fieldStrengthCategory: o.fieldStrengthCategory ?? null,
+      qualityThreatCount: o.qualityThreatCount ?? null,
+      runnerContextScore: o.runnerContextScore ?? null,
+      marketScore: o.marketScore ?? null,
+      formScore: o.formScore ?? null,
+      pressureScore: o.pressureScore ?? null,
+      baseProbability: o.baseProbability ?? o.modelProbability,
+      favouriteContextAdjustment: o.favouriteContextAdjustment ?? 0,
+      contextAdjustmentReason: o.contextAdjustmentReason ?? null,
+      favouriteValueWarning: o.favouriteValueWarning ?? null,
+      specificNoBetReason: o.specificNoBetReason ?? null,
     }));
 
   const diagnostics = {
@@ -1075,7 +1129,8 @@ export async function runExchangeCycle(params) {
         : `Debug scan: ${allOpportunities.length} opportunities generated, ${allOpportunities.filter(o => o.decision === 'BET').length} positive-EV — NO orders placed (debug mode)`)
       : (bestOpportunity ? null : (allOpportunities.length === 0
         ? 'No opportunities generated — check AI availability or market data'
-        : `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`)),
+        : (ranked[0]?.specificNoBetReason || `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`))),
+    favouriteValueDiagnostics: buildFavouriteValueDiagnostics(allOpportunities, favouriteContextsDetected),
     bestByCategory: getBestByCategory(allOpportunities),
     aiDecisions,
     marketFeedDiagnostics,
@@ -1173,6 +1228,9 @@ export function opportunityToSignal(opportunity, settings) {
     liability: opportunity.liability,
     commissionRate: opportunity.commissionRate,
     proofMode: opportunity.proofMode || false,
+    // ── Favourite Value Context trace ──
+    finalProbabilityUsedInEV: opportunity.finalProbabilityUsedInEV ?? opportunity.modelProbability,
+    marketScore: opportunity.marketScore ?? null,
   };
 }
 

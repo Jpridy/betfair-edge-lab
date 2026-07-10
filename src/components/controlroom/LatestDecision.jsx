@@ -104,6 +104,21 @@ export default function LatestDecision() {
             <Detail label="ROI" value={`${((bestOpp.roi || bestOpp.expectedROI || 0) * 100).toFixed(1)}%`} mono accent="success" />
             <Detail label="Confidence" value={`${(bestOpp.confidence || 0).toFixed(0)}`} mono />
             <Detail label="Model Prob" value={`${((bestOpp.modelProbability || bestOpp.estimatedProbability || 0) * 100).toFixed(1)}%`} mono />
+            <Detail label="Final Prob" value={`${((bestOpp.finalProbabilityUsedInEV || bestOpp.modelProbability || 0) * 100).toFixed(1)}%`} mono />
+            <Detail label="Field Strength" value={bestOpp.fieldStrengthCategory || '—'} />
+            <Detail label="Fav Dominance" value={bestOpp.favouriteDominanceScore != null ? `${bestOpp.favouriteDominanceScore}%` : '—'} mono />
+            <Detail label="Is Favourite" value={bestOpp.isFavourite ? 'Yes' : 'No'} />
+          </div>
+        )}
+
+        {/* Favourite value warning */}
+        {bestOpp?.favouriteValueWarning && decision === 'NO_BET' && !isStaleCycle && (
+          <div className="flex items-start gap-2.5 text-xs bg-warning/8 text-warning border border-warning/20 rounded-lg p-3">
+            <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-body font-semibold">Favourite Context Warning</div>
+              <div className="mt-0.5 text-[10px] opacity-80 font-body">{bestOpp.favouriteValueWarning}</div>
+            </div>
           </div>
         )}
 

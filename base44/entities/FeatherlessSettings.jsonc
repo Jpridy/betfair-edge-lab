@@ -261,6 +261,30 @@
     "paperProofExternalSearchEnabled": {
       "type": "boolean",
       "default": false
+    },
+    "favouriteContextEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "favouriteContextMaxProbabilityAdjustment": {
+      "type": "number",
+      "default": 0.03
+    },
+    "favouriteStrongConfidenceBoost": {
+      "type": "number",
+      "default": 5
+    },
+    "favouriteWeakConfidencePenalty": {
+      "type": "number",
+      "default": 10
+    },
+    "requireFavouriteContextForWinMarket": {
+      "type": "boolean",
+      "default": false
+    },
+    "allowFavouriteLayOnlyWhenVulnerable": {
+      "type": "boolean",
+      "default": true
     }
   },
   "required": [

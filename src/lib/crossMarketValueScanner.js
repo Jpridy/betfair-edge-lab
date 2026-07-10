@@ -18,6 +18,7 @@ import { countTicksBetween } from './tickLadder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact, getMarketOnlyFallbackReason } from './externalSearchIntegration';
 import { isPaperProofModeActive, isSoftBlocker, calcProofStake } from './paperProofDefaults';
 import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
+import { calculateFavouriteContext, calculateRunnerContextScores, applyFavouriteContextToOpportunity, generateSpecificNoBetReason } from './favouriteValueContext';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -277,6 +278,30 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
           },
         });
         opportunities.push(layOpp);
+      }
+    }
+  }
+
+  // ── Apply Favourite Value Context (post-processing) ──
+  // For WIN markets, calculate favourite context and apply small capped
+  // adjustments to probability, confidence, and ranking. Also generate
+  // specific NO BET reasons for rejected opportunities.
+  const winMarket = allMarkets.find(m => detectMarketType(m) === 'WIN');
+  if (winMarket) {
+    const winRunners = allRunners.filter(r =>
+      matchRunnerToMarket(r, winMarket) && r.status === 'ACTIVE'
+    );
+    const favouriteContext = calculateFavouriteContext(winRunners);
+    const runnerContextScores = calculateRunnerContextScores(winRunners, favouriteContext, externalSearchResult);
+
+    for (let i = 0; i < opportunities.length; i++) {
+      const opp = opportunities[i];
+      const runnerScore = runnerContextScores.find(s => s.selectionId === opp.selectionId);
+      opportunities[i] = applyFavouriteContextToOpportunity(opp, favouriteContext, runnerScore, featherlessSettings);
+
+      // Generate specific NO BET reason for rejected opportunities
+      if (opportunities[i].decision === 'NO_BET') {
+        opportunities[i].specificNoBetReason = generateSpecificNoBetReason(opportunities[i], favouriteContext, featherlessSettings);
       }
     }
   }
@@ -588,6 +613,23 @@ function buildOpportunity({
     marketOnlyProbability: externalSearchFields?.preSearchProbability ?? modelProbability,
     openAIProbabilityAdjustment: externalSearchFields?.probabilityDelta ?? 0,
     finalProbabilityUsedInEV: modelProbability, // This is the probability actually used in EV maths (post-adjustment, clamped)
+    // ── Favourite Value Context (populated by post-processing in generateOpportunitiesForEvent) ──
+    favouriteSelectionId: null,
+    favouriteName: null,
+    isFavourite: false,
+    favouriteOdds: null,
+    favouriteDominanceScore: null,
+    fieldStrengthCategory: null,
+    qualityThreatCount: null,
+    runnerContextScore: null,
+    marketScore: null,
+    formScore: null,
+    pressureScore: null,
+    baseProbability: modelProbability,
+    favouriteContextAdjustment: 0,
+    contextAdjustmentReason: 'Favourite context not yet applied',
+    favouriteValueWarning: null,
+    specificNoBetReason: null,
   };
 }
 

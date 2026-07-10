@@ -49,6 +49,13 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
   featherlessTimeoutMs: 120000,
   featherlessStrictJson: true,
   paperProofExternalSearchEnabled: false,
+  // ── Favourite Value Context ──
+  favouriteContextEnabled: true,
+  favouriteContextMaxProbabilityAdjustment: 0.03,
+  favouriteStrongConfidenceBoost: 5,
+  favouriteWeakConfidencePenalty: 10,
+  requireFavouriteContextForWinMarket: false,
+  allowFavouriteLayOnlyWhenVulnerable: true,
 };
 
 export const DEFAULT_BOT_SETTINGS = {
