@@ -36,6 +36,7 @@ const StrategyLibrary = lazy(() => import('@/pages/StrategyLibrary'));
 const StrategyDetail = lazy(() => import('@/pages/StrategyDetail'));
 const ExchangeOpportunities = lazy(() => import('@/pages/ExchangeOpportunities'));
 const WiringAudit = lazy(() => import('@/pages/WiringAudit'));
+const MockFeatherlessRun = lazy(() => import('@/pages/MockFeatherlessRun'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -90,6 +91,7 @@ const AuthenticatedApp = () => {
             <Route path="/strategy/:id" element={<Suspense fallback={<PageLoader />}><StrategyDetail /></Suspense>} />
             <Route path="/exchange-opportunities" element={<Suspense fallback={<PageLoader />}><ExchangeOpportunities /></Suspense>} />
             <Route path="/wiring-audit" element={<Suspense fallback={<PageLoader />}><WiringAudit /></Suspense>} />
+            <Route path="/mock-featherless" element={<Suspense fallback={<PageLoader />}><MockFeatherlessRun /></Suspense>} />
           </Route>
         </Route>
         <Route path="*" element={<PageNotFound />} />
