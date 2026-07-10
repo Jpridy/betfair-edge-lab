@@ -43,7 +43,7 @@ curl https://betfair-edge-proxy.fly.dev/health
 ```
 Should return:
 ```json
-{"status":"ok","service":"betfair-rest-proxy","version":"5-minimal-headers"}
+{"status":"ok","service":"betfair-rest-proxy","version":"6-stream-bridge","features":["rest-proxy","websocket-stream-bridge"]}
 ```
 
 ### 4. Update the BETFAIR_PROXY_URL secret

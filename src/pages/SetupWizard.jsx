@@ -183,7 +183,7 @@ export default function SetupWizard() {
             const healthRes = await fetch(healthUrl);
             const healthData = await healthRes.json();
             diagParts.push(`Worker v${healthData.version || '?'}`);
-            const hasStreamBridge = healthData.features?.includes('websocket-stream-bridge') || healthData.version?.includes('unified') || healthData.version?.includes('3');
+            const hasStreamBridge = healthData.features?.includes('websocket-stream-bridge');
 
             if (!hasStreamBridge) {
               diagParts.push('Worker does NOT support WebSocket stream bridge');
