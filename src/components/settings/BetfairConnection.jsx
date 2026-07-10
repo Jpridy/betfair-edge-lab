@@ -110,7 +110,8 @@ export default function BetfairConnection() {
       const result = await diagnoseBetfairEndpoint(betfairSessionToken, true);
       setDiagnosticResult(result);
       if (result?.workingApiBase) {
-        addAuditLog('Endpoint Diagnostic Passed', 'api', 'info', `Working endpoint: ${result.workingApiBase}. HTML 403 detected: ${result.html403Detected}`);
+        updateBetfairConnection({ apiValidationStatus: 'api_connected', marketCatalogueError: null });
+        addAuditLog('Endpoint Diagnostic Passed', 'api', 'info', `Working endpoint: ${result.workingApiBase}. HTML 403 detected: ${result.html403Detected}. API validated.`);
       } else {
         addAuditLog('Endpoint Diagnostic Failed', 'api', 'error', `No working endpoint found. HTML 403: ${result?.html403Detected}. Endpoints tested: ${result?.endpoints?.length || 0}`);
       }
