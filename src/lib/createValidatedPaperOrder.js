@@ -12,6 +12,7 @@
 
 import { calculateCommission } from './betfairMapping';
 import { isPaperProofModeActive } from './paperProofDefaults';
+import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 
@@ -35,6 +36,17 @@ const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'p
  * @param {number} params.expectedValue - EV from signal (optional)
  * @param {string} params.entryReason - Entry reason text (optional)
  * @param {string} params.dataSource - Data source label (optional)
+ * @param {object} params.botSettings - BotSettings (for proof mode detection)
+ * @param {object} params.featherlessSettings - FeatherlessSettings (for proof mode detection)
+ * @param {boolean} params.paperProofMode - Pre-computed proof mode flag (takes priority)
+ * @param {string} params.marketType - Market type ('WIN' | 'PLACE' | 'H2H')
+ * @param {string} params.marketTypeCode - Market type code from Betfair
+ * @param {string} params.eventId - Event ID
+ * @param {string} params.eventName - Event name
+ * @param {number} params.numberOfWinners - Number of winners (for PLACE markets)
+ * @param {number} params.placeTerms - Place terms (for PLACE markets)
+ * @param {boolean} params.proofMode - Whether this is a proof order
+ * @param {string} params.proofReason - Proof reason
  * @returns {{ order: object, rejected: boolean, reason: string|null }}
  */
 export function createValidatedPaperOrder({
@@ -54,11 +66,25 @@ export function createValidatedPaperOrder({
   expectedValue = 0,
   entryReason = '',
   dataSource = 'MARKET_ONLY',
+  botSettings = null,
+  featherlessSettings = null,
+  paperProofMode: paperProofModeOverride = undefined,
+  marketType = null,
+  marketTypeCode = null,
+  eventId = null,
+  eventName = null,
+  numberOfWinners = null,
+  placeTerms = null,
+  proofMode = false,
+  proofReason = null,
 }) {
   const failures = [];
 
   // ── Paper Proof Mode detection ──
-  const paperProofMode = isPaperProofModeActive(settings, settings, settings);
+  // Use pre-computed flag if provided, otherwise detect from real settings.
+  const paperProofMode = paperProofModeOverride != null
+    ? paperProofModeOverride
+    : isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   // ── Emergency Stop ──
   if (emergencyStop) {
@@ -131,6 +157,21 @@ export function createValidatedPaperOrder({
     }
   }
 
+  // ── Opposite-Side Conflict Check ── (uses normalised match helpers)
+  if (market && runner) {
+    const orderMarket = { id: market.id, betfairMarketId: market.betfairMarketId };
+    const oppositeSide = side === 'BACK' ? 'LAY' : 'BACK';
+    const hasOpposite = existingOrders.some(o =>
+      matchOrderToMarket(o, orderMarket) &&
+      (matchSelectionId(o.selectionId, runner.betfairSelectionId || runner.selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
+      o.side === oppositeSide &&
+      OPEN_ORDER_STATUSES.includes(o.status)
+    );
+    if (hasOpposite && !settings?.allowHedging) {
+      failures.push({ field: 'conflictingPosition', reason: `Conflicting ${oppositeSide} position exists on this selection (hedging not enabled)` });
+    }
+  }
+
   // ── Exposure Limit ──
   const currentExposure = (bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0);
   const newExposure = side === 'LAY' ? stake * (price - 1) : stake;
@@ -138,11 +179,12 @@ export function createValidatedPaperOrder({
     failures.push({ field: 'exposure', reason: `Exposure $${(currentExposure + newExposure).toFixed(2)} would exceed max $${settings.maxMarketExposure || 1000}` });
   }
 
-  // ── Duplicate Order Check ──
+  // ── Duplicate Order Check ── (uses normalised match helpers)
   if (market && runner) {
+    const orderMarket = { id: market.id, betfairMarketId: market.betfairMarketId };
     const dup = existingOrders.some(o =>
-      o.marketId === (market.id || market.betfairMarketId) &&
-      (o.selectionId === (runner.betfairSelectionId || runner.selectionId) || o.runnerId === runner.id) &&
+      matchOrderToMarket(o, orderMarket) &&
+      (matchSelectionId(o.selectionId, runner.betfairSelectionId || runner.selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
       o.strategyName === strategyName &&
       OPEN_ORDER_STATUSES.includes(o.status)
     );
@@ -177,6 +219,10 @@ export function createValidatedPaperOrder({
       venue: market?.venue || '',
       raceNumber: market?.raceNumber || 0,
       marketStartTime: market?.startTime || null,
+      eventName: eventName || market?.eventName || '',
+      eventId: eventId || market?.eventId || '',
+      marketType: marketType || market?.marketType || null,
+      marketTypeCode: marketTypeCode || market?.marketTypeCode || null,
       side,
       orderType: 'LIMIT',
       size: stake,
@@ -184,6 +230,8 @@ export function createValidatedPaperOrder({
       persistenceType,
       paper_mode: true,
       liveMode: false,
+      proofMode,
+      proofReason,
       requested_size: stake,
       matched_size: 0,
       remaining_size: stake,
@@ -192,6 +240,8 @@ export function createValidatedPaperOrder({
       requestedOdds: price,
       matchedOdds: null,
       status: 'rejected',
+      settlementStatus: 'not_applicable',
+      liability: side === 'LAY' ? stake * (price - 1) : stake,
       rejection_reason: reason,
       failed_validation_field: failures[0].field,
       result: 'pending',
@@ -199,6 +249,11 @@ export function createValidatedPaperOrder({
       warningFlags: failures.map(f => f.reason),
       paperSimulationQuality: 'High',
       dataSource,
+      validationRan: true,
+      riskCheckRan: false,
+      softOverridesApplied: [],
+      hardBlockersChecked: true,
+      commissionRateUsed: null,
     };
     return { order: rejectedOrder, rejected: true, reason };
   }
@@ -237,6 +292,12 @@ export function createValidatedPaperOrder({
     venue: market.venue || '',
     raceNumber: market.raceNumber || 0,
     marketStartTime: market.startTime || null,
+    eventName: eventName || market.eventName || '',
+    eventId: eventId || market.eventId || '',
+    marketType: marketType || market.marketType || null,
+    marketTypeCode: marketTypeCode || market.marketTypeCode || null,
+    numberOfWinners: numberOfWinners || market.numberOfWinners || null,
+    placeTerms: placeTerms || null,
     side,
     orderType: 'LIMIT',
     size: stake,
@@ -247,6 +308,8 @@ export function createValidatedPaperOrder({
     handicap: runner.handicap || 0,
     paper_mode: true,
     liveMode: false,
+    proofMode,
+    proofReason,
     requested_size: stake,
     matched_size: matchedStake,
     remaining_size: remainingStake,
@@ -260,6 +323,8 @@ export function createValidatedPaperOrder({
     requestedStake: stake,
     matchedStake: matchedStake,
     status: orderStatus,
+    settlementStatus: (orderStatus === 'matched' || orderStatus === 'partially_matched') ? 'awaiting_result' : 'not_applicable',
+    liability: side === 'LAY' ? stake * (price - 1) : stake,
     expectedValue: expectedValue,
     result: 'pending',
     grossProfit: 0,
@@ -272,6 +337,10 @@ export function createValidatedPaperOrder({
     warningFlags: [],
     paperSimulationQuality: 'High',
     dataSource,
+    validationRan: true,
+    riskCheckRan: true,
+    softOverridesApplied: [],
+    hardBlockersChecked: true,
   };
 
   return { order, rejected: false, reason: null };

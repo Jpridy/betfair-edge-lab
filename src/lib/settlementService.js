@@ -35,7 +35,7 @@ export function settleOrderWithResult(order, market, settings, result) {
   const marketType = result?.marketType || detectMarketTypeFromOrder(order, market);
   const winners = result?.winners || [];
   const placedRunners = result?.placedRunners || [];
-  const placeTerms = result?.placeTerms || 2;
+  const placeTerms = result?.placeTerms || order?.placeTerms || 2;
   const resultSource = result?.resultSource || 'betfair_stream';
   const marketStatusAtSettlement = result?.marketStatusAtSettlement || 'CLOSED';
   const settledDate = new Date().toISOString();

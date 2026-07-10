@@ -55,6 +55,8 @@ export async function runSettlementCheck({
       awaitingBefore: 0,
       settledThisRun: 0,
       resultUnknownThisRun: 0,
+      voidedThisRun: 0,
+      stillAwaitingRace: 0,
       stillAwaiting: 0,
       latestResultSource: null,
       latestSettlementError: null,
@@ -63,6 +65,8 @@ export async function runSettlementCheck({
 
   let settledThisRun = 0;
   let resultUnknownThisRun = 0;
+  let voidedThisRun = 0;
+  let stillAwaitingRace = 0;
   let latestResultSource = null;
   let latestSettlementError = null;
 
@@ -127,15 +131,16 @@ export async function runSettlementCheck({
       }
 
       // ── Check market status ──
-      // If market is still OPEN, race hasn't run yet — leave as awaiting
+      // If market is still OPEN, race hasn't run yet — NOT result_unknown.
+      // This is a normal "still waiting for the race to run" state.
       if (market.status === 'OPEN') {
-        resultUnknownThisRun++;
+        stillAwaitingRace++;
         continue;
       }
 
       // If market is SUSPENDED, race may be in progress — leave as awaiting
       if (market.status === 'SUSPENDED') {
-        resultUnknownThisRun++;
+        stillAwaitingRace++;
         continue;
       }
 
@@ -161,7 +166,7 @@ export async function runSettlementCheck({
         const settled = settleOrderWithResult(order, market, settings, {
           winners,
           placedRunners,
-          placeTerms: null,
+          placeTerms: order.placeTerms || null,
           resultSource: 'betfair_market_status',
           marketType,
           marketStatusAtSettlement: market.status,
@@ -201,7 +206,7 @@ export async function runSettlementCheck({
             const settled = settleOrderWithResult(order, market, settings, {
               winners: lookupWinners,
               placedRunners: lookupPlaced,
-              placeTerms: null,
+              placeTerms: order.placeTerms || null,
               resultSource: 'openai_result_lookup',
               marketType,
               marketStatusAtSettlement: market.status,
@@ -233,13 +238,15 @@ export async function runSettlementCheck({
   }
 
   addAuditLog('Settlement Check Run', 'system', 'info',
-    `Checked ${before} awaiting orders — ${settledThisRun} settled, ${resultUnknownThisRun} still unknown`);
+    `Checked ${before} awaiting orders — ${settledThisRun} settled, ${voidedThisRun} voided, ${resultUnknownThisRun} result unknown, ${stillAwaitingRace} still awaiting race`);
 
   return {
     awaitingBefore: before,
     settledThisRun,
     resultUnknownThisRun,
-    stillAwaiting: before - settledThisRun,
+    voidedThisRun,
+    stillAwaitingRace,
+    stillAwaiting: before - settledThisRun - voidedThisRun,
     latestResultSource,
     latestSettlementError,
   };

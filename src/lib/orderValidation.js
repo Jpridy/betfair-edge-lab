@@ -9,6 +9,7 @@
 import { isValidTickPrice, roundToNearestTick, countTicksBetween } from './tickLadder';
 import { isCommissionValidForLive, isInPlayLocked, isOrderOpen } from './betfairMapping';
 import { isPaperProofModeActive } from './paperProofDefaults';
+import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 
 /**
  * Run the full pre-order validation checklist.
@@ -23,11 +24,15 @@ import { isPaperProofModeActive } from './paperProofDefaults';
  * @param {object} connectionState - { apiConnected, betfairSessionToken, dataFresh }
  * @returns {object} { passed, failures, rejectedOrder }
  */
-export function runPreOrderChecks(order, market, runner, strategy, settings, bankrollStats, existingOrders, connectionState) {
+export function runPreOrderChecks(order, market, runner, strategy, settings, bankrollStats, existingOrders, connectionState, validationContext = {}) {
   const failures = [];
   const isLiveMode = connectionState?.apiConnected === true;
   const riskDisabled = settings?.riskLimitsDisabled === true;
-  const paperProofMode = isPaperProofModeActive(settings, settings, settings);
+  // Use real botSettings/featherlessSettings from validationContext, or a
+  // pre-computed paperProofMode boolean. Never pass settings for all three.
+  const paperProofMode = validationContext.paperProofMode != null
+    ? validationContext.paperProofMode
+    : isPaperProofModeActive(settings, validationContext.botSettings || null, validationContext.featherlessSettings || null);
 
   // ── Market Checks ──
   if (!market) {
@@ -256,19 +261,21 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     }
   }
 
-  // ── Max Orders Per Market ──
+  // ── Max Orders Per Market ── (uses normalised match helper)
   if (!riskDisabled) {
-    const marketOrders = existingOrders.filter(o => o.marketId === order.marketId && isOrderOpen(o.status));
+    const orderMarket = { id: order.marketId, betfairMarketId: order.betfairMarketId };
+    const marketOrders = existingOrders.filter(o => matchOrderToMarket(o, orderMarket) && isOrderOpen(o.status));
     if (marketOrders.length >= (settings.maxTradesPerMarket || 5)) {
       failures.push({ field: 'maxTradesPerMarket', reason: `Max orders per market reached (${marketOrders.length}/${settings.maxTradesPerMarket || 5})` });
     }
   }
 
-  // ── Duplicate Order Check ──
+  // ── Duplicate Order Check ── (uses normalised match helpers)
   if (!riskDisabled) {
+    const orderMarket = { id: order.marketId, betfairMarketId: order.betfairMarketId };
     const dup = existingOrders.some(o =>
-      o.marketId === order.marketId &&
-      (o.selectionId === order.selectionId || o.runnerId === order.runnerId) &&
+      matchOrderToMarket(o, orderMarket) &&
+      (matchSelectionId(o.selectionId, order.selectionId) || matchSelectionId(o.runnerId, order.runnerId)) &&
       o.strategyName === order.strategyName &&
       isOrderOpen(o.status)
     );
@@ -281,9 +288,10 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   // Prevent BACK + LAY on same selection unless hedging is explicitly enabled
   if (!riskDisabled) {
     const oppositeSide = order.side === 'BACK' ? 'LAY' : 'BACK';
+    const orderMarket = { id: order.marketId, betfairMarketId: order.betfairMarketId };
     const hasOpposite = existingOrders.some(o =>
-      o.marketId === order.marketId &&
-      (o.selectionId === order.selectionId || o.runnerId === order.runnerId) &&
+      matchOrderToMarket(o, orderMarket) &&
+      (matchSelectionId(o.selectionId, order.selectionId) || matchSelectionId(o.runnerId, order.runnerId)) &&
       o.side === oppositeSide &&
       isOrderOpen(o.status)
     );

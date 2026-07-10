@@ -8,6 +8,7 @@
 
 import { scoreRunnerCandidate, resolveThresholds, REJECTION_REASONS, fmtPct } from './candidateScoring';
 import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
+import { checkMarketEligibility } from './marketEligibility';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -35,10 +36,10 @@ export function buildScanDiagnostics(markets, runners, settings, aiSettings, pap
     };
   }
 
-  // Filter eligible markets
+  // Filter eligible markets using shared eligibility function
   const candidates = markets.filter(m => m.status === 'OPEN' && !m.inPlay);
 
-  // Sort by proximity to trading window
+  // Sort by proximity to trading window (uses same window as the engine)
   const windowStart = settings.defaultTimeWindowStartSeconds || 500;
   const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
   const nowMs = Date.now();

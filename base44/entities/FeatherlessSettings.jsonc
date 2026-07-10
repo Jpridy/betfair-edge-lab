@@ -257,6 +257,10 @@
     "featherlessStrictJson": {
       "type": "boolean",
       "default": true
+    },
+    "paperProofExternalSearchEnabled": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [

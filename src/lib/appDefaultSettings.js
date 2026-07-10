@@ -48,6 +48,7 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
   allowMarketOnlyFallbackInNormalMode: false,
   featherlessTimeoutMs: 120000,
   featherlessStrictJson: true,
+  paperProofExternalSearchEnabled: false,
 };
 
 export const DEFAULT_BOT_SETTINGS = {

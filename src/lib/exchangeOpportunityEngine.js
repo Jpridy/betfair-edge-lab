@@ -26,6 +26,7 @@ import { isPaperProofModeActive } from './paperProofDefaults';
 import { buildProofOpportunity } from './paperProofScanner';
 import { matchRunnerToMarket } from './marketIdMatcher';
 import { buildRacePack, summarizeRacePack } from './racePackBuilder';
+import { checkMarketEligibility } from './marketEligibility';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -70,25 +71,12 @@ function getRunnersForMarket(market, runnersByMarket) {
  * @returns {Array} Eligible markets (OPEN, not in-play, 2+ runners, in time window)
  */
 export function scanEligibleMarkets(markets, runners, settings, debugScanMode = false, runnersByMarket = null) {
-  const windowStart = settings.defaultTimeWindowStartSeconds || 500;
-  const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
-  const nowMs = Date.now();
   const rMap = runnersByMarket || buildRunnerByMarketMap(runners);
 
   return markets.filter(m => {
-    if (m.status !== 'OPEN') return false;
-    if (m.inPlay && !settings.allowInPlay) return false;
-
     const marketRunners = getRunnersForMarket(m, rMap);
-    const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
-    if (runnerCount < 2) return false;
-
-    if (debugScanMode) return true;
-
-    const start = m.startTime ? new Date(m.startTime).getTime() : NaN;
-    if (isNaN(start)) return true;
-    const secsBefore = (start - nowMs) / 1000;
-    return secsBefore > windowEnd && secsBefore < windowStart * 2;
+    const check = checkMarketEligibility(m, marketRunners, settings, { debugScanMode });
+    return check.eligible;
   });
 }
 
@@ -184,10 +172,6 @@ function buildMarketFeedDiagnostics(markets, runners, connectionState, runnersBy
  * Build market filter funnel — full rejection breakdown.
  */
 function buildMarketFilterFunnel(markets, runners, settings, debugScanMode, runnersByMarket) {
-  const windowStart = settings.defaultTimeWindowStartSeconds || 500;
-  const windowEnd = settings.defaultTimeWindowEndSeconds || 30;
-  const nowMs = Date.now();
-
   let open = 0, closed = 0, suspended = 0;
   let inPlay = 0, notInPlay = 0;
   let withStartTime = 0, withoutStartTime = 0;
@@ -206,14 +190,17 @@ function buildMarketFilterFunnel(markets, runners, settings, debugScanMode, runn
     if (isNaN(start)) { withoutStartTime++; rejNoStart++; continue; }
     withStartTime++;
 
-    if (!debugScanMode) {
-      const secsBefore = (start - nowMs) / 1000;
-      if (secsBefore <= windowEnd) { rejTooLate++; continue; }
-      if (secsBefore > windowStart * 2) { rejTooEarly++; continue; }
+    // Use shared eligibility check for the time-window gate
+    const marketRunners = getRunnersForMarket(m, runnersByMarket);
+    const check = checkMarketEligibility(m, marketRunners, settings, { debugScanMode });
+    if (!check.eligible) {
+      const reason = check.reason || '';
+      if (reason.includes('Too early')) { rejTooEarly++; continue; }
+      if (reason.includes('Too late')) { rejTooLate++; continue; }
+      if (reason.includes('Fewer than 2')) { rejNoRunners++; continue; }
     }
     insideTimeWindow++;
 
-    const marketRunners = getRunnersForMarket(m, runnersByMarket);
     const runnerCount = Math.max(m.numberOfRunners || 0, m.numberOfActiveRunners || 0, marketRunners.length);
     if (runnerCount < 2) { rejNoRunners++; continue; }
     withTwoRunners++;
@@ -277,9 +264,11 @@ function buildTimeWindowFunnel(markets, settings, debugScanMode) {
     }
     const secsBefore = Math.round((start - nowMs) / 1000);
     let category;
-    if (secsBefore <= 0) { tooLate++; category = 'too_late'; }
-    else if (secsBefore < windowEnd) { tooLate++; category = 'too_late'; }
-    else if (secsBefore > windowStart * 2) { tooEarly++; category = 'too_early'; }
+    // Use the same single window check as checkMarketEligibility:
+    // eligible when windowEnd < secsBefore <= windowStart
+    if (debugScanMode) {
+      insideWindow++; category = 'inside_window';
+    } else if (secsBefore <= windowEnd) { tooLate++; category = 'too_late'; }
     else if (secsBefore > windowStart) { tooEarly++; category = 'too_early'; }
     else { insideWindow++; category = 'inside_window'; }
 
@@ -1174,7 +1163,7 @@ export function opportunityToSignal(opportunity, settings) {
     edgePercent: opportunity.edge * 100,
     expectedValue: opportunity.ev,
     confidence: opportunity.confidence,
-    signalStatus: 'active',
+    signalStatus: 'proposed',
     persistenceType: 'LAPSE',
     spreadTicks: opportunity.spreadTicks,
     reason: opportunity.reasons.join('; '),
