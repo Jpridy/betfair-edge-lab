@@ -209,6 +209,54 @@
     "paperProofMode": {
       "type": "boolean",
       "default": false
+    },
+    "featherlessAlwaysRequired": {
+      "type": "boolean",
+      "default": true
+    },
+    "requireFullRacePack": {
+      "type": "boolean",
+      "default": true
+    },
+    "maxRacesPerCycle": {
+      "type": "number",
+      "default": 1
+    },
+    "maxRunnersPerRacePack": {
+      "type": "number",
+      "default": 30
+    },
+    "maxMarketsPerRacePack": {
+      "type": "number",
+      "default": 10
+    },
+    "includeOpenAIResearchInRacePack": {
+      "type": "boolean",
+      "default": true
+    },
+    "includeRiskContextInRacePack": {
+      "type": "boolean",
+      "default": true
+    },
+    "allowMarketOnlyFallbackInDebug": {
+      "type": "boolean",
+      "default": true
+    },
+    "allowMarketOnlyFallbackInPaperProof": {
+      "type": "boolean",
+      "default": true
+    },
+    "allowMarketOnlyFallbackInNormalMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "featherlessTimeoutMs": {
+      "type": "number",
+      "default": 30000
+    },
+    "featherlessStrictJson": {
+      "type": "boolean",
+      "default": true
     }
   },
   "required": [

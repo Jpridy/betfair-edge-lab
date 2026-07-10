@@ -909,20 +909,9 @@ export function AppProvider({ children }) {
           paperOrders: s.paperOrders,
           emergencyStop: s.emergencyStop,
           connectionState,
-          callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners) => {
-            let webResearch = null;
-            if (s.featherlessSettings?.webResearchEnabled) {
-              try {
-                const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
-                if (researchResp.data?.research) webResearch = researchResp.data.research;
-              } catch (err) { /* skip */ }
-            }
+          callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners, racePack) => {
             const resp = await base44.functions.invoke('featherlessAI', {
-              market: primaryMarket, runners: marketRunners, settings: s.settings,
-              strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
-              raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-              webResearch,
-              allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+              racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
             });
             if (resp.data?.error) throw new Error(resp.data.error);
             return resp.data?.aiResult || null;
@@ -1468,20 +1457,9 @@ export function AppProvider({ children }) {
           paperOrders: s.paperOrders,
           emergencyStop: s.emergencyStop,
           connectionState,
-          callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners) => {
-            let webResearch = null;
-            if (s.featherlessSettings?.webResearchEnabled) {
-              try {
-                const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
-                if (researchResp.data?.research) webResearch = researchResp.data.research;
-              } catch (err) { notes.push(`Web research error: ${err.message}`); }
-            }
+          callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners, racePack) => {
             const resp = await base44.functions.invoke('featherlessAI', {
-              market: primaryMarket, runners: marketRunners, settings: s.settings,
-              strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
-              raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-              webResearch,
-              allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+              racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
             });
             if (resp.data?.error) throw new Error(resp.data.error);
             return resp.data?.aiResult || null;
@@ -1894,20 +1872,9 @@ export function AppProvider({ children }) {
         paperOrders: s.paperOrders,
         emergencyStop: s.emergencyStop,
         connectionState,
-        callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners) => {
-          let webResearch = null;
-          if (s.featherlessSettings?.webResearchEnabled) {
-            try {
-              const researchResp = await base44.functions.invoke('raceWebResearch', { market: primaryMarket, runners: marketRunners });
-              if (researchResp.data?.research) webResearch = researchResp.data.research;
-            } catch (err) { /* skip */ }
-          }
+        callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners, racePack) => {
           const resp = await base44.functions.invoke('featherlessAI', {
-            market: primaryMarket, runners: marketRunners, settings: s.settings,
-            strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
-            raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-            webResearch,
-            allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+            racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
           });
           if (resp.data?.error) throw new Error(resp.data.error);
           return resp.data?.aiResult || null;

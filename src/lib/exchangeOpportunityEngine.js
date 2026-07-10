@@ -25,6 +25,7 @@ import { getCachedExternalSearch, setCachedExternalSearch, getExternalSearchCach
 import { isPaperProofModeActive } from './paperProofDefaults';
 import { buildProofOpportunity } from './paperProofScanner';
 import { matchRunnerToMarket } from './marketIdMatcher';
+import { buildRacePack, summarizeRacePack } from './racePackBuilder';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -410,7 +411,7 @@ export async function runExchangeCycle(params) {
     callAI = null,
     callExternalSearch = null,
     connectionState = {},
-    maxEventsToScan = 1,
+    maxEventsToScan = null, // overridden by maxRacesPerCycle from settings
   } = params || {};
 
   // ── Safe argument defaults ──
@@ -532,7 +533,8 @@ export async function runExchangeCycle(params) {
   // This is the single biggest speedup: 1 AI call instead of N.
   // All clusters are still reported in diagnostics for transparency.
   const totalEventClusters = eventClusters.length;
-  const clustersToScan = eventClusters.slice(0, maxEventsToScan);
+  const effectiveMaxEvents = maxEventsToScan || maxRacesPerCycle;
+  const clustersToScan = eventClusters.slice(0, effectiveMaxEvents);
 
   // ── Market detection log ──
   const marketDetectionLog = eligibleMarkets.map(m => {
@@ -582,6 +584,26 @@ export async function runExchangeCycle(params) {
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extCacheTtlMs = (featherlessSettings?.externalSearchCacheTtlMinutes || 5) * 60 * 1000;
 
+  // ── Race Assessment tracking ──
+  const raceAssessments = [];
+  let featherlessCalled = 0;
+  let featherlessSucceeded = 0;
+  let featherlessFailed = 0;
+  let featherlessTimedOut = 0;
+  let featherlessNotConfigured = 0;
+  let marketOnlyFallbacksUsed = 0;
+  let racePacksBuilt = 0;
+  let totalRunnerProbabilitiesReturned = 0;
+  let totalH2HProbabilitiesReturned = 0;
+  let totalRecommendedOpportunitiesReturned = 0;
+  let featherlessTotalLatencyMs = 0;
+  let localEngineOverruledFeatherless = 0;
+  const featherlessAlwaysRequired = featherlessSettings?.featherlessAlwaysRequired !== false;
+  const allowMarketOnlyFallbackInNormalMode = featherlessSettings?.allowMarketOnlyFallbackInNormalMode === true;
+  const allowMarketOnlyFallbackInDebug = featherlessSettings?.allowMarketOnlyFallbackInDebug !== false;
+  const allowMarketOnlyFallbackInPaperProof = featherlessSettings?.allowMarketOnlyFallbackInPaperProof !== false;
+  const maxRacesPerCycle = featherlessSettings?.maxRacesPerCycle || 1;
+
   const marketTypeCounts = eligibleMarkets.reduce((acc, m) => {
     const type = detectMarketType(m);
     if (type === 'WIN') acc.winMarketsFound++;
@@ -602,74 +624,30 @@ export async function runExchangeCycle(params) {
     if (marketRunners.length === 0) continue;
     clustersWithMatchedRunners++;
 
-    // ── AI caching: bypass cache entirely in debug scan mode ──
-    let aiResult = debugScanMode ? null : getCachedAIResult(cluster, marketRunners);
-    let usedMarketOnlyFallback = false;
-    if (aiResult) {
-      cacheHits++;
-      aiStatusLog.push({ eventId: cluster.eventId, status: 'cache_hit' });
-    } else if (callAI) {
-      try {
-        aiResult = await callAI(cluster, primaryMarket, marketRunners);
-        if (aiResult) {
-          if (!debugScanMode) setCachedAIResult(cluster, marketRunners, aiResult);
-          eventsWithAI++;
-          aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: true, returnedProbabilities: true });
-          aiDecisions.push({ eventId: cluster.eventId, aiResult });
-        } else {
-          aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: false, reason: 'AI returned null' });
-        }
-      } catch (err) {
-        const isTimeout = err.message?.toLowerCase().includes('timeout') || err.code === 'ETIMEDOUT';
-        aiStatusLog.push({ eventId: cluster.eventId, status: isTimeout ? 'ai_timeout' : 'ai_error', reason: err.message });
-      }
-    } else {
-      aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
-    }
+    // ══════════════════════════════════════════════════════════════════
+    // RACE-FIRST FLOW: Build full race pack → Call Featherless → Generate
+    // ══════════════════════════════════════════════════════════════════
+    // The bot selects the race, builds a full race pack with ALL markets,
+    // runners, prices, external research, and risk context — then sends
+    // the entire pack to Featherless for a full race assessment.
+    // Featherless sees the ENTIRE race before any opportunity is selected.
 
-    const allowMarketOnlyFallback = paperProofMode || debugScanMode || !callAI;
-    if (!aiResult) {
-      if (allowMarketOnlyFallback) {
-        aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
-        usedMarketOnlyFallback = true;
-        marketOnlyResultsCreated++;
-        const reason = !callAI
-          ? 'AI disabled — using market-implied probabilities'
-          : paperProofMode
-            ? 'Featherless unavailable in Paper Proof Mode'
-            : 'Featherless unavailable in Debug Scan — using market-implied probabilities';
-        const status = !callAI ? 'market_only' : 'market_only_fallback';
-        aiStatusLog.push({ eventId: cluster.eventId, status, success: true, reason });
-      } else {
-        continue;
-      }
-    }
-
-    // ── External search ──
+    // ── Step 1: External search (runs first so results go into the race pack) ──
     let externalSearchResult = null;
     if (extSearchEnabled && callExternalSearch) {
       const eventName = cluster.eventName || primaryMarket.eventName || '';
       const marketStartTime = primaryMarket.startTime || primaryMarket.marketStartTime || '';
-
       const cached = debugScanMode ? null : getCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners);
       if (cached) {
         extSearchCacheHits++;
         externalSearchResult = cached;
-        externalSearchPerEvent.push({
-          eventId: cluster.eventId, eventName,
-          searchStatus: cached.searchStatus, sourceCount: cached.sourceCount || 0,
-          dataQuality: cached.dataQuality || 0, runnersResearched: (cached.runnerResearch || []).length,
-          cacheHit: true,
-        });
+        externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: cached.searchStatus, sourceCount: cached.sourceCount || 0, dataQuality: cached.dataQuality || 0, runnersResearched: (cached.runnerResearch || []).length, cacheHit: true });
       } else {
         extSearchCacheMisses++;
         extSearchCalls++;
         try {
           externalSearchResult = await callExternalSearch(cluster, primaryMarket, marketRunners);
           if (externalSearchResult) {
-            // Only cache successful or no-results responses.
-            // Error/timeout results must NOT be cached — they should be retried next cycle.
-            // Skip caching entirely in debug scan mode so debug results don't pollute normal cycles.
             if (!debugScanMode && (externalSearchResult.searchStatus === 'success' || externalSearchResult.searchStatus === 'no_results')) {
               setCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners, externalSearchResult, extCacheTtlMs);
             }
@@ -677,41 +655,107 @@ export async function runExchangeCycle(params) {
             extRunnersAffected += (externalSearchResult.runnerResearch || []).length;
             extLatestQuery = externalSearchResult.searchQuery || extLatestQuery;
             extLatestStatus = externalSearchResult.searchStatus || extLatestStatus;
-            if (externalSearchResult.searchStatus === 'success' && externalSearchResult.raceLevelNotes) {
-              extLatestSummary = externalSearchResult.raceLevelNotes.slice(0, 200);
-            }
+            if (externalSearchResult.searchStatus === 'success' && externalSearchResult.raceLevelNotes) extLatestSummary = externalSearchResult.raceLevelNotes.slice(0, 200);
             if (externalSearchResult.searchStatus === 'timeout') extSearchTimeouts++;
             else if (externalSearchResult.searchStatus === 'error') extSearchErrors++;
             else if (externalSearchResult.searchStatus === 'no_results') extSearchNoResults++;
-
-            externalSearchPerEvent.push({
-              eventId: cluster.eventId, eventName,
-              searchStatus: externalSearchResult.searchStatus,
-              sourceCount: externalSearchResult.sourceCount || 0,
-              dataQuality: externalSearchResult.dataQuality || 0,
-              runnersResearched: (externalSearchResult.runnerResearch || []).length,
-              cacheHit: false,
-            });
+            externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.searchStatus, sourceCount: externalSearchResult.sourceCount || 0, dataQuality: externalSearchResult.dataQuality || 0, runnersResearched: (externalSearchResult.runnerResearch || []).length, cacheHit: false });
           }
         } catch (extErr) {
           const isTimeout = extErr.message?.toLowerCase().includes('timeout');
           if (isTimeout) extSearchTimeouts++; else extSearchErrors++;
-          externalSearchResult = {
-            searchStatus: isTimeout ? 'timeout' : 'error',
-            sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '',
-            dataQuality: 0, errorMessage: extErr.message, searchQuery: '',
-            searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search',
-          };
-          externalSearchPerEvent.push({
-            eventId: cluster.eventId, eventName,
-            searchStatus: externalSearchResult.searchStatus,
-            sourceCount: 0, dataQuality: 0, runnersResearched: 0, cacheHit: false,
-          });
+          externalSearchResult = { searchStatus: isTimeout ? 'timeout' : 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: extErr.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
+          externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.searchStatus, sourceCount: 0, dataQuality: 0, runnersResearched: 0, cacheHit: false });
         }
       }
     }
 
-    // 5-7. Generate opportunities with exchange maths and safety gates
+    // ── Step 2: Build the RacePack ──
+    const racePack = buildRacePack(cluster, runners, markets, settings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult, { paperMode: true, paperProofMode });
+    racePacksBuilt++;
+    const racePackSummary = summarizeRacePack(racePack);
+
+    // ── Step 3: Call Featherless with the FULL race pack ──
+    let aiResult = debugScanMode ? null : getCachedAIResult(cluster, marketRunners);
+    let usedMarketOnlyFallback = false;
+    let featherlessStatus = 'not_called';
+    let featherlessLatencyMs = 0;
+    let featherlessDataQuality = 0;
+    let featherlessConfidence = 0;
+    let featherlessRecommendedOpp = null;
+
+    if (aiResult) {
+      cacheHits++;
+      aiStatusLog.push({ eventId: cluster.eventId, status: 'cache_hit' });
+      featherlessStatus = 'cache_hit';
+      featherlessDataQuality = aiResult.dataQuality || 0;
+      featherlessConfidence = aiResult.confidence || aiResult.dataQuality || 0;
+    } else if (callAI) {
+      featherlessCalled++;
+      const flStart = Date.now();
+      try {
+        aiResult = await callAI(cluster, primaryMarket, marketRunners, racePack);
+        featherlessLatencyMs = Date.now() - flStart;
+        featherlessTotalLatencyMs += featherlessLatencyMs;
+        if (aiResult) {
+          if (!debugScanMode) setCachedAIResult(cluster, marketRunners, aiResult);
+          eventsWithAI++;
+          featherlessSucceeded++;
+          featherlessStatus = aiResult.featherlessStatus || 'success';
+          featherlessDataQuality = aiResult.dataQuality || 0;
+          featherlessConfidence = aiResult.confidence || aiResult.dataQuality || 0;
+          totalRunnerProbabilitiesReturned += (aiResult.runnerProbabilities?.length || 0);
+          totalH2HProbabilitiesReturned += (aiResult.h2hProbabilities?.length || 0);
+          totalRecommendedOpportunitiesReturned += (aiResult.recommendedOpportunities?.length || 0);
+          featherlessRecommendedOpp = aiResult.recommendedOpportunities?.[0] || null;
+          aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: true, returnedProbabilities: true, latencyMs: featherlessLatencyMs });
+          aiDecisions.push({ eventId: cluster.eventId, aiResult });
+        } else {
+          featherlessFailed++;
+          featherlessStatus = 'failed';
+          aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: false, reason: 'AI returned null' });
+        }
+      } catch (err) {
+        const isTimeout = err.message?.toLowerCase().includes('timeout') || err.code === 'ETIMEDOUT';
+        featherlessLatencyMs = Date.now() - flStart;
+        featherlessTotalLatencyMs += featherlessLatencyMs;
+        if (isTimeout) { featherlessTimedOut++; featherlessStatus = 'timeout'; }
+        else { featherlessFailed++; featherlessStatus = 'failed'; }
+        aiStatusLog.push({ eventId: cluster.eventId, status: isTimeout ? 'ai_timeout' : 'ai_error', reason: err.message, latencyMs: featherlessLatencyMs });
+      }
+    } else {
+      featherlessNotConfigured++;
+      featherlessStatus = 'not_configured';
+      aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
+    }
+
+    // ── Step 4: Handle Featherless failure ──
+    const isNormalMode = !paperProofMode && !debugScanMode;
+    const allowMarketOnlyFallback = paperProofMode ? allowMarketOnlyFallbackInPaperProof : debugScanMode ? allowMarketOnlyFallbackInDebug : allowMarketOnlyFallbackInNormalMode;
+
+    if (!aiResult) {
+      if (allowMarketOnlyFallback) {
+        aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
+        aiResult.decisionSource = 'MARKET_ONLY_FALLBACK';
+        aiResult.featherlessStatus = featherlessStatus;
+        usedMarketOnlyFallback = true;
+        marketOnlyFallbacksUsed++;
+        const reason = !callAI ? 'Featherless not configured — market-implied probabilities' : `Featherless ${featherlessStatus} — market-implied fallback`;
+        aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only_fallback', success: true, reason });
+      } else if (isNormalMode && featherlessAlwaysRequired) {
+        raceAssessments.push({ eventId: cluster.eventId, eventName: cluster.eventName, racePackSummary, featherlessCalled: featherlessStatus !== 'not_configured', featherlessStatus, featherlessLatencyMs, featherlessDataQuality: 0, featherlessConfidence: 0, runnerProbabilitiesReturned: 0, h2hProbabilitiesReturned: 0, recommendedOpportunitiesReturned: 0, featherlessRecommendedOpp: null, opportunitiesGenerated: 0, localEngineOverruled: false, overruleReason: `Featherless failed (${featherlessStatus})`, finalDecision: 'NO_BET', finalReason: `Featherless race assessment failed (${featherlessStatus})`, decisionSource: 'MARKET_ONLY_FALLBACK' });
+        continue;
+      } else {
+        continue;
+      }
+    }
+    if (aiResult && !aiResult.decisionSource) aiResult.decisionSource = usedMarketOnlyFallback ? 'MARKET_ONLY_FALLBACK' : 'FEATHERLESS_RACE_ASSESSMENT';
+    if (aiResult) aiResult.featherlessStatus = featherlessStatus;
+
+    // ── Step 5: Generate opportunities using Featherless probabilities ──
+    // The local exchange engine creates BACK/LAY opportunities across
+    // WIN/PLACE/H2H using Featherless probabilities as model probabilities.
+    // The local engine is the final mathematical and safety authority.
     const opportunities = generateOpportunitiesForEvent(
       cluster, runners, aiResult, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult
     );
@@ -745,6 +789,46 @@ export async function runExchangeCycle(params) {
         });
       }
     }
+
+    // ── Track race assessment for diagnostics ──
+    const betOpps = opportunities.filter(o => o.decision === 'BET');
+    const bestLocalOpp = betOpps.sort((a, b) => b.ev - a.ev)[0] || null;
+    let localOverruled = false;
+    let overruleReason = null;
+    if (featherlessRecommendedOpp && bestLocalOpp) {
+      const flSelId = String(featherlessRecommendedOpp.selectionId || '');
+      const localSelId = String(bestLocalOpp.selectionId || '');
+      const flSide = featherlessRecommendedOpp.side;
+      if (flSelId !== localSelId || flSide !== bestLocalOpp.side) {
+        localOverruled = true;
+        overruleReason = `Featherless recommended ${flSide} ${featherlessRecommendedOpp.runnerName}, but local engine selected ${bestLocalOpp.side} ${bestLocalOpp.runnerName}`;
+      } else if (bestLocalOpp.blockers?.length > 0) {
+        localOverruled = true;
+        overruleReason = `Featherless recommended ${flSide} ${featherlessRecommendedOpp.runnerName}, but local engine rejected: ${bestLocalOpp.blockers[0]}`;
+      }
+    }
+    if (localOverruled) localEngineOverruledFeatherless++;
+    raceAssessments.push({
+      eventId: cluster.eventId,
+      eventName: cluster.eventName,
+      racePackSummary,
+      featherlessCalled: featherlessStatus !== 'not_called' && featherlessStatus !== 'not_configured',
+      featherlessStatus,
+      featherlessLatencyMs,
+      featherlessDataQuality,
+      featherlessConfidence,
+      runnerProbabilitiesReturned: aiResult?.runnerProbabilities?.length || 0,
+      h2hProbabilitiesReturned: aiResult?.h2hProbabilities?.length || 0,
+      recommendedOpportunitiesReturned: aiResult?.recommendedOpportunities?.length || 0,
+      featherlessRecommendedOpp: featherlessRecommendedOpp ? { selectionId: featherlessRecommendedOpp.selectionId, runnerName: featherlessRecommendedOpp.runnerName, side: featherlessRecommendedOpp.side, marketType: featherlessRecommendedOpp.marketType, estimatedEdge: featherlessRecommendedOpp.estimatedEdge } : null,
+      opportunitiesGenerated: opportunities.length,
+      bestLocalOpportunity: bestLocalOpp ? { selectionId: bestLocalOpp.selectionId, runnerName: bestLocalOpp.runnerName, side: bestLocalOpp.side, marketType: bestLocalOpp.marketType, ev: bestLocalOpp.ev, decision: bestLocalOpp.decision } : null,
+      localEngineOverruled: localOverruled,
+      overruleReason,
+      finalDecision: bestLocalOpp ? 'BET' : 'NO_BET',
+      finalReason: bestLocalOpp ? `${bestLocalOpp.side} ${bestLocalOpp.runnerName} — EV $${bestLocalOpp.ev.toFixed(2)}` : (opportunities.length > 0 ? `All ${opportunities.length} opportunities blocked by safety gates` : 'No opportunities generated'),
+      decisionSource: aiResult?.decisionSource || 'UNKNOWN',
+    });
   }
 
   // 8. Rank all opportunities by EV
@@ -980,6 +1064,10 @@ export async function runExchangeCycle(params) {
       proofFallbackAttempted,
       proofFallbackCreated,
       proofFallbackBlockedReason,
+      racePacksBuilt,
+      featherlessCalled,
+      featherlessSucceeded,
+      featherlessFailed,
     },
     positiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
     mathematicallyPositiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
@@ -1031,6 +1119,24 @@ export async function runExchangeCycle(params) {
       latestSearchStatus: extLatestStatus,
       perEventResults: externalSearchPerEvent,
       cacheStats: getExternalSearchCacheStats(),
+    },
+    raceAssessmentDiagnostics: {
+      racePacksBuilt,
+      featherlessCalled,
+      featherlessSucceeded,
+      featherlessFailed,
+      featherlessTimedOut,
+      featherlessNotConfigured,
+      marketOnlyFallbacksUsed,
+      featherlessAlwaysRequired,
+      totalRunnerProbabilitiesReturned,
+      totalH2HProbabilitiesReturned,
+      totalRecommendedOpportunitiesReturned,
+      featherlessTotalLatencyMs,
+      featherlessAvgLatencyMs: featherlessCalled > 0 ? Math.round(featherlessTotalLatencyMs / featherlessCalled) : 0,
+      localEngineOverruledFeatherless,
+      raceAssessments,
+      lastRacePack: raceAssessments[0]?.racePackSummary || null,
     },
   };
 

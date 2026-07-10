@@ -25,15 +25,9 @@ export default function ExchangeOpportunities() {
     try {
       const result = await runExchangeCycle({
         markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, emergencyStop,
-        callAI: async (cluster, primaryMarket, marketRunners) => {
+        callAI: async (cluster, primaryMarket, marketRunners, racePack) => {
           const resp = await base44.functions.invoke('featherlessAI', {
-            market: primaryMarket,
-            runners: marketRunners,
-            settings,
-            strategySettings: featherlessSettings,
-            bankrollStats,
-            raceFormProfiles: marketRunners.map(r => r.raceFormProfile).filter(Boolean),
-            allEventMarkets: [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets],
+            racePack, settings, strategySettings: featherlessSettings, bankrollStats,
           });
           return resp.data?.aiResult || null;
         },

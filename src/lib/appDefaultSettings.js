@@ -35,6 +35,19 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
   minExternalDataQuality: 50,
   requireExternalSearchForLiveBetting: false,
   externalSearchCacheTtlMinutes: 5,
+  // ── Race Assessment Architecture ──
+  featherlessAlwaysRequired: true,
+  requireFullRacePack: true,
+  maxRacesPerCycle: 1,
+  maxRunnersPerRacePack: 30,
+  maxMarketsPerRacePack: 10,
+  includeOpenAIResearchInRacePack: true,
+  includeRiskContextInRacePack: true,
+  allowMarketOnlyFallbackInDebug: true,
+  allowMarketOnlyFallbackInPaperProof: true,
+  allowMarketOnlyFallbackInNormalMode: false,
+  featherlessTimeoutMs: 30000,
+  featherlessStrictJson: true,
 };
 
 export const DEFAULT_BOT_SETTINGS = {
