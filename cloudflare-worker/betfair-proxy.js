@@ -54,6 +54,9 @@ export default {
       ? await request.text()
       : null;
 
+    const isAu = target.hostname.endsWith(".com.au");
+    const betfairOrigin = isAu ? "https://www.betfair.com.au" : "https://www.betfair.com";
+
     const headers = new Headers();
     const appKey = request.headers.get("X-Application");
     const auth = request.headers.get("X-Authentication");
@@ -63,6 +66,15 @@ export default {
     headers.set("Accept", "application/json");
     headers.set("User-Agent", BROWSER_UA);
     headers.set("Accept-Language", "en-AU,en;q=0.9");
+    headers.set("Accept-Encoding", "gzip, deflate, br");
+    headers.set("Origin", betfairOrigin);
+    headers.set("Referer", betfairOrigin + "/");
+    headers.set("Sec-Fetch-Dest", "empty");
+    headers.set("Sec-Fetch-Mode", "cors");
+    headers.set("Sec-Fetch-Site", "same-site");
+    headers.set("sec-ch-ua", '"Chromium";v="125", "Not.A/Brand";v="24", "Google Chrome";v="125"');
+    headers.set("sec-ch-ua-mobile", "?0");
+    headers.set("sec-ch-ua-platform", '"Windows"');
 
     try {
       const upstream = await fetch(targetUrl, {

@@ -263,10 +263,10 @@ export default function BetfairConnection() {
                 <div>
                   <div className="font-semibold">HTML 403 from Betfair — Cloudflare Worker needs redeployment</div>
                   <div className="mt-0.5">
-                    Your Cloudflare Worker proxy is missing a standard <span className="font-mono">User-Agent</span> header.
-                    Cloudflare Workers adds <span className="font-mono">User-Agent: Cloudflare-Workers</span> by default,
-                    which Betfair's WAF blocks. <strong>Redeploy the worker</strong> with the updated code from
-                    <span className="font-mono"> cloudflare-worker-code.txt</span> in your app files, then run the
+                    Your Cloudflare Worker is missing browser headers (<span className="font-mono">Origin</span>,
+                    <span className="font-mono"> Referer</span>, <span className="font-mono">Sec-Fetch-*</span>).
+                    Betfair's betting API WAF rejects requests without these. <strong>Redeploy the worker</strong> with
+                    the updated code from <span className="font-mono">cloudflare-worker-code.txt</span>, then run the
                     Endpoint Diagnostic again.
                   </div>
                   {betfairConnection?.marketCatalogueError && (
