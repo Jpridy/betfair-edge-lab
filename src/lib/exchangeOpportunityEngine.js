@@ -667,7 +667,11 @@ export async function runExchangeCycle(params) {
         try {
           externalSearchResult = await callExternalSearch(cluster, primaryMarket, marketRunners);
           if (externalSearchResult) {
-            setCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners, externalSearchResult, extCacheTtlMs);
+            // Only cache successful or no-results responses.
+            // Error/timeout results must NOT be cached — they should be retried next cycle.
+            if (externalSearchResult.searchStatus === 'success' || externalSearchResult.searchStatus === 'no_results') {
+              setCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners, externalSearchResult, extCacheTtlMs);
+            }
             extTotalSources += externalSearchResult.sourceCount || 0;
             extRunnersAffected += (externalSearchResult.runnerResearch || []).length;
             extLatestQuery = externalSearchResult.searchQuery || extLatestQuery;
