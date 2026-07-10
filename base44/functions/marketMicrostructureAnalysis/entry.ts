@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.35';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.37';
 
 const FEATHERLESS_BASE_URL = 'https://api.featherless.ai/v1';
 

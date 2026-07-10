@@ -4,7 +4,7 @@ import { MOCK_RACE_PACK, MOCK_FEATHERLESS_RESPONSE } from '@/lib/mockFeatherless
 import { Panel, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Brain, Send, ArrowRight, CheckCircle, AlertTriangle, TrendingUp, Clock, Zap, FileJson, Loader2, Sparkles } from 'lucide-react';
+import { Brain, Send, ArrowRight, CheckCircle, AlertTriangle, TrendingUp, Zap, FileJson, Loader2, Sparkles } from 'lucide-react';
 
 function JsonViewer({ data, maxHeight = '400px' }) {
   return (

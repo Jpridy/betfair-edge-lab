@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.37';
 
 // Manual tar parser — no external deps, works reliably in Deno
 function parseTarBuffer(buffer) {

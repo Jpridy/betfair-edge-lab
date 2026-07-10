@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.35';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.37';
 
 // ============================================================================
 // raceWebResearch — OpenAI web search for public race-day information

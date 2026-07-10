@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.35';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.37';
 
 const FEATHERLESS_BASE_URL = 'https://api.featherless.ai/v1';
 const PROMPT_VERSION = '4.0-race-assessment';
@@ -368,8 +368,8 @@ Deno.serve(async (req) => {
     const apiData = await apiResp.json();
     let rawContent = apiData.choices?.[0]?.message?.content || '';
 
-    // Strip reasoning blocks
-    rawContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    // Strip reasoning blocks — handle both closed <think>...</think> and unclosed <think>... (truncated)
+    rawContent = rawContent.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '').trim();
     if (rawContent.startsWith('"')) {
       rawContent = '{' + rawContent;
     }

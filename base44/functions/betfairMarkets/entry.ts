@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.37';
 
 // ── Betfair API endpoints ──
 // AU/NZ: https://api.betfair.com.au  (CORRECT)
