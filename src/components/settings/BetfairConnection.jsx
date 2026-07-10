@@ -4,7 +4,7 @@ import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Link2, Unlink, CheckCircle2, AlertCircle, ExternalLink, KeyRound, Stethoscope } from 'lucide-react';
+import { Loader2, Unlink, CheckCircle2, AlertCircle, ExternalLink, KeyRound, Stethoscope } from 'lucide-react';
 import { connectToBetfair, connectWithSessionToken, diagnoseBetfairEndpoint } from '@/lib/betfairApi';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -17,20 +17,6 @@ export default function BetfairConnection() {
   const [sessionTokenInput, setSessionTokenInput] = useState('');
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState(null);
-
-  const handleQuickConnect = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const account = await connectToBetfair();
-      finishConnect(account, '(stored credentials)');
-    } catch (err) {
-      setError(err.message || 'Quick connect failed — try using a session token below');
-      addAuditLog('Betfair Quick Connect Failed', 'api', 'error', err.message || 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleConnect = async () => {
     if (!usernameInput.trim() || !passwordInput.trim()) {
@@ -181,7 +167,7 @@ export default function BetfairConnection() {
                 <div className="font-semibold text-foreground">How to get your session token:</div>
                 <ol className="list-decimal list-inside space-y-1">
                   <li>Log into <a href="https://www.betfair.com.au" target="_blank" rel="noopener noreferrer" className="text-info underline inline-flex items-center gap-0.5">betfair.com.au <ExternalLink className="h-3 w-3" /></a> in your browser</li>
-                  <li>After logging in, open a new tab and visit <a href="https://identitysso.betfair.com/api/keepAlive" target="_blank" rel="noopener noreferrer" className="text-info underline inline-flex items-center gap-0.5">this link <ExternalLink className="h-3 w-3" /></a></li>
+                  <li>After logging in, open <a href="https://identitysso.betfair.com.au/api/keepAlive" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-info underline">Betfair Australia&apos;s session-token page <ExternalLink className="h-3 w-3" /></a></li>
                   <li>Copy the <span className="font-mono text-foreground">token</span> value from the JSON response</li>
                   <li>Paste it below</li>
                 </ol>
@@ -208,20 +194,6 @@ export default function BetfairConnection() {
                 )}
               </Button>
             </div>
-
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <div className="flex-1 border-t border-border" />
-              <span>OR TRY STORED CREDENTIALS</span>
-              <div className="flex-1 border-t border-border" />
-            </div>
-
-            <Button onClick={handleQuickConnect} disabled={loading} variant="outline" className="w-full h-11 font-medium">
-              {loading ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Connecting...</>
-              ) : (
-                <><Link2 className="h-4 w-4 mr-2" /> Quick Connect (Stored Credentials)</>
-              )}
-            </Button>
 
             <div className="bg-muted/20 border border-border rounded-lg p-3 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
