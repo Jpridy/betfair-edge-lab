@@ -602,8 +602,8 @@ export async function runExchangeCycle(params) {
     if (marketRunners.length === 0) continue;
     clustersWithMatchedRunners++;
 
-    // ── AI caching: check cache before calling AI ──
-    let aiResult = getCachedAIResult(cluster, marketRunners);
+    // ── AI caching: bypass cache entirely in debug scan mode ──
+    let aiResult = debugScanMode ? null : getCachedAIResult(cluster, marketRunners);
     let usedMarketOnlyFallback = false;
     if (aiResult) {
       cacheHits++;
@@ -612,7 +612,7 @@ export async function runExchangeCycle(params) {
       try {
         aiResult = await callAI(cluster, primaryMarket, marketRunners);
         if (aiResult) {
-          setCachedAIResult(cluster, marketRunners, aiResult);
+          if (!debugScanMode) setCachedAIResult(cluster, marketRunners, aiResult);
           eventsWithAI++;
           aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: true, returnedProbabilities: true });
           aiDecisions.push({ eventId: cluster.eventId, aiResult });
@@ -651,7 +651,7 @@ export async function runExchangeCycle(params) {
       const eventName = cluster.eventName || primaryMarket.eventName || '';
       const marketStartTime = primaryMarket.startTime || primaryMarket.marketStartTime || '';
 
-      const cached = getCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners);
+      const cached = debugScanMode ? null : getCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners);
       if (cached) {
         extSearchCacheHits++;
         externalSearchResult = cached;
@@ -669,7 +669,8 @@ export async function runExchangeCycle(params) {
           if (externalSearchResult) {
             // Only cache successful or no-results responses.
             // Error/timeout results must NOT be cached — they should be retried next cycle.
-            if (externalSearchResult.searchStatus === 'success' || externalSearchResult.searchStatus === 'no_results') {
+            // Skip caching entirely in debug scan mode so debug results don't pollute normal cycles.
+            if (!debugScanMode && (externalSearchResult.searchStatus === 'success' || externalSearchResult.searchStatus === 'no_results')) {
               setCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners, externalSearchResult, extCacheTtlMs);
             }
             extTotalSources += externalSearchResult.sourceCount || 0;
