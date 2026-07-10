@@ -1,0 +1,18 @@
+# Fly.io configuration — deploy in Sydney (syd) to pass Betfair AU geo-block
+app = "betfair-edge-proxy"
+primary_region = "syd"
+
+[build]
+  # Uses the Dockerfile in this directory
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
