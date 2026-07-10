@@ -11,7 +11,7 @@ export default function OpenAISearchDebugPanel() {
   const searchDiag = lastExchangeDiagnostics?.externalSearchDiagnostics;
   if (!searchDiag) {
     return (
-      <Panel title="OpenAI External Search">
+      <Panel title="OpenAI External Search" action={<OpenAIConnectionCheck />}>
         <div className="p-6 text-center text-sm text-muted-foreground">
           No external search data yet. Run a scan cycle to see OpenAI web search activity.
         </div>

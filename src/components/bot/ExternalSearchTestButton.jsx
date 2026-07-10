@@ -8,6 +8,7 @@ import { scanEligibleMarkets } from '@/lib/exchangeOpportunityEngine';
 import { clusterMarketsByEvent, detectMarketType } from '@/lib/marketClusterer';
 import { buildRacePack } from '@/lib/racePackBuilder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact } from '@/lib/externalSearchIntegration';
+import OpenAIDiagnostics, { getOpenAIDiagnostics } from '@/components/bot/OpenAIDiagnostics';
 
 export default function ExternalSearchTestButton() {
   const { markets, runners, featherlessSettings, settings } = useApp();
@@ -171,11 +172,7 @@ export default function ExternalSearchTestButton() {
         raceLevelNotes: externalSearchResult.raceLevelNotes,
         dataQuality: externalSearchResult.dataQuality,
         errorMessage: externalSearchResult.errorMessage,
-        model: searchResp.data?.model,
-        responseTimeMs: searchResp.data?.responseTimeMs,
-        webSearchActuallyUsed: searchResp.data?.webSearchActuallyUsed,
-        parseStatus: searchResp.data?.parseStatus,
-        jsonSchemaMode: searchResp.data?.jsonSchemaMode,
+        diagnostics: getOpenAIDiagnostics(searchResp.data),
         runnerComparisons,
         bestPreName,
         bestPostName,
@@ -227,15 +224,16 @@ export default function ExternalSearchTestButton() {
           </div>
 
           {/* Search status */}
-          <div className="flex items-center gap-3">
-            <StatusBadge status={
-              result.searchStatus === 'success' ? 'ok' :
-              result.searchStatus === 'timeout' || result.searchStatus === 'no_results' ? 'warning' :
-              result.searchStatus === 'error' ? 'danger' : 'neutral'
-            }>
-              {result.searchStatus?.toUpperCase().replace(/_/g, ' ')}
-            </StatusBadge>
-            <span className="text-xs text-muted-foreground">{result.sourceCount} sources · Data quality: {result.dataQuality}/100 · {result.model || 'unknown model'} · {result.responseTimeMs || 0}ms · search {result.webSearchActuallyUsed === true ? 'verified' : 'not verified'} · JSON schema {result.jsonSchemaMode ? 'on' : 'off'}</span>
+          <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-3">
+              <StatusBadge status={result.searchStatus === 'success' ? 'ok' : result.searchStatus === 'timeout' || result.searchStatus === 'no_results' ? 'warning' : result.searchStatus === 'error' ? 'danger' : 'neutral'}>
+                {result.searchStatus?.toUpperCase().replace(/_/g, ' ')}
+              </StatusBadge>
+              <span className="text-xs text-muted-foreground">
+                {result.searchStatus === 'success' && result.sourceCount >= 2 ? 'Search works — enough sources for probability adjustment' : result.searchStatus === 'success' && result.sourceCount === 1 ? 'Search works — not enough sources for probability adjustment' : result.searchStatus === 'success' ? 'Search ran successfully' : 'Search did not complete successfully'}
+              </span>
+            </div>
+            <OpenAIDiagnostics data={result.diagnostics} />
           </div>
 
           {result.errorMessage && (

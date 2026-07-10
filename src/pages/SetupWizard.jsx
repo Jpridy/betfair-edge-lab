@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, ArrowRight, ShieldCheck } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { getOpenAIDiagnostics } from '@/components/bot/OpenAIDiagnostics';
 
 const STEPS = [
   { id: 'betfair_session', name: 'Test Betfair Session' },
@@ -228,10 +229,11 @@ export default function SetupWizard() {
           try {
             const resp = await base44.functions.invoke('openAIWebSearch', { action: 'status_check' });
             const check = resp.data?.statusCheck;
+            const detail = getOpenAIDiagnostics(resp.data);
             if (check?.openAiApiKeyPresent) {
-              result = { status: 'passed', message: `OpenAI API key verified. Model: ${check.model}`, timestamp: new Date().toISOString() };
+              result = { status: 'passed', message: `Connection test passed. Model: ${detail.model}`, timestamp: new Date().toISOString(), detail };
             } else {
-              result = { status: 'failed', message: 'OpenAI API key not set or backend did not confirm', timestamp: new Date().toISOString() };
+              result = { status: 'failed', message: 'OpenAI API key not set or backend did not confirm', timestamp: new Date().toISOString(), detail };
             }
           } catch (err) {
             result = { status: 'failed', message: `Status check failed: ${err.message}`, timestamp: new Date().toISOString() };
@@ -265,12 +267,17 @@ export default function SetupWizard() {
               market: testMarket, runners: testRunners, settings: featherlessSettings,
             });
             const searchResult = resp.data?.externalSearchResult;
-            if (searchResult?.searchStatus === 'success' || searchResult?.searchStatus === 'no_results') {
-              result = { status: 'passed', message: `Search returned: ${searchResult.searchStatus}, ${searchResult.sourceCount || 0} sources, quality ${searchResult.dataQuality || 0}`, timestamp: new Date().toISOString() };
+            const detail = getOpenAIDiagnostics(resp.data);
+            const sourceCount = Number(detail.sourceCount) || 0;
+            if (searchResult?.searchStatus === 'success') {
+              const message = sourceCount >= 2 ? 'Search works — enough sources for probability adjustment' : sourceCount === 1 ? 'Search works — not enough sources for probability adjustment' : 'Search ran successfully';
+              result = { status: 'passed', message: `${message}. Model: ${detail.model}`, timestamp: new Date().toISOString(), detail };
+            } else if (searchResult?.searchStatus === 'no_results') {
+              result = { status: 'warning', message: `Search ran successfully but returned no usable results. Model: ${detail.model}`, timestamp: new Date().toISOString(), detail };
             } else if (searchResult?.searchStatus === 'timeout') {
-              result = { status: 'warning', message: `Search timed out: ${searchResult.errorMessage || ''}`, timestamp: new Date().toISOString() };
+              result = { status: 'warning', message: `Search timed out: ${searchResult.errorMessage || ''}`, timestamp: new Date().toISOString(), detail };
             } else {
-              result = { status: 'failed', message: `Search failed: ${searchResult?.searchStatus || 'unknown'} — ${searchResult?.errorMessage || resp.data?.error || ''}`, timestamp: new Date().toISOString() };
+              result = { status: 'failed', message: `Search failed: ${searchResult?.searchStatus || 'unknown'} — ${searchResult?.errorMessage || resp.data?.error || ''}`, timestamp: new Date().toISOString(), detail };
             }
           } catch (err) {
             result = { status: 'failed', message: `Search test error: ${err.message}`, timestamp: new Date().toISOString() };
