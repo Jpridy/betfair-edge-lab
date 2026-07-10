@@ -350,112 +350,131 @@ Deno.serve(async (req) => {
     }
 
     // ── Step 2: List Market Catalogue ──
-    // Horse Racing (eventType 7), WIN + PLACE only.
-    // MATCH_BET does not exist for AU horse racing — don't request it blindly.
+    // Horse Racing (eventType 7). Fetch per market type with smaller batches
+    // to avoid Betfair's TOO_MUCH_DATA (ANGX-0001) error, which triggers when
+    // a single listMarketCatalogue call would return too many markets with
+    // full runner metadata.
     const requestedMarketTypes = body?.requestedMarketTypes || ['WIN', 'PLACE'];
 
     const now = new Date();
     const fromTime = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
     const toTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
 
-    const catalogueBody = {
-      filter: {
-        eventTypeIds: ['7'],
-        marketTypeCodes: requestedMarketTypes,
-        marketStartTime: { from: fromTime, to: toTime },
-      },
-      maxResults: '200',
-      sort: 'FIRST_TO_START',
-      marketProjection: [
-        'EVENT',
-        'EVENT_TYPE',
-        'MARKET_START_TIME',
-        'MARKET_DESCRIPTION',
-        'RUNNER_DESCRIPTION',
-        'RUNNER_METADATA',
-      ],
-    };
+    let catalogues = [];
+    const catalogueErrors = [];
 
-    const catalogueRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(catalogueBody));
-    const catalogueText = await catalogueRes.text();
-    const catalogueContentType = catalogueRes.headers.get('content-type') || '';
+    for (const mt of requestedMarketTypes) {
+      const batchBody = {
+        filter: {
+          eventTypeIds: ['7'],
+          marketTypeCodes: [mt],
+          marketStartTime: { from: fromTime, to: toTime },
+        },
+        maxResults: '100',
+        sort: 'FIRST_TO_START',
+        marketProjection: [
+          'EVENT',
+          'EVENT_TYPE',
+          'MARKET_START_TIME',
+          'MARKET_DESCRIPTION',
+          'RUNNER_DESCRIPTION',
+          'RUNNER_METADATA',
+        ],
+      };
 
-    // HTML detection
-    const catalogueLooksHtml = catalogueText.trimStart().startsWith('<!DOCTYPE html') ||
-                               catalogueText.includes('<html') ||
-                               catalogueText.includes('<title>Betfair</title>');
+      let batchCatalogues;
+      try {
+        const batchRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(batchBody));
+        const batchText = await batchRes.text();
 
-    if (catalogueLooksHtml) {
-      return Response.json({
-        status: 'error',
-        errorCode: 'BETFAIR_HTML_RESPONSE',
-        message: 'Betfair returned HTML instead of JSON. This usually means wrong endpoint, WAF/proxy block, or invalid API route.',
-        httpStatus: catalogueRes.status,
-        contentType: catalogueContentType,
-        apiBase: workingApiBase,
-        requestUrl: `${bettingBase}/listMarketCatalogue/`,
-        responseSnippet: catalogueText.slice(0, 500),
-        sessionTokenPresent: !!sessionToken,
-        appKeyPresent: !!appKey,
-        proxyUrlPresent: !!proxyUrl,
-        nextAction: 'Run Betfair Endpoint Diagnostic',
-        markets: [],
-        runners: [],
-      }, { status: 200 });
+        // HTML detection
+        const batchLooksHtml = batchText.trimStart().startsWith('<!DOCTYPE html') ||
+                               batchText.includes('<html') ||
+                               batchText.includes('<title>Betfair</title>');
+
+        if (batchLooksHtml) {
+          catalogueErrors.push(`${mt}: HTML 403 response`);
+          continue;
+        }
+
+        // Session expired?
+        if (batchText.includes('UNAUTHORIZED') || batchText.includes('INVALID_SESSION') || batchText.includes('NO_SESSION')) {
+          return Response.json({
+            status: 'error',
+            sessionExpired: true,
+            error: 'Betfair session expired',
+            errors: ['Betfair session expired'],
+            markets: [],
+            runners: [],
+          }, { status: 200 });
+        }
+
+        if (!batchRes.ok) {
+          catalogueErrors.push(`${mt}: HTTP ${batchRes.status}`);
+          continue;
+        }
+
+        let batchParsed;
+        try {
+          batchParsed = JSON.parse(batchText);
+        } catch {
+          catalogueErrors.push(`${mt}: non-JSON response`);
+          continue;
+        }
+
+        // Betfair error in JSON body?
+        if (batchParsed && !Array.isArray(batchParsed) && batchParsed.error) {
+          const errStr = JSON.stringify(batchParsed.error);
+          if (errStr.includes('TOO_MUCH_DATA')) {
+            // Retry with even smaller batch
+            batchBody.maxResults = '40';
+            const retryRes = await callBetfair(`${bettingBase}/listMarketCatalogue/`, JSON.stringify(batchBody));
+            const retryText = await retryRes.text();
+            try {
+              const retryParsed = JSON.parse(retryText);
+              if (Array.isArray(retryParsed)) {
+                batchCatalogues = retryParsed;
+              } else {
+                catalogueErrors.push(`${mt}: TOO_MUCH_DATA even with maxResults=40`);
+                continue;
+              }
+            } catch {
+              catalogueErrors.push(`${mt}: retry non-JSON`);
+              continue;
+            }
+          } else if (errStr.includes('INVALID_SESSION') || errStr.includes('NO_SESSION')) {
+            return Response.json({
+              status: 'error',
+              sessionExpired: true,
+              error: 'Betfair session expired',
+              errors: ['Betfair session expired'],
+              markets: [],
+              runners: [],
+            }, { status: 200 });
+          } else {
+            catalogueErrors.push(`${mt}: ${errStr.slice(0, 150)}`);
+            continue;
+          }
+        }
+
+        if (Array.isArray(batchParsed)) {
+          batchCatalogues = batchParsed;
+        }
+      } catch (err) {
+        catalogueErrors.push(`${mt}: ${err.message}`);
+        continue;
+      }
+
+      if (batchCatalogues && batchCatalogues.length > 0) {
+        catalogues = catalogues.concat(batchCatalogues);
+      }
     }
 
-    // Session expired?
-    if (catalogueText.includes('UNAUTHORIZED') || catalogueText.includes('INVALID_SESSION') || catalogueText.includes('NO_SESSION')) {
-      return Response.json({
-        status: 'error',
-        sessionExpired: true,
-        error: 'Betfair session expired',
-        errors: ['Betfair session expired'],
-        markets: [],
-        runners: [],
-      }, { status: 200 });
+    if (catalogueErrors.length > 0) {
+      errors.push(...catalogueErrors);
     }
 
-    if (!catalogueRes.ok) {
-      return Response.json({
-        status: 'error',
-        error: `Catalogue fetch failed (HTTP ${catalogueRes.status}): ${catalogueText.slice(0, 300)}`,
-        errors: [`Catalogue fetch failed (HTTP ${catalogueRes.status})`],
-        markets: [],
-        runners: [],
-        apiBase: workingApiBase,
-      }, { status: 200 });
-    }
-
-    let catalogues;
-    try {
-      catalogues = JSON.parse(catalogueText);
-    } catch {
-      return Response.json({
-        status: 'error',
-        errorCode: 'BETFAIR_NON_JSON',
-        error: 'Betfair returned non-JSON response for catalogue',
-        errors: ['Betfair returned non-JSON response for catalogue'],
-        contentType: catalogueContentType,
-        responseSnippet: catalogueText.slice(0, 500),
-        markets: [],
-        runners: [],
-      }, { status: 200 });
-    }
-
-    // Betfair error in JSON body?
-    if (catalogues && !Array.isArray(catalogues) && catalogues.error) {
-      const errStr = JSON.stringify(catalogues.error);
-      return Response.json({
-        status: 'error',
-        error: `Betfair API error: ${errStr.slice(0, 300)}`,
-        sessionExpired: errStr.includes('INVALID_SESSION') || errStr.includes('NO_SESSION'),
-        markets: [],
-        runners: [],
-      }, { status: 200 });
-    }
-
-    const rawMarketCount = Array.isArray(catalogues) ? catalogues.length : 0;
+    const rawMarketCount = catalogues.length;
 
     if (!Array.isArray(catalogues) || rawMarketCount === 0) {
       return Response.json({
