@@ -32,6 +32,11 @@ export default function LatestDecision() {
   const topRejected = lastCycle.scanSummary?.topRejected || [];
   const bestOpp = best || topOpps[0] || topRejected[0];
 
+  // Detect stale cycle — ran when 0 markets were loaded, but markets are now available
+  const cycleSawZeroMarkets = (lastCycle.marketsScanned || 0) === 0 && (lastCycle.scanSummary?.totalMarketsLoaded || 0) === 0;
+  const marketsNowLoaded = markets.length > 0;
+  const isStaleCycle = cycleSawZeroMarkets && marketsNowLoaded;
+
   const decision = lastCycle.ordersCreated > 0 ? 'BET' : 'NO_BET';
   const blocker = lastCycle.noBetReason || best?.failedGate || best?.mainBlocker || best?.blockers?.[0] || null;
 
@@ -59,6 +64,17 @@ export default function LatestDecision() {
       }
     >
       <div className="p-5 space-y-4">
+        {/* Stale cycle banner */}
+        {isStaleCycle && (
+          <div className="flex items-start gap-2.5 text-xs bg-info/8 text-info border border-info/20 rounded-lg p-3">
+            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-body font-semibold">Markets are now loaded ({markets.length} in memory) — this cycle ran before data was available.</div>
+              <div className="mt-0.5 text-[10px] opacity-80 font-body">Click "Debug Scan" or start the bot to run a fresh scan against live market data.</div>
+            </div>
+          </div>
+        )}
+
         {/* Plain English reason */}
         <div className={cn(
           'rounded-lg p-4 text-sm font-body border',
