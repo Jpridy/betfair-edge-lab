@@ -136,7 +136,7 @@ export function buildExternalSearchFields(opportunity, externalSearchResult, set
   const externalDataQuality = externalSearchResult?.dataQuality || 0;
 
   const { postSearchProbability, probabilityDelta } = applyExternalAdjustment(
-    preSearchProbability, runnerResearch, settings
+    preSearchProbability, runnerResearch, settings, externalDataQuality
   );
   const { postSearchConfidence, confidenceDelta } = applyConfidenceAdjustment(
     preSearchConfidence, runnerResearch, settings

@@ -205,13 +205,20 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
       sourceCount: externalResearch?.sourceCount || 0,
       sources: (externalResearch?.sources || []).slice(0, 10),
       raceSummary: externalResearch?.raceLevelNotes || '',
-      runnerResearch: (externalResearch?.runnerResearch || []).slice(0, maxRunners).map(rr => ({
-        selectionId: rr.selectionId,
-        runnerName: rr.runnerName,
-        positiveSignals: rr.positiveSignals || [],
-        negativeSignals: rr.negativeSignals || [],
-        summary: rr.summary || '',
-      })),
+      runnerResearch: (externalResearch?.runnerResearch || []).slice(0, maxRunners).map(rr => {
+        const posCount = (rr.positiveSignals || []).length;
+        const negCount = (rr.negativeSignals || []).length;
+        const summary = (posCount || negCount)
+          ? `${posCount} positive, ${negCount} negative signals from external search`
+          : '';
+        return {
+          selectionId: rr.selectionId,
+          runnerName: rr.runnerName,
+          positiveSignals: rr.positiveSignals || [],
+          negativeSignals: rr.negativeSignals || [],
+          summary,
+        };
+      }),
     } : {
       openAiSearchUsed: false,
       searchStatus: 'disabled',

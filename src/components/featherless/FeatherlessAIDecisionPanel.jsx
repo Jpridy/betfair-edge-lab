@@ -103,21 +103,58 @@ export default function FeatherlessAIDecisionPanel() {
         setError(resp.data.error);
         addAuditLog('Featherless AI Failed', 'api', 'error', resp.data.error);
       } else {
-        const decision = resp.data?.decision;
+        const aiResult = resp.data?.aiResult;
+        const decisionRecord = resp.data?.decision;
+        // The decisionRecord has many zeroed fields (valueEdge, expectedROI, etc.).
+        // Use aiResult + recommendedOpportunities[0] for the actual betting data.
+        const recommendedOpp = aiResult?.recommendedOpportunities?.[0] || null;
+        const decisionLabel = aiResult?.finalRaceView?.shouldBetThisRace ? 'BET' : 'WATCH';
+
+        // Build a display object that merges real data from aiResult + recommendedOpp
+        const decision = {
+          ...decisionRecord,
+          decision: decisionLabel,
+          selectedRunner: recommendedOpp?.runnerName || aiResult?.finalRaceView?.bestRunner || '',
+          selectionId: recommendedOpp?.selectionId || '',
+          side: recommendedOpp?.side || 'BACK',
+          fairOdds: recommendedOpp?.fairOdds || 0,
+          betfairOdds: recommendedOpp?.betfairOdds || 0,
+          minimumAcceptableOdds: recommendedOpp?.fairOdds || 0,
+          valueEdge: recommendedOpp?.estimatedEdge || 0,
+          expectedROI: recommendedOpp?.estimatedROI || 0,
+          confidence: recommendedOpp?.confidence || aiResult?.confidence || 0,
+          raceRiskLevel: (aiResult?.keyRisks?.length > 2) ? 'HIGH' : (aiResult?.keyRisks?.length > 0) ? 'MEDIUM' : 'LOW',
+          dataQualityScore: aiResult?.dataQuality || 0,
+          dataSource: aiResult?.externalResearch ? 'EXTERNAL_FORM_PLUS_MARKET' : 'BETFAIR_METADATA_PLUS_MARKET',
+          mostLikelyWinner: aiResult?.finalRaceView?.bestRunner || '',
+          mainReason: aiResult?.raceSummary || '',
+          risks: aiResult?.keyRisks || [],
+          responseTimeMs: resp.data?.responseTimeMs || 0,
+          recommendedStake: settings.baseStake || 100,
+          stakingMode: featherlessSettings?.stakingMode || 'confidence_weighted_fractional_kelly',
+          safetyGatePassed: decisionRecord?.safetyGatePassed ?? !!recommendedOpp,
+          safetyGateFailures: decisionRecord?.safetyGateFailures || [],
+          validationStatus: decisionRecord?.validationStatus || 'valid',
+          validationErrors: decisionRecord?.validationErrors || [],
+          webResearchSummary: externalSearchResult?.raceLevelNotes || '',
+          webResearchAssessment: externalSearchResult?.searchStatus === 'success' ? 'supports' : 'missing',
+        };
+
         setLatestDecision(decision);
         addAuditLog('Featherless AI Decision', 'strategy', 'info',
-          `${decision?.decision} on ${selectedMarket?.marketName} — ${decision?.selectedRunner || 'no selection'} (confidence ${decision?.confidence}%, edge ${decision?.valueEdge}%)`);
+          `${decision.decision} on ${selectedMarket?.marketName} — ${decision.selectedRunner || 'no selection'} (confidence ${decision.confidence}%, edge ${((decision.valueEdge || 0) * 100).toFixed(1)}%)`);
 
-        // If safety gate passed, create paper order
-        if (decision?.safetyGatePassed && decision?.decision === 'BET') {
+        // If safety gate passed and there's a recommended opportunity, create paper order
+        if (decision?.safetyGatePassed && decision?.decision === 'BET' && recommendedOpp) {
           const runner = marketRunners.find(r =>
-            r.runnerName === decision.selectedRunner ||
-            String(r.betfairSelectionId) === String(decision.selectionId)
+            String(r.betfairSelectionId || r.selectionId) === String(recommendedOpp.selectionId) ||
+            r.runnerName === recommendedOpp.runnerName
           );
           if (runner) {
+            const isBack = (recommendedOpp.side || 'BACK') === 'BACK';
             const stake = decision.recommendedStake || settings.baseStake || 100;
-            // Available size check — use bestBackSize for BACK, bestLaySize for LAY
-            const availableSize = runner.bestBackSize || 0;
+            const odds = isBack ? (runner.bestBackPrice || recommendedOpp.betfairOdds) : (runner.bestLayPrice || recommendedOpp.betfairOdds);
+            const availableSize = isBack ? (runner.bestBackSize || 0) : (runner.bestLaySize || 0);
             const matchedStake = Math.min(stake, availableSize);
             const unmatchedStake = stake - matchedStake;
             const orderStatus = matchedStake === 0 ? 'unmatched' : unmatchedStake > 0 ? 'partially_matched' : 'matched';
@@ -133,10 +170,10 @@ export default function FeatherlessAIDecisionPanel() {
               venue: selectedMarket.venue || '',
               raceNumber: selectedMarket.raceNumber || 0,
               marketStartTime: selectedMarket.startTime || null,
-              side: 'BACK',
+              side: isBack ? 'BACK' : 'LAY',
               orderType: 'LIMIT',
               size: stake,
-              price: runner.bestBackPrice,
+              price: odds,
               persistenceType: 'LAPSE',
               customerRef: 'BELAI' + Date.now().toString(36).toUpperCase(),
               customerStrategyRef: 'BEL_FEATHERLESSAI',
@@ -146,17 +183,17 @@ export default function FeatherlessAIDecisionPanel() {
               requested_size: stake,
               matched_size: matchedStake,
               remaining_size: unmatchedStake,
-              average_price_matched: matchedStake > 0 ? runner.bestBackPrice : null,
-              requested_price: runner.bestBackPrice,
-              matched_price: matchedStake > 0 ? runner.bestBackPrice : null,
+              average_price_matched: matchedStake > 0 ? odds : null,
+              requested_price: odds,
+              matched_price: matchedStake > 0 ? odds : null,
               placed_date: new Date().toISOString(),
               matched_date: matchedStake > 0 ? new Date().toISOString() : null,
-              requestedOdds: runner.bestBackPrice,
-              matchedOdds: matchedStake > 0 ? runner.bestBackPrice : null,
+              requestedOdds: odds,
+              matchedOdds: matchedStake > 0 ? odds : null,
               requestedStake: stake,
               matchedStake: matchedStake,
               status: orderStatus,
-              expectedValue: decision.expectedROI * stake,
+              expectedValue: (recommendedOpp.estimatedROI || 0) * stake,
               result: 'pending',
               grossProfit: 0,
               commission: 0,
@@ -164,13 +201,13 @@ export default function FeatherlessAIDecisionPanel() {
               commissionRateUsed: selectedMarket?.marketBaseRate || settings.defaultCommissionRate || 0.05,
               commissionSource: selectedMarket?.marketBaseRate ? 'market_base_rate' : 'default_fallback',
               commission_calculation_status: selectedMarket?.marketBaseRate ? 'ok' : 'using_default',
-              entryReason: `Featherless AI: ${decision.mainReason}`,
-              warningFlags: decision.risks || [],
+              entryReason: `Featherless AI: ${aiResult?.raceSummary || decision.mainReason}`,
+              warningFlags: aiResult?.keyRisks || [],
               paperSimulationQuality: 'High',
             };
             addPaperOrder(order);
             addAuditLog('AI Paper Trade Created', 'order', 'info',
-              `BACK ${runner.runnerName} @ ${runner.bestBackPrice} × $${stake.toFixed(2)} (AI confidence ${decision.confidence}%, edge ${decision.valueEdge}%)`,
+              `${order.side} ${runner.runnerName} @ ${odds} × $${stake.toFixed(2)} (AI confidence ${decision.confidence}%, edge ${((decision.valueEdge || 0) * 100).toFixed(1)}%)`,
               { objectName: runner.runnerName });
           }
         }
@@ -265,6 +302,7 @@ export default function FeatherlessAIDecisionPanel() {
             {/* Decision Details Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <DecisionMetric label="Selected Runner" value={latestDecision.selectedRunner || '—'} />
+              <DecisionMetric label="Side" value={latestDecision.side || 'BACK'} />
               <DecisionMetric label="AI Fair Odds" value={latestDecision.fairOdds?.toFixed(2) || '—'} />
               <DecisionMetric label="Betfair Odds" value={latestDecision.betfairOdds?.toFixed(2) || '—'} />
               <DecisionMetric label="Min Acceptable" value={latestDecision.minimumAcceptableOdds?.toFixed(2) || '—'} />
