@@ -1291,6 +1291,45 @@ export function AppProvider({ children }) {
     const s = stateRef.current;
     if (s.emergencyStop) return;
 
+    // ── No markets loaded — abort early with a clear reason ──
+    if (!s.markets || s.markets.length === 0) {
+      const cycleNum = s.botState.cycleNumber + 1;
+      const now = new Date().toISOString();
+      const catError = s.betfairConnection?.marketCatalogueError;
+      const streamStatus = s.betfairConnection?.streamConnectionStatus || 'disconnected';
+      const noMarketsReason = catError
+        ? `No markets loaded — catalogue fetch failed: ${catError}`
+        : streamStatus === 'connecting' || streamStatus === 'authenticating'
+          ? `No markets loaded — stream is still ${streamStatus}. Wait a few seconds or click "Refresh Markets".`
+          : streamStatus === 'error'
+            ? 'No markets loaded — stream connection failed. Check your session token and proxy.'
+            : 'No markets loaded — click "Refresh Markets" or reconnect your Betfair session.';
+
+      const cycleRecord = {
+        cycleNumber: cycleNum,
+        botMode: 'paper',
+        startedAt: now,
+        finishedAt: new Date().toISOString(),
+        status: 'blocked',
+        marketsScanned: 0,
+        marketsPassedFilters: 0,
+        signalsCreated: 0,
+        ordersCreated: 0,
+        ordersBlocked: 0,
+        errors: 0,
+        notes: noMarketsReason,
+        runnersAssessed: 0,
+        noBetReason: noMarketsReason,
+        scanSummary: { marketsScanned: 0, totalMarketsLoaded: 0, noBetReason: noMarketsReason },
+        selectedMarketName: null,
+      };
+      setBotCycles(prev => [{ ...cycleRecord, id: 'bc' + Date.now() + Math.random().toString(36).slice(2, 6) }, ...prev].slice(0, 100));
+      base44.entities.BotCycle.create(cycleRecord).catch(() => {});
+      setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
+      addAuditLog(`Bot Cycle #${cycleNum} — No Markets`, 'system', 'warning', noMarketsReason);
+      return;
+    }
+
     // Run candidate scoring diagnostics for transparency — always runs
     const diagnostics = buildScanDiagnostics(s.markets, s.runners, s.settings, s.featherlessSettings, s.paperOrders, s.bankrollStats, s.emergencyStop);
     setLastScanDiagnostics(diagnostics);
@@ -2088,8 +2127,15 @@ export function AppProvider({ children }) {
           marketsWithPriceData,
           marketCatalogueError: null,
           priceFeedStale: pricedRunners === 0,
+          apiValidationStatus: 'api_connected',
         }));
-      } catch (_) {}
+      } catch (err) {
+        const errMsg = err.message || String(err);
+        if (!cancelled) {
+          setBetfairConnection(prev => ({ ...prev, marketCatalogueError: errMsg, priceFeedStale: true }));
+          addAuditLog('Stream Catalogue Fetch Failed', 'api', 'error', errMsg);
+        }
+      }
     };
     fetchCatalogue();
     catalogueTimerRef.current = setInterval(fetchCatalogue, 5 * 60 * 1000);
