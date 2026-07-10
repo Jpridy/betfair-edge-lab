@@ -113,6 +113,73 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Action: test_direct_fetch ──
+    // Tests whether Deno Deploy can reach Betfair directly WITHOUT a proxy
+    if (action === 'test_direct_fetch') {
+      const results = [];
+      const endpoints = [ENDPOINT_AU, ENDPOINT_GLOBAL];
+
+      for (const ep of endpoints) {
+        const requestUrl = `${ep}/exchange/betting/rest/v1.0/listEventTypes/`;
+        const r = {
+          apiBase: ep,
+          requestUrl,
+          httpStatus: null,
+          contentType: null,
+          responseLooksJson: false,
+          responseLooksHtml: false,
+          success: false,
+          snippet: null,
+          failureReason: null,
+        };
+
+        try {
+          const res = await fetch(requestUrl, {
+            method: 'POST',
+            headers: {
+              'X-Application': appKey || 'test',
+              'X-Authentication': sessionToken || 'test',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify({ filter: {} }),
+          });
+          const text = await res.text();
+          r.httpStatus = res.status;
+          r.contentType = res.headers.get('content-type') || '';
+          r.snippet = text.slice(0, 300);
+          r.responseLooksHtml = text.trimStart().startsWith('<!DOCTYPE') || text.includes('<html');
+
+          if (!r.responseLooksHtml) {
+            try {
+              const parsed = JSON.parse(text);
+              r.responseLooksJson = true;
+              if (Array.isArray(parsed)) r.success = true;
+              if (parsed?.error) r.failureReason = JSON.stringify(parsed.error).slice(0, 200);
+            } catch {
+              r.failureReason = 'Non-JSON, non-HTML response';
+            }
+          } else {
+            r.failureReason = 'HTML 403 — WAF blocked direct fetch';
+          }
+        } catch (err) {
+          r.failureReason = `Direct fetch error: ${err.message}`;
+        }
+        results.push(r);
+      }
+
+      const working = results.find(r => r.success);
+      return Response.json({
+        status: 'success',
+        action: 'test_direct_fetch',
+        results,
+        workingApiBase: working?.apiBase || null,
+        message: working
+          ? 'Direct fetch from Deno Deploy WORKS — no proxy needed!'
+          : 'Direct fetch blocked — still need an external proxy',
+      }, { status: 200 });
+    }
+
     // ── Action: diagnose_endpoint ──
     if (action === 'diagnose_endpoint') {
       if (!appKey || !sessionToken || !proxyUrl) {
