@@ -3,7 +3,7 @@
 // Safe defaults for Featherless AI — never allow live handoff by default
 export const DEFAULT_FEATHERLESS_SETTINGS = {
   enabled: false,
-  modelName: 'deepseek-ai/DeepSeek-V4-Pro',
+  modelName: 'deepseek-ai/DeepSeek-V4-Flash',
   temperature: 0.1,
   maxTokens: 4000,
   timeoutSeconds: 120,
