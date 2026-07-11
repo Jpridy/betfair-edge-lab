@@ -14,6 +14,8 @@
  * - Mark each market/runner with source: 'stream' | 'catalogue' | 'merged' | 'cached'
  */
 
+import { normalizeBetfairMarket } from '@/lib/betfairDiagnostics';
+
 /**
  * @param {object} params
  * @param {Array} [params.existingMarkets=[]] - Markets currently in AppContext state
@@ -148,7 +150,8 @@ export function mergeBetfairMarkets({
     const hasPriceData = marketRunners.some(r =>
       (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0)
     );
-    return { ...m, hasPriceData };
+    const normalized = normalizeBetfairMarket({ ...m, runners: marketRunners }, null, ['stream', 'merged'].includes(m.source) ? { ...m, runners: marketRunners } : null);
+    return { ...m, ...normalized, id: normalized.marketId, betfairMarketId: normalized.marketId, startTime: normalized.marketStartTime, hasPriceData };
   });
 
   return { markets: mergedMarkets, runners: runnerList };

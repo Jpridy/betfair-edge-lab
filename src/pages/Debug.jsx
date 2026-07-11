@@ -5,6 +5,7 @@ import WiringAudit from '@/pages/WiringAudit';
 import LogsAudit from '@/pages/LogsAudit';
 import RunnerView from '@/pages/RunnerView';
 import MockFeatherlessRun from '@/pages/MockFeatherlessRun';
+import BetfairDataDiagnostics from '@/components/bot/BetfairDataDiagnostics';
 
 export default function Debug() {
   return <Tabs defaultValue="health" className="space-y-5">
@@ -12,7 +13,7 @@ export default function Debug() {
     <TabsContent value="health"><SetupWizard /></TabsContent>
     <TabsContent value="wiring"><WiringAudit /></TabsContent>
     <TabsContent value="logs"><LogsAudit /></TabsContent>
-    <TabsContent value="market"><RunnerView /></TabsContent>
+    <TabsContent value="market"><div className="space-y-5"><BetfairDataDiagnostics /><RunnerView /></div></TabsContent>
     <TabsContent value="ai"><MockFeatherlessRun /></TabsContent>
   </Tabs>;
 }

@@ -15,6 +15,7 @@ import { strategyForDecisionSource } from '@/lib/decisionProvenance';
 import { lapseUnmatchedOrder } from '@/lib/settlementService';
 import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
+import { buildBetfairDiagnostics } from '@/lib/betfairDiagnostics';
 
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
@@ -57,6 +58,7 @@ export function AppProvider({ children }) {
     lastClearedOrderSyncTime: null,
     lastCatalogueRefreshAt: null,
     lastPriceFetchAt: null,
+    lastStreamUpdateAt: null,
     catalogueMarketsCount: 0,
     catalogueRunnersCount: 0,
     marketsWithPriceData: 0,
@@ -67,6 +69,9 @@ export function AppProvider({ children }) {
     accountFundsAvailable: false,
     currentOrdersAvailable: false,
     streamAvailable: false,
+    streamError: null,
+    lastConnectionError: null,
+    subscribedMarkets: 0,
   });
 
   // ── Settings with Commission Model ──
@@ -232,6 +237,9 @@ export function AppProvider({ children }) {
   const [lastDebugScanAt, setLastDebugScanAt] = useState(null);
   const [settlementReport, setSettlementReport] = useState(null);
   const [settlementRunning, setSettlementRunning] = useState(false);
+  const [betfairRawDiagnostics, setBetfairRawDiagnostics] = useState({ catalogueRecordsReturned: 0, marketBooksReturned: 0, streamMarketsUpdated: 0, catalogueMarkets: [], marketBooks: [], streamMarkets: [], samples: {} });
+  const [diagnosticsRevision, setDiagnosticsRevision] = useState(0);
+  const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
@@ -678,6 +686,7 @@ export function AppProvider({ children }) {
       currentOrdersAvailable: false,
       streamAvailable: false,
       lastMarketSyncTime: null,
+      lastStreamUpdateAt: null,
       lastOrderSyncTime: null,
       lastClearedOrderSyncTime: null,
       lastCatalogueRefreshAt: null,
@@ -1172,6 +1181,15 @@ export function AppProvider({ children }) {
       const catRunners = resp.data?.runners || [];
       const now = new Date().toISOString();
       const fetchedAt = resp.data?.fetchedAt || now;
+      setBetfairRawDiagnostics(prev => ({
+        ...prev,
+        catalogueRecordsReturned: resp.data?.rawMarketCount ?? catMarkets.length,
+        uniqueCatalogueMarketIds: resp.data?.uniqueCatalogueMarketIds ?? catMarkets.length,
+        marketBooksReturned: resp.data?.rawBookCount ?? 0,
+        catalogueMarkets: catMarkets,
+        marketBooks: [],
+        samples: { ...prev.samples, catalogue: resp.data?.sampleCatalogueRecord || catMarkets[0] || null, marketBook: resp.data?.sampleMarketBook || null },
+      }));
 
       // Build catalogue name/meta maps for stream enrichment
       const nameMap = new Map();
@@ -2224,6 +2242,14 @@ export function AppProvider({ children }) {
         if (resp.data?.error) throw new Error(resp.data.error);
         const catMarkets = resp.data?.markets || [];
         const catRunners = resp.data?.runners || [];
+        setBetfairRawDiagnostics(prev => ({
+          ...prev,
+          catalogueRecordsReturned: resp.data?.rawMarketCount ?? catMarkets.length,
+          uniqueCatalogueMarketIds: resp.data?.uniqueCatalogueMarketIds ?? catMarkets.length,
+          marketBooksReturned: resp.data?.rawBookCount ?? 0,
+          catalogueMarkets: catMarkets,
+          samples: { ...prev.samples, catalogue: resp.data?.sampleCatalogueRecord || catMarkets[0] || null, marketBook: resp.data?.sampleMarketBook || null },
+        }));
         const nameMap = new Map();
         const metaMap = new Map();
         for (const r of catRunners) {
@@ -2289,6 +2315,7 @@ export function AppProvider({ children }) {
         // Tag stream data with source
         const taggedMarkets = updatedMarkets.map(m => ({ ...m, source: 'stream' }));
         const taggedRunners = updatedRunners.map(r => ({ ...r, source: 'stream' }));
+        setBetfairRawDiagnostics(prev => ({ ...prev, streamMarketsUpdated: taggedMarkets.length, streamMarkets: taggedMarkets, samples: { ...prev.samples, stream: taggedMarkets[0] || null } }));
 
         // Merge with existing (catalogue) data — stream prices take priority,
         // catalogue names/metadata are preserved where stream doesn't have them
@@ -2313,8 +2340,11 @@ export function AppProvider({ children }) {
         setBetfairConnection(prev => ({
           ...prev,
           lastMarketSyncTime: new Date().toISOString(),
+          lastStreamUpdateAt: new Date().toISOString(),
           dataFresh: true,
           streamConnectionStatus: 'connected',
+          streamError: null,
+          subscribedMarkets: taggedMarkets.length,
           loginStatus: 'connected',
           sessionTokenStatus: 'connected',
           marketsWithPriceData,
@@ -2323,7 +2353,7 @@ export function AppProvider({ children }) {
       },
       onHeartbeat: () => {
         if (cancelled) return;
-        setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), dataFresh: true }));
+        setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), lastStreamUpdateAt: new Date().toISOString(), dataFresh: true }));
       },
       onStatusChange: (status) => {
         if (cancelled) return;
@@ -2342,6 +2372,7 @@ export function AppProvider({ children }) {
           addAuditLog('Stream Diagnostics', 'api', 'info', message);
         } else {
           addAuditLog('Stream Error', 'api', 'warning', message);
+          setBetfairConnection(prev => ({ ...prev, streamError: message, lastConnectionError: message }));
         }
       },
       onMarketSettled: () => {
@@ -2359,7 +2390,7 @@ export function AppProvider({ children }) {
     }).catch((err) => {
       if (cancelled) return;
       addAuditLog('Stream Connection Failed', 'api', 'error', `Failed to establish stream: ${err.message}`);
-      setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error' }));
+      setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'error', streamError: err.message, lastConnectionError: err.message }));
     });
 
     return () => {
@@ -2373,7 +2404,7 @@ export function AppProvider({ children }) {
         streamClientRef.current = null;
       }
     };
-  }, [apiConnected, betfairSessionToken]);
+  }, [apiConnected, betfairSessionToken, streamReconnectNonce]);
 
   // ── Derived mode state — single source of truth ──
   // appMode: 'paper' (no Betfair data) or 'connected_paper' (Betfair stream active, still paper trading)
@@ -2381,6 +2412,38 @@ export function AppProvider({ children }) {
   // apiConnected: true only when Betfair session/API is connected
   const appMode = apiConnected ? 'connected_paper' : 'paper';
   const demoMode = !apiConnected;
+
+  const betfairDiagnostics = useMemo(() => buildBetfairDiagnostics({
+    catalogueMarkets: betfairRawDiagnostics.catalogueMarkets,
+    marketBooks: betfairRawDiagnostics.marketBooks,
+    streamMarkets: betfairRawDiagnostics.streamMarkets,
+    mergedMarkets: markets,
+    runners,
+    connectionState: {
+      ...betfairConnection,
+      apiStatus: betfairConnection.apiValidationStatus,
+      streamStatus: betfairConnection.streamConnectionStatus,
+      streamSubscribed: betfairConnection.subscribedMarkets > 0,
+      apiConfigured: !!betfairSessionToken,
+      streamConfigured: !!betfairSessionToken,
+    },
+    timestamps: {
+      lastStreamUpdateAt: betfairConnection.lastStreamUpdateAt,
+      lastCatalogueRefreshAt: betfairConnection.lastCatalogueRefreshAt,
+      lastMarketBookRefreshAt: betfairConnection.lastPriceFetchAt,
+    },
+    rawCounts: betfairRawDiagnostics,
+    samples: betfairRawDiagnostics.samples,
+    settings,
+  }), [markets, runners, betfairConnection, betfairRawDiagnostics, settings.defaultTimeWindowStartSeconds, settings.defaultTimeWindowEndSeconds, betfairSessionToken, diagnosticsRevision]);
+
+  const rebuildBetfairDiagnostics = async () => { setDiagnosticsRevision(value => value + 1); return { success: true }; };
+  const reconnectBetfairStream = async () => {
+    if (!betfairSessionToken) return { error: 'Betfair session is not configured' };
+    setBetfairConnection(prev => ({ ...prev, streamConnectionStatus: 'connecting', streamError: null, lastConnectionError: null }));
+    setStreamReconnectNonce(value => value + 1);
+    return { success: true };
+  };
 
   // ── Calibration from settled paper orders ──
   const calibration = useMemo(() => computeCalibration(paperOrders), [paperOrders]);
@@ -2390,6 +2453,7 @@ export function AppProvider({ children }) {
     apiConnected, setApiConnected, betfairAccount, setBetfairAccount, betfairSessionToken, setBetfairSessionToken,
     jurisdiction, setJurisdiction, notifications, setNotifications,
     betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair,
+    betfairDiagnostics, rebuildBetfairDiagnostics, reconnectBetfairStream,
     settings, updateSettings, appMode, demoMode,
     markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
     auditLogs, backtestRuns, plData, dataLoading,
