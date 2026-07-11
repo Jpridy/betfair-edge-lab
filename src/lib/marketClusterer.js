@@ -1,147 +1,80 @@
-// ============================================================================
-// Market Clusterer — Groups markets by event/race and detects market types
-//
-// Detects WIN, PLACE, and H2H/AvB markets from Betfair marketTypeCode,
-// marketName, and structural heuristics (runner count).
-// ============================================================================
+import { normalizedMarketId, raceKeyOf } from './raceExposure';
 
-const H2H_PATTERNS = [
-  /\bv\s|\.v\./i,
-  /\bvs\b/i,
-  /\bavb\b/i,
-  /head\s*to\s*head/i,
-  /match\s*betting/i,
-  /head-to-head/i,
-];
+const WIN_TYPES = new Set(['WIN', 'WIN_MARKET']);
+const PLACE_TYPES = new Set(['PLACE', 'PLACE_MARKET', 'TO_BE_PLACED', 'TOP_2_FINISH', 'TOP_3_FINISH', 'TOP_4_FINISH']);
+const H2H_TYPES = new Set(['MATCH_ODDS', 'MATCH_BET', 'AVB', 'HEAD_TO_HEAD']);
 
-/**
- * Detect market type from market metadata.
- * @returns {'WIN' | 'PLACE' | 'H2H' | 'OTHER'}
- */
 export function detectMarketType(market) {
-  const mtc = market.marketTypeCode || market.marketType || '';
-  const name = market.marketName || '';
-
-  // Betfair marketTypeCode is the most reliable signal
-  if (mtc === 'WIN' || mtc === 'WIN_MARKET') return 'WIN';
-  if (mtc === 'PLACE' || mtc === 'PLACE_MARKET') return 'PLACE';
-  if (mtc === 'MATCH_ODDS' || mtc === 'MATCH_BET' || mtc === 'AVB' || mtc === 'HEAD_TO_HEAD') return 'H2H';
-
-  // Fallback: marketName detection
-  const lowerName = name.toLowerCase();
-  if (H2H_PATTERNS.some(re => re.test(lowerName))) return 'H2H';
-
-  // "To Be Placed" / "Place" detection
-  if (lowerName.includes('place') || lowerName.includes('to be placed')) return 'PLACE';
-
-  // Default: if name contains "Win" or "To Win" or is a standard racing market
-  if (lowerName === 'win' || lowerName.includes('to win') || lowerName.includes('winner')) return 'WIN';
-
-  // Structural heuristic: 2-runner market with H2H-style name
-  const runnerCount = market.numberOfRunners || market.numberOfActiveRunners || 0;
-  if (runnerCount === 2 && H2H_PATTERNS.some(re => re.test(lowerName))) return 'H2H';
-
-  // Default for racing: treat as WIN
-  if (market.eventType === 'Horse Racing' || market.eventTypeId === '7' || market.eventTypeId === '4339') {
-    if (lowerName === 'win' || lowerName === '' || lowerName.includes('race')) return 'WIN';
-    if (runnerCount >= 2 && runnerCount <= 2 && !lowerName.includes('place')) return 'H2H';
-    return 'WIN';
-  }
-
-  return 'OTHER';
+  const exact = String(market?.marketTypeCode || market?.marketType || '').trim().toUpperCase();
+  if (WIN_TYPES.has(exact)) return 'WIN';
+  if (PLACE_TYPES.has(exact)) return 'PLACE';
+  if (H2H_TYPES.has(exact)) return 'H2H';
+  return 'UNKNOWN';
 }
 
-/**
- * Extract the place terms from a PLACE market.
- * E.g. "To Be Placed (2)" → 2 places, "Top 3" → 3 places.
- * @returns {number} number of places (default 2 for H2H, 3 for PLACE)
- */
 export function extractPlaceTerms(market) {
-  const type = detectMarketType(market);
-  if (type === 'H2H') return 1; // H2H: beat the opponent = 1 "place"
-
-  const name = (market.marketName || '').toLowerCase();
-  // Try to extract a number from "To Be Placed (N)" or "Top N Finish" or "First N"
-  // Check this BEFORE the type gate — "Top 2 Finish" may not be detected as PLACE
-  // by detectMarketType, but it still carries explicit place terms.
-  const match = name.match(/\((\d+)\)|top\s*(\d+)|first\s*(\d+)/i);
-  if (match) {
-    const n = parseInt(match[1] || match[2] || match[3]);
-    if (n > 0) return n;
-  }
-
-  if (type !== 'PLACE') return 1;
-
-  // Default based on runner count
-  const runnerCount = market.numberOfRunners || market.numberOfActiveRunners || 0;
-  if (runnerCount >= 16) return 4;
-  if (runnerCount >= 8) return 3;
-  return 2;
+  if (detectMarketType(market) === 'H2H') return 1;
+  const exact = String(market?.marketTypeCode || market?.marketType || '').toUpperCase();
+  const name = String(market?.marketName || '');
+  const match = `${exact} ${name}`.match(/(?:TOP_|TOP\s*|\(|FIRST\s*)([234])/i);
+  if (match) return Number(match[1]);
+  const runnerCount = Number(market?.numberOfRunners || market?.numberOfActiveRunners || 0);
+  return runnerCount >= 16 ? 4 : runnerCount >= 8 ? 3 : 2;
 }
 
-/**
- * Group eligible markets by event/race (eventId).
- * Each cluster contains: eventId, eventName, startTime, venue,
- * winMarkets, placeMarkets, h2hMarkets, otherMarkets.
- *
- * @param {Array} markets - Eligible (OPEN, pre-race) markets
- * @returns {Array} Array of event cluster objects
- */
-export function clusterMarketsByEvent(markets) {
-  const clusters = new Map();
-
-  for (const market of markets) {
-    const eventId = market.eventId || market.betfairEventId || `${market.venue || 'unknown'}_${market.startTime || market.marketStartTime || ''}`;
-    if (!clusters.has(eventId)) {
-      clusters.set(eventId, {
-        eventId,
-        eventName: market.eventName || '',
-        venue: market.venue || '',
-        startTime: market.startTime || market.marketStartTime || null,
-        raceNumber: market.raceNumber || 0,
-        winMarkets: [],
-        placeMarkets: [],
-        h2hMarkets: [],
-        otherMarkets: [],
-      });
-    }
-    const cluster = clusters.get(eventId);
-    cluster.eventName = cluster.eventName || market.eventName || '';
-    cluster.venue = cluster.venue || market.venue || '';
-    cluster.startTime = cluster.startTime || market.startTime || market.marketStartTime || null;
-
-    const type = detectMarketType(market);
-    switch (type) {
-      case 'WIN': cluster.winMarkets.push(market); break;
-      case 'PLACE': cluster.placeMarkets.push(market); break;
-      case 'H2H': cluster.h2hMarkets.push(market); break;
-      default: cluster.otherMarkets.push(market); break;
-    }
-  }
-
-  return Array.from(clusters.values());
-}
-
-/**
- * Get the primary market for an event cluster.
- * Prefers WIN (most complete runner list), falls back to any available market.
- */
-export function getPrimaryMarket(cluster) {
-  if (cluster.winMarkets.length > 0) return cluster.winMarkets[0];
-  if (cluster.placeMarkets.length > 0) return cluster.placeMarkets[0];
-  if (cluster.h2hMarkets.length > 0) return cluster.h2hMarkets[0];
-  if (cluster.otherMarkets.length > 0) return cluster.otherMarkets[0];
+const timeDifference = (a, b) => Math.abs(new Date(a || 0).getTime() - new Date(b || 0).getTime());
+export function relatedMarketRejectionReason(anchor, candidate, toleranceMs = 10 * 60 * 1000) {
+  if (!normalizedMarketId(candidate)) return 'MARKET_ID_MISSING';
+  const aEvent = String(anchor?.eventId || anchor?.betfairEventId || '');
+  const cEvent = String(candidate?.eventId || candidate?.betfairEventId || '');
+  if (aEvent && cEvent && aEvent !== cEvent) return 'EVENT_ID_MISMATCH';
+  if (anchor?.raceNumber && candidate?.raceNumber && Number(anchor.raceNumber) !== Number(candidate.raceNumber)) return 'RACE_NUMBER_MISMATCH';
+  const aStart = anchor?.startTime || anchor?.marketStartTime;
+  const cStart = candidate?.startTime || candidate?.marketStartTime;
+  if (aStart && cStart && timeDifference(aStart, cStart) > toleranceMs) return 'START_TIME_MISMATCH';
+  if (detectMarketType(candidate) === 'UNKNOWN') return 'UNSUPPORTED_MARKET_TYPE';
   return null;
 }
 
-/**
- * Get all markets in a cluster.
- */
-export function getAllMarketsInCluster(cluster) {
-  return [
-    ...cluster.winMarkets,
-    ...cluster.placeMarkets,
-    ...cluster.h2hMarkets,
-    ...cluster.otherMarkets,
-  ];
+export function clusterMarketsByEvent(markets = []) {
+  const clusters = new Map();
+  const seenMarketIds = new Set();
+  for (const market of markets) {
+    const marketId = normalizedMarketId(market);
+    if (!marketId || seenMarketIds.has(marketId)) continue;
+    seenMarketIds.add(marketId);
+    const raceKey = raceKeyOf(market);
+    if (!clusters.has(raceKey)) clusters.set(raceKey, { raceKey, eventId:market.eventId || market.betfairEventId || null, eventTypeId:market.eventTypeId || null, eventName:market.eventName || '', venue:market.venue || '', startTime:market.startTime || market.marketStartTime || null, raceNumber:market.raceNumber || 0, markets:[], winMarkets:[], placeMarkets:[], h2hMarkets:[], otherMarkets:[], rejectedRelatedMarkets:[] });
+    const cluster = clusters.get(raceKey);
+    const prepared = { ...market, normalizedMarketId:marketId, detectedMarketType:detectMarketType(market) };
+    cluster.markets.push(prepared);
+    if (prepared.detectedMarketType === 'WIN') cluster.winMarkets.push(prepared);
+    else if (prepared.detectedMarketType === 'PLACE') cluster.placeMarkets.push(prepared);
+    else if (prepared.detectedMarketType === 'H2H') cluster.h2hMarkets.push(prepared);
+    else { cluster.otherMarkets.push(prepared); cluster.rejectedRelatedMarkets.push({marketId, reason:'UNSUPPORTED_MARKET_TYPE', marketTypeCode:market.marketTypeCode || market.marketType || 'UNKNOWN'}); }
+  }
+  return [...clusters.values()];
+}
+
+export function getPrimaryMarket(cluster) { return cluster?.winMarkets?.[0] || cluster?.placeMarkets?.[0] || cluster?.h2hMarkets?.[0] || null; }
+export function getAllMarketsInCluster(cluster) { return [...(cluster?.winMarkets || []), ...(cluster?.placeMarkets || []), ...(cluster?.h2hMarkets || []), ...(cluster?.otherMarkets || [])]; }
+
+export function rejectedRelatedMarkets(cluster, catalogueMarkets = []) {
+  const anchor = getPrimaryMarket(cluster) || getAllMarketsInCluster(cluster)[0];
+  if (!anchor) return [];
+  const clusterIds = new Set(getAllMarketsInCluster(cluster).map(normalizedMarketId));
+  return catalogueMarkets.filter(candidate => !clusterIds.has(normalizedMarketId(candidate))).flatMap(candidate => {
+    const sameEvent = String(candidate.eventId || candidate.betfairEventId || '') === String(anchor.eventId || anchor.betfairEventId || '');
+    const sameVenueRace = String(candidate.venue || '').toLowerCase() === String(anchor.venue || '').toLowerCase() && Number(candidate.raceNumber || 0) === Number(anchor.raceNumber || 0);
+    if (!sameEvent && !sameVenueRace) return [];
+    const reason = relatedMarketRejectionReason(anchor, candidate);
+    return reason ? [{ marketId:normalizedMarketId(candidate) || null, marketTypeCode:candidate.marketTypeCode || candidate.marketType || 'UNKNOWN', reason }] : [];
+  });
+}
+
+export function marketCoverage(cluster, runners = []) {
+  const markets = getAllMarketsInCluster(cluster);
+  const unique = new Map(markets.map(m => [normalizedMarketId(m), m]));
+  const count = type => [...unique.values()].filter(m => detectMarketType(m) === type).length;
+  return { catalogueMarketsFound:unique.size, uniqueMarketIds:[...unique.keys()], uniqueWinMarketCount:count('WIN'), uniquePlaceMarketCount:count('PLACE'), uniqueH2HMarketCount:count('H2H'), unknownMarketCount:count('UNKNOWN'), totalUniqueMarketCount:unique.size, totalRunnerCount:runners.length, runnersPerMarket:Object.fromEntries([...unique.keys()].map(id=>[id,runners.filter(r=>normalizedMarketId(r)===id).length])), marketsRejectedBeforeEngine:cluster?.rejectedRelatedMarkets?.length || 0, rejectionReasons:cluster?.rejectedRelatedMarkets || [] };
 }

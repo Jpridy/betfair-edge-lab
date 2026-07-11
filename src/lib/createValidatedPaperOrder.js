@@ -13,8 +13,10 @@
 import { calculateCommission } from './betfairMapping';
 import { isPaperProofModeActive } from './paperProofDefaults';
 import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
+import { ACTIVE_ORDER_STATUSES, exposureBlock } from './raceExposure';
+import { DECISION_SOURCES, strategyForDecisionSource, dataSourceForDecisionSource } from './decisionProvenance';
 
-const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
+const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
 /**
  * Create a validated paper order.
@@ -77,8 +79,15 @@ export function createValidatedPaperOrder({
   placeTerms = null,
   proofMode = false,
   proofReason = null,
+  decisionSource = null,
+  selectionDiagnostics = null,
 }) {
   const failures = [];
+  if (decisionSource) {
+    strategyName = strategyForDecisionSource(decisionSource);
+    dataSource = dataSourceForDecisionSource(decisionSource);
+    if (decisionSource === DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY) entryReason = entryReason.replace(/\bAI\b:?\s*/gi, '').trim();
+  }
 
   // ── Paper Proof Mode detection ──
   // Use pre-computed flag if provided, otherwise detect from real settings.
@@ -179,6 +188,12 @@ export function createValidatedPaperOrder({
     failures.push({ field: 'exposure', reason: `Exposure $${(currentExposure + newExposure).toFixed(2)} would exceed max $${settings.maxMarketExposure || 1000}` });
   }
 
+  // ── One market / one race exposure guard ──
+  if (market && runner) {
+    const exposureFailure = exposureBlock(existingOrders, { ...market, eventId:eventId || market.eventId, eventName:eventName || market.eventName }, { ...settings, portfolioModeEnabled:featherlessSettings?.portfolioModeEnabled === true });
+    if (exposureFailure) failures.push({ field:exposureFailure, reason:exposureFailure });
+  }
+
   // ── Duplicate Order Check ── (uses normalised match helpers)
   if (market && runner) {
     const orderMarket = { id: market.id, betfairMarketId: market.betfairMarketId };
@@ -194,7 +209,7 @@ export function createValidatedPaperOrder({
   }
 
   // ── Max Open Orders ──
-  const openCount = existingOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status)).length;
+  const openCount = existingOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status) || OPEN_ORDER_STATUSES.includes(o.settlementStatus)).length;
   if (openCount >= (settings.maxOpenOrders || 10)) {
     failures.push({ field: 'maxOpenOrders', reason: `Max open orders reached (${openCount}/${settings.maxOpenOrders || 10})` });
   }
@@ -209,6 +224,8 @@ export function createValidatedPaperOrder({
     const reason = failures.map(f => f.reason).join('; ');
     const rejectedOrder = {
       strategyName,
+      decisionSource,
+      selectionDiagnostics,
       marketId: market?.id || market?.betfairMarketId || '',
       betfairMarketId: market?.betfairMarketId || market?.id || '',
       normalizedMarketId: String(market?.betfairMarketId || market?.id || ''),
@@ -285,6 +302,8 @@ export function createValidatedPaperOrder({
 
   const order = {
     strategyName,
+    decisionSource,
+    selectionDiagnostics,
     marketId: market.id || market.betfairMarketId,
     betfairMarketId: market.betfairMarketId || market.id,
     normalizedMarketId: String(market.betfairMarketId || market.id || ''),

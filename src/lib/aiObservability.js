@@ -1,0 +1,11 @@
+export function beginAiTrace({ raceKey, provider = 'featherless', model, runnerCount = 0 }) {
+  return { aiRequested:true, aiRequestId:`ai_${raceKey}_${Date.now().toString(36)}`, aiProvider:provider, aiModel:model || 'unknown', aiRequestStartedAt:new Date().toISOString(), aiRequestCompletedAt:null, aiLatencyMs:null, aiCallStatus:'running', aiError:null, aiCacheHit:false, aiRunnerCount:runnerCount, aiResponseRunnerCount:0, aiProbabilitySource:'pending', aiConfidenceSource:'pending' };
+}
+export function completeAiTrace(trace, result, error = null) {
+  const completedAt = new Date().toISOString();
+  return { ...trace, aiRequestCompletedAt:completedAt, aiLatencyMs:Math.max(0,new Date(completedAt)-new Date(trace.aiRequestStartedAt)), aiCallStatus:error?'failed':'success', aiError:error?.message || null, aiResponseRunnerCount:result?.runnerProbabilities?.length || 0, aiProbabilitySource:error?'none':'selectionId_probability', aiConfidenceSource:error?'none':'selectionId_confidence' };
+}
+export function cacheAiTrace({ raceKey, model, runnerCount, result }) {
+  const now=new Date().toISOString(); return { aiRequested:false, aiRequestId:`cache_${raceKey}`, aiProvider:'featherless', aiModel:model || 'unknown', aiRequestStartedAt:null, aiRequestCompletedAt:now, aiLatencyMs:0, aiCallStatus:'cache_hit', aiError:null, aiCacheHit:true, aiRunnerCount:runnerCount, aiResponseRunnerCount:result?.runnerProbabilities?.length || 0, aiProbabilitySource:'cached_selectionId_probability', aiConfidenceSource:'cached_selectionId_confidence' };
+}
+export function unusedAiTrace({ raceKey, model, runnerCount, error = null }) { return { aiRequested:false, aiRequestId:null, aiProvider:'featherless', aiModel:model || 'unknown', aiRequestStartedAt:null, aiRequestCompletedAt:null, aiLatencyMs:0, aiCallStatus:'not_used', aiError:error, aiCacheHit:false, aiRunnerCount:runnerCount, aiResponseRunnerCount:0, aiProbabilitySource:'deterministic_market_probability', aiConfidenceSource:'deterministic_market_quality' }; }

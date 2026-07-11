@@ -13,9 +13,10 @@
 
 import { detectMarketType } from './marketClusterer';
 import { calcProofStake } from './paperProofDefaults';
-import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
-
-const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
+import { matchRunnerToMarket } from './marketIdMatcher';
+import { activeRaceOrders } from './raceExposure';
+import { compareOpportunities } from './opportunityRanking';
+import { DECISION_SOURCES } from './decisionProvenance';
 
 /**
  * Build a proof fallback opportunity from the best available market.
@@ -41,7 +42,7 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
       if (market.inPlay) continue;
 
       const marketType = detectMarketType(market);
-      if (marketType === 'OTHER') continue;
+      if (marketType === 'UNKNOWN') continue;
 
       const marketRunners = allRunners.filter(r =>
         matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
@@ -51,13 +52,8 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
         const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
         if (!selectionId) continue;
 
-        // Check for duplicate open order
-        const hasDup = paperOrders.some(o =>
-          matchOrderToMarket(o, market) &&
-          (matchSelectionId(o.selectionId, selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
-          OPEN_ORDER_STATUSES.includes(o.status)
-        );
-        if (hasDup) continue;
+        // Proof mode never bypasses the one-order-per-race guard.
+        if (activeRaceOrders(paperOrders, { ...market, eventId:cluster.eventId }).length) continue;
 
         // Prefer BACK side
         if (runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) {
@@ -88,39 +84,11 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
 
   if (candidates.length === 0) return null;
 
-  // Sort candidates by preference:
-  // 1. WIN markets first
-  // 2. BACK side first
-  // 3. Odds between 1.2 and 20 preferred
-  // 4. Nearest race (closest to jump)
-  // 5. Best liquidity
   const nowMs = Date.now();
-  candidates.sort((a, b) => {
-    // WIN markets first
-    if (a.isPreferredMarketType && !b.isPreferredMarketType) return -1;
-    if (!a.isPreferredMarketType && b.isPreferredMarketType) return 1;
-    // BACK side first
-    if (a.side === 'BACK' && b.side !== 'BACK') return -1;
-    if (a.side !== 'BACK' && b.side === 'BACK') return 1;
-    // Prefer odds between 1.2 and 20
-    const aGoodOdds = a.odds >= 1.2 && a.odds <= 20;
-    const bGoodOdds = b.odds >= 1.2 && b.odds <= 20;
-    if (aGoodOdds && !bGoodOdds) return -1;
-    if (!aGoodOdds && bGoodOdds) return 1;
-    // Nearest race
-    const aStart = a.market.startTime ? new Date(a.market.startTime).getTime() : Infinity;
-    const bStart = b.market.startTime ? new Date(b.market.startTime).getTime() : Infinity;
-    const aSecs = (aStart - nowMs) / 1000;
-    const bSecs = (bStart - nowMs) / 1000;
-    // Prefer races within 24h that haven't jumped
-    const aInWindow = aSecs > 0 && aSecs < 86400;
-    const bInWindow = bSecs > 0 && bSecs < 86400;
-    if (aInWindow && !bInWindow) return -1;
-    if (!aInWindow && bInWindow) return 1;
-    if (aInWindow && bInWindow) return aSecs - bSecs;
-    // Best liquidity
-    return b.availableSize - a.availableSize;
-  });
+  candidates.sort((a,b)=>compareOpportunities(
+    { ...a, decision:'BET', roi:0, ev:0, confidence:25, dataQuality:30, fillProbability:.9, liquidityScore:Math.min(1,a.availableSize/10), spreadTicks:0, delayRiskScore:0, marketId:a.market.betfairMarketId || a.market.id },
+    { ...b, decision:'BET', roi:0, ev:0, confidence:25, dataQuality:30, fillProbability:.9, liquidityScore:Math.min(1,b.availableSize/10), spreadTicks:0, delayRiskScore:0, marketId:b.market.betfairMarketId || b.market.id }
+  ));
 
   const best = candidates[0];
   const { market, runner, marketType, selectionId, side, odds, availableSize, cluster } = best;
@@ -174,6 +142,7 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
     edge: 0,
     confidence: 25,
     dataQuality: 30,
+    decisionSource: DECISION_SOURCES.PROOF_OVERRIDE,
     dataSource: 'MARKET_ONLY_PROOF',
     spreadTicks: 0,
     liquidityScore: Math.min(1, availableSize / 10),

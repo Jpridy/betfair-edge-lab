@@ -1,13 +1,9 @@
 import { detectMarketType } from './marketClusterer';
+import { normalizedMarketId, raceKeyOf } from './raceExposure';
 
 export function getRaceKey(market, index = 0) {
-  const eventId = String(market?.eventId || market?.betfairEventId || '').trim();
-  if (eventId) return eventId;
-  const place = String(market?.venue || market?.eventName || '').trim();
-  const start = market?.marketStartTime || market?.startTime;
-  if (place && start) return `${place}:${start}`;
-  const marketId = String(market?.betfairMarketId || market?.marketId || market?.id || '').trim();
-  return marketId || `isolated-market-${index}`;
+  const key = raceKeyOf(market);
+  return key === 'race::0:0' ? (normalizedMarketId(market) || `isolated-market-${index}`) : key;
 }
 
 export function groupRaceDayData(markets = [], runners = []) {
@@ -15,7 +11,7 @@ export function groupRaceDayData(markets = [], runners = []) {
   const runnersByMarketId = new Map();
   const racesByRaceKey = new Map();
   markets.forEach((market, index) => {
-    const marketId = String(market.betfairMarketId || market.marketId || market.id);
+    const marketId = normalizedMarketId(market);
     const raceKey = getRaceKey(market, index);
     const type = detectMarketType(market);
     const hasPriceData = market.hasPriceData || runners.some(r => String(r.marketId || r.betfairMarketId) === marketId && (r.bestBackPrice > 0 || r.bestLayPrice > 0));
@@ -32,6 +28,7 @@ export function groupRaceDayData(markets = [], runners = []) {
     runnersByMarketId.get(marketId).push(runner);
   });
   const races = [...racesByRaceKey.values()];
-  const typeCount = type => markets.filter(m => detectMarketType(m) === type).length;
-  return { marketsById, runnersByMarketId, racesByRaceKey, summary: { totalMarketsLoaded: markets.length, winMarketsLoaded: typeCount('WIN'), placeMarketsLoaded: typeCount('PLACE'), h2hMarketsLoaded: typeCount('H2H'), totalRacesLoaded: races.length, totalRunnersLoaded: runners.length, marketsWithInitialPrices: markets.filter(m => m.hasPriceData || runners.some(r => String(r.marketId) === String(m.id || m.betfairMarketId) && (r.bestBackPrice > 0 || r.bestLayPrice > 0))).length, racesWithWinMarket: races.filter(r => r.winMarkets.length).length, racesWithPlaceMarket: races.filter(r => r.placeMarkets.length).length, racesWithH2HMarket: races.filter(r => r.h2hMarkets.length).length } };
+  const uniqueMarkets = [...marketsById.values()];
+  const typeCount = type => uniqueMarkets.filter(m => detectMarketType(m) === type).length;
+  return { marketsById, runnersByMarketId, racesByRaceKey, summary: { totalMarketsLoaded: uniqueMarkets.length, uniqueWinMarketCount: typeCount('WIN'), uniquePlaceMarketCount: typeCount('PLACE'), uniqueH2HMarketCount: typeCount('H2H'), unknownMarketCount:typeCount('UNKNOWN'), totalUniqueMarketCount:uniqueMarkets.length, totalRacesLoaded: races.length, totalRunnerCount: runners.length, winMarketsLoaded: typeCount('WIN'), placeMarketsLoaded: typeCount('PLACE'), h2hMarketsLoaded: typeCount('H2H'), totalRunnersLoaded: runners.length, marketsWithInitialPrices: uniqueMarkets.filter(m => m.hasPriceData || runners.some(r => String(r.marketId) === String(m.id || m.betfairMarketId) && (r.bestBackPrice > 0 || r.bestLayPrice > 0))).length, racesWithWinMarket: races.filter(r => r.winMarkets.length).length, racesWithPlaceMarket: races.filter(r => r.placeMarkets.length).length, racesWithH2HMarket: races.filter(r => r.h2hMarkets.length).length } };
 }

@@ -91,6 +91,8 @@ export const PAPER_PROOF_FEATHERLESS_SETTINGS = {
   requireExternalSearchForLiveBetting: false,
   externalSearchCacheTtlMinutes: 10,
   allowHedging: false,
+  allowDeterministicFallback: false,
+  portfolioModeEnabled: false,
   winMinOdds: 1.01,
   winMaxOdds: 1000,
   winMinLiquidity: 2,

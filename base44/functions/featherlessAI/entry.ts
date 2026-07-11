@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
 
     // Build AI result for the exchange engine
     const aiResult = {
-      decisionSource: 'FEATHERLESS_RACE_ASSESSMENT',
+      decisionSource: 'FEATHERLESS_AI',
       raceId: racePack.raceId,
       eventId: racePack.eventId,
       eventName: racePack.eventName,
@@ -523,6 +523,9 @@ Deno.serve(async (req) => {
       decision: decisionRecord,
       validation,
       responseTimeMs,
+      aiProvider: 'featherless',
+      aiModel: modelName,
+      aiResponseRunnerCount: aiResult.runnerProbabilities.length,
     });
   } catch (error) {
     const isTimeout = error.message?.toLowerCase().includes('timeout') || error.name === 'AbortError';

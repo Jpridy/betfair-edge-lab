@@ -46,6 +46,8 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
   allowMarketOnlyFallbackInDebug: true,
   allowMarketOnlyFallbackInPaperProof: true,
   allowMarketOnlyFallbackInNormalMode: false,
+  allowDeterministicFallback: false,
+  portfolioModeEnabled: false,
   featherlessTimeoutMs: 120000,
   featherlessStrictJson: true,
   paperProofExternalSearchEnabled: false,

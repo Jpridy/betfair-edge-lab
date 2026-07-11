@@ -11,7 +11,8 @@
 // No API keys or secrets are included.
 // ============================================================================
 
-import { detectMarketType, extractPlaceTerms, getAllMarketsInCluster } from './marketClusterer';
+import { detectMarketType, extractPlaceTerms, getAllMarketsInCluster, marketCoverage } from './marketClusterer';
+import { ACTIVE_ORDER_STATUSES, normalizedMarketId } from './raceExposure';
 import { matchRunnerToMarket } from './marketIdMatcher';
 import { calculateSpreadTicks } from './tickLadder';
 import { calculateFavouriteContext, calculateRunnerContextScores } from './favouriteValueContext';
@@ -46,7 +47,7 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
 
   for (const market of allClusterMarkets.slice(0, maxMarkets)) {
     const marketType = detectMarketType(market);
-    if (marketType === 'OTHER') continue;
+    if (marketType === 'UNKNOWN') continue;
 
     const marketRunners = allRunners.filter(r =>
       matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
@@ -110,7 +111,8 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
     });
 
     marketObjects.push({
-      marketId: market.betfairMarketId || market.id,
+      marketId: normalizedMarketId(market),
+      normalizedMarketId: normalizedMarketId(market),
       marketName: market.marketName || '',
       marketType,
       marketTypeCode: market.marketTypeCode || market.marketType || '',
@@ -244,8 +246,8 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
   // ── Risk context ──
   const clusterMarketIds = allClusterMarkets.map(m => m.betfairMarketId || m.id);
   const openOrdersInRace = paperOrders.filter(o =>
-    clusterMarketIds.includes(o.betfairMarketId || o.marketId) &&
-    ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'].includes(o.status)
+    clusterMarketIds.map(String).includes(normalizedMarketId(o)) &&
+    (ACTIVE_ORDER_STATUSES.includes(o.status) || ACTIVE_ORDER_STATUSES.includes(o.settlementStatus))
   );
   const commissionRate = primaryMarket?.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
 
@@ -274,8 +276,10 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
       status: primaryMarket?.status ?? 'OPEN',
     },
 
+    raceKey: eventCluster.raceKey || eventCluster.eventId,
     markets: marketObjects,
     runners: Array.from(runnerMap.values()),
+    marketCoverage: marketCoverage(eventCluster, allRunners.filter(r => allClusterMarkets.some(m => matchRunnerToMarket(r, m)))),
 
     // ── Favourite Value Context (compact, for AI + diagnostics) ──
     favouriteValueContext,
@@ -376,7 +380,7 @@ export function buildStaticRacePack(eventCluster, allRunners = []) {
   const markets = getAllMarketsInCluster(eventCluster);
   const marketIds = new Set(markets.map(m => String(m.betfairMarketId || m.id)));
   const staticRunners = allRunners.filter(r => marketIds.has(String(r.marketId || r.betfairMarketId))).map(r => ({ id: r.id, marketId: r.marketId, selectionId: String(r.betfairSelectionId || r.selectionId || ''), runnerName: r.runnerName, horseNumber: r.horseNumber || 0, raceFormProfile: r.raceFormProfile || null }));
-  return { raceId: eventCluster.eventId || eventCluster.raceKey, raceKey: eventCluster.raceKey || eventCluster.eventId, eventId: eventCluster.eventId || null, eventName: eventCluster.eventName || '', venue: eventCluster.venue || '', raceNumber: eventCluster.raceNumber || 0, startTime: eventCluster.startTime || markets[0]?.marketStartTime || markets[0]?.startTime || null, staticMarkets: markets.map(m => ({ id: m.id, betfairMarketId: m.betfairMarketId, eventId: m.eventId, eventName: m.eventName, venue: m.venue, raceNumber: m.raceNumber, marketName: m.marketName, marketType: m.marketType, marketTypeCode: m.marketTypeCode, marketStartTime: m.marketStartTime || m.startTime, numberOfWinners: m.numberOfWinners, marketBaseRate: m.marketBaseRate })), staticRunners, marketTypesAvailable: [...new Set(markets.map(detectMarketType).filter(t => t !== 'OTHER'))], placeTerms: markets.filter(m => detectMarketType(m) === 'PLACE').map(extractPlaceTerms), builtAt: new Date().toISOString(), buildCount: 1, cluster: eventCluster };
+  return { raceId: eventCluster.eventId || eventCluster.raceKey, raceKey: eventCluster.raceKey || eventCluster.eventId, eventId: eventCluster.eventId || null, eventName: eventCluster.eventName || '', venue: eventCluster.venue || '', raceNumber: eventCluster.raceNumber || 0, startTime: eventCluster.startTime || markets[0]?.marketStartTime || markets[0]?.startTime || null, staticMarkets: markets.map(m => ({ id: m.id, betfairMarketId: m.betfairMarketId, eventId: m.eventId, eventName: m.eventName, venue: m.venue, raceNumber: m.raceNumber, marketName: m.marketName, marketType: m.marketType, marketTypeCode: m.marketTypeCode, marketStartTime: m.marketStartTime || m.startTime, numberOfWinners: m.numberOfWinners, marketBaseRate: m.marketBaseRate })), staticRunners, marketTypesAvailable: [...new Set(markets.map(detectMarketType).filter(t => t !== 'UNKNOWN'))], placeTerms: markets.filter(m => detectMarketType(m) === 'PLACE').map(extractPlaceTerms), builtAt: new Date().toISOString(), buildCount: 1, cluster: eventCluster };
 }
 
 export function hydrateRacePackForScan(staticPack, { markets = [], runners = [], settings = {}, featherlessSettings = {}, bankrollStats = {}, paperOrders = [], externalResearch = null, opts = {} } = {}) {
@@ -401,6 +405,7 @@ export function summarizeRacePack(racePack) {
     placeMarketPresent: !!racePack.marketSummary?.placeMarket,
     h2hMarketCount: racePack.marketSummary?.h2hMarkets?.length || 0,
     externalResearchUsed: racePack.externalResearch?.openAiSearchUsed || false,
+    marketCoverage: racePack.marketCoverage || null,
     riskContextIncluded: !!racePack.botContext,
     totalMatched: racePack.marketSummary?.totalMatched || 0,
     favouriteDetected: !!racePack.favouriteValueContext,

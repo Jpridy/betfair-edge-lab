@@ -208,6 +208,14 @@ export default function FeatherlessSettings({ settings, onSave }) {
           <Switch checked={local.requireExternalFormData} onCheckedChange={v => update('requireExternalFormData', v)} />
         </div>
 
+        <div className="flex items-center justify-between py-2 border-b border-border">
+          <div>
+            <Label className="text-sm font-bold">Allow Deterministic Fallback</Label>
+            <div className="text-xs text-muted-foreground mt-1">Off by default. When off, an unavailable required AI blocks the race with AI_REQUIRED_BUT_NOT_AVAILABLE.</div>
+          </div>
+          <Switch checked={local.allowDeterministicFallback === true} onCheckedChange={v => update('allowDeterministicFallback', v)} />
+        </div>
+
         {/* Decision Thresholds */}
         <div className="pt-3 border-t border-border">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Decision Thresholds</div>

@@ -3,6 +3,7 @@ import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge, SideBadge } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
 import { Target, Ban, TrendingUp, ShieldAlert, CheckCircle2, WifiOff } from 'lucide-react';
+import MarketCoverageSummary from '@/components/controlroom/MarketCoverageSummary';
 
 export default function LatestDecision() {
   const { botCycles, lastExchangeDiagnostics, apiConnected, markets, runners } = useApp();
@@ -85,6 +86,8 @@ export default function LatestDecision() {
         </div>
         )}
 
+        <MarketCoverageSummary coverage={lastCycle.scanSummary?.selectedRaceMarketCoverage || lastExchangeDiagnostics?.selectedRaceMarketCoverage} />
+
         {/* Best opportunity details */}
         {bestOpp && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
@@ -108,6 +111,9 @@ export default function LatestDecision() {
             <Detail label="Field Strength" value={bestOpp.fieldStrengthCategory || '—'} />
             <Detail label="Fav Dominance" value={bestOpp.favouriteDominanceScore != null ? `${bestOpp.favouriteDominanceScore}%` : '—'} mono />
             <Detail label="Is Favourite" value={bestOpp.isFavourite ? 'Yes' : 'No'} />
+            <Detail label="Decision Source" value={bestOpp.decisionSource || '—'} />
+            <Detail label="AI Status" value={lastCycle.scanSummary?.aiStatus || lastExchangeDiagnostics?.aiStatus || 'Not used'} />
+            <Detail label="Selection Reason" value={lastCycle.scanSummary?.sideSelectionDiagnostics?.selectedSideReason || lastExchangeDiagnostics?.sideSelectionDiagnostics?.selectedSideReason || '—'} />
           </div>
         )}
 

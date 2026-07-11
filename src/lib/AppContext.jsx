@@ -11,6 +11,7 @@ import { computeCalibration } from './calibration';
 import { fmtPct } from './candidateScoring';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
 import { runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
+import { strategyForDecisionSource } from '@/lib/decisionProvenance';
 import { lapseUnmatchedOrder } from '@/lib/settlementService';
 import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
@@ -997,6 +998,9 @@ export function AppProvider({ children }) {
             probabilityDelta: result.bestOpportunity.probabilityDelta ?? 0,
             decisionImpact: result.bestOpportunity.decisionImpact || 'no_effect',
             marketOnlyFallbackReason: result.bestOpportunity.marketOnlyFallbackReason || null,
+            decisionSource: result.bestOpportunity.decisionSource,
+            dataSource: result.bestOpportunity.dataSource,
+            riskAdjustedScore: result.bestOpportunity.riskAdjustedScore,
           } : null,
           noBetReason: result.diagnostics.noBetReason || 'Debug scan — no orders placed',
           scanSummary: {
@@ -1021,6 +1025,11 @@ export function AppProvider({ children }) {
             aiCacheHits: result.diagnostics.aiCacheHits,
             aiDisabled: result.diagnostics.aiDisabled,
             aiStatusLog: result.diagnostics.aiStatusLog,
+            aiObservability: result.diagnostics.aiObservability,
+            aiStatus: result.diagnostics.aiStatus,
+            candidateCountByMarketTypeAndSide: result.diagnostics.candidateCountByMarketTypeAndSide,
+            sideSelectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
+            selectedRaceMarketCoverage: result.diagnostics.selectedRaceMarketCoverage,
             marketDetectionLog: result.diagnostics.marketDetectionLog?.slice(0, 20),
             topOpportunities: result.diagnostics.topOpportunities,
             topRejected: result.diagnostics.topRejected,
@@ -1154,7 +1163,7 @@ export function AppProvider({ children }) {
     try {
       const resp = await base44.functions.invoke('betfairMarkets', {
         sessionToken: s.betfairSessionToken,
-        requestedMarketTypes: ['WIN', 'PLACE', 'MATCH_BET'],
+        requestedMarketTypes: ['WIN', 'PLACE', 'TO_BE_PLACED', 'MATCH_BET'],
       });
 
       if (resp.data?.error) throw new Error(resp.data.error);
@@ -1432,15 +1441,15 @@ export function AppProvider({ children }) {
     // Scans ALL eligible markets, groups by event, calls AI per event for
     // probabilities, generates BACK + LAY opportunities across WIN/PLACE/H2H,
     // runs deterministic exchange EV maths, ranks by EV, picks best.
-    // The engine ALWAYS runs — when Featherless AI is disabled, it uses
-    // market-only probabilities (implied from Betfair prices).
+    // The deterministic engine always runs, but an AI-required strategy is blocked
+    // when AI is unavailable unless deterministic fallback is explicitly enabled.
     const aiEnabled = s.featherlessSettings?.enabled === true;
     const debugScanModeActive = s.featherlessSettings?.debugScanMode === true;
     steps[0].status = 'passed';
     steps[1].status = 'passed';
     steps[2].status = 'passed';
-    steps[3].status = aiEnabled ? 'passed' : 'passed'; // Engine always runs
-    if (!aiEnabled) steps[3].reason = 'Featherless AI disabled — using market-only probabilities';
+    steps[3].status = aiEnabled ? 'passed' : 'blocked';
+    if (!aiEnabled) steps[3].reason = s.featherlessSettings?.allowDeterministicFallback ? 'AI not used — explicit deterministic fallback enabled' : 'AI_REQUIRED_BUT_NOT_AVAILABLE';
 
     // When debug scan mode is active, force diagnostic-only mode
     const forceDebugOnly = debugScanModeActive;
@@ -1516,7 +1525,7 @@ export function AppProvider({ children }) {
           );
 
           if (runner && market) {
-            const strategyName = 'Featherless AI Value Decision Engine';
+            const strategyName = strategyForDecisionSource(opp.decisionSource);
             // Signal starts as 'proposed' — promoted to 'executed' or 'blocked' after validation
             const signal = opportunityToSignal(opp, s.settings);
             signal.runnerId = runner.id;
@@ -1557,7 +1566,9 @@ export function AppProvider({ children }) {
               placeTerms: opp.placeTerms,
               proofMode: opp.proofMode || false,
               proofReason: opp.proofReason || null,
-            });
+              decisionSource: opp.decisionSource,
+              selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
+              });
 
             if (wasRejected || !canPlaceOrders) {
               // Signal is blocked — update status from proposed to blocked
@@ -1690,7 +1701,8 @@ export function AppProvider({ children }) {
             expectedROI: bestOppForRecord.roi,
             confidence: bestOppForRecord.confidence,
             dataQuality: bestOppForRecord.dataQuality,
-            dataSource: bestOppForRecord.dataSource || 'BETFAIR_METADATA_PLUS_MARKET',
+            decisionSource: bestOppForRecord.decisionSource,
+            dataSource: bestOppForRecord.dataSource,
             liquidity: bestOppForRecord.availableSize,
             availableSize: bestOppForRecord.availableSize,
             spread: bestOppForRecord.spreadTicks,
@@ -1717,7 +1729,8 @@ export function AppProvider({ children }) {
             blockers: bestOppForRecord.blockers,
             passed: bestOppForRecord.decision === 'BET',
             decision: bestOppForRecord.decision,
-            overallScore: bestOppForRecord.ev,
+            overallScore: bestOppForRecord.riskAdjustedScore,
+            riskAdjustedScore: bestOppForRecord.riskAdjustedScore,
             externalSearchUsed: bestOppForRecord.externalSearchUsed || false,
             externalSearchStatus: bestOppForRecord.externalSearchStatus || 'not_called',
             externalSourceCount: bestOppForRecord.externalSourceCount || 0,
@@ -1759,6 +1772,11 @@ export function AppProvider({ children }) {
         aiCacheHits: exchangeDiag.aiCacheHits,
         aiDisabled: exchangeDiag.aiDisabled,
         aiStatusLog: exchangeDiag.aiStatusLog,
+        aiObservability: exchangeDiag.aiObservability,
+        aiStatus: exchangeDiag.aiStatus,
+        candidateCountByMarketTypeAndSide: exchangeDiag.candidateCountByMarketTypeAndSide,
+        sideSelectionDiagnostics: exchangeDiag.sideSelectionDiagnostics,
+        selectedRaceMarketCoverage: exchangeDiag.selectedRaceMarketCoverage,
         marketDetectionLog: exchangeDiag.marketDetectionLog?.slice(0, 20),
         topOpportunities: exchangeDiag.topOpportunities,
         topRejected: exchangeDiag.topRejected,
@@ -1963,7 +1981,7 @@ export function AppProvider({ children }) {
             side: signal.side,
             stake: signal.stakeSuggestion,
             odds: signal.odds,
-            strategyName: 'Featherless AI Value Decision Engine',
+            strategyName: 'Paper Proof Mode',
             source: 'bot_proof',
             settings: s.settings,
             bankrollStats: s.bankrollStats,
@@ -1983,6 +2001,8 @@ export function AppProvider({ children }) {
             placeTerms: opp.placeTerms,
             proofMode: true,
             proofReason: opp.proofReason || null,
+            decisionSource: opp.decisionSource,
+            selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
           });
 
           if (!wasRejected) {
@@ -2198,7 +2218,7 @@ export function AppProvider({ children }) {
       try {
         const resp = await base44.functions.invoke('betfairMarkets', {
           sessionToken: betfairSessionToken,
-          requestedMarketTypes: ['WIN', 'PLACE', 'MATCH_BET'],
+          requestedMarketTypes: ['WIN', 'PLACE', 'TO_BE_PLACED', 'MATCH_BET'],
         });
         if (cancelled) return;
         if (resp.data?.error) throw new Error(resp.data.error);

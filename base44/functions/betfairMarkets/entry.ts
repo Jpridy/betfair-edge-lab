@@ -394,7 +394,7 @@ Deno.serve(async (req) => {
     // to avoid Betfair's TOO_MUCH_DATA (ANGX-0001) error, which triggers when
     // a single listMarketCatalogue call would return too many markets with
     // full runner metadata.
-    const requestedMarketTypes = body?.requestedMarketTypes || ['WIN', 'PLACE', 'MATCH_BET'];
+    const requestedMarketTypes = [...new Set(body?.requestedMarketTypes || ['WIN', 'PLACE', 'TO_BE_PLACED', 'MATCH_BET'])];
 
     const now = new Date();
     const fromTime = body?.fromTime || now.toISOString();
@@ -601,12 +601,13 @@ Deno.serve(async (req) => {
         eventId: cat.event?.id || null,
         betfairEventId: cat.event?.id || null,
         eventType: 'Horse Racing',
+        eventTypeId: '7',
         country: cat.event?.countryCode || '',
         venue,
         eventName,
         raceNumber: Number((eventName.match(/R(?:ace)?\s*(\d+)/i) || [])[1]) || 0,
         marketName,
-        marketType: cat.description?.marketType || 'WIN',
+        marketType: cat.description?.marketType || 'UNKNOWN',
         marketTypeCode,
         startTime: cat.marketStartTime || cat.description?.marketTime || null,
         marketStartTime: cat.marketStartTime || cat.description?.marketTime || null,

@@ -32,6 +32,11 @@ import { groupRaceDayData } from './raceDayLoader';
 import { getRaceDayCache, loadRaceDayCache, setRacePacks, updateRaceDayDynamic, pruneRaceDayCache, markRaceScanned } from './raceDayCache';
 import { buildRacePackCache, hydrateCachedRacePack, getRaceAiCache, setRaceAiCache } from './racePackCache';
 import { scheduleRaceScan, consumeForcedRaceScan } from './raceScanScheduler';
+import { DECISION_SOURCES, strategyForDecisionSource, dataSourceForDecisionSource } from './decisionProvenance';
+import { beginAiTrace, completeAiTrace, cacheAiTrace, unusedAiTrace } from './aiObservability';
+import { buildSideSelectionDiagnostics } from './opportunityRanking';
+import { normalizedMarketId } from './raceExposure';
+import { marketCoverage, rejectedRelatedMarkets } from './marketClusterer';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -372,7 +377,9 @@ function buildMarketOnlyAIResult(cluster, marketRunners) {
     runnerProbabilities,
     h2hProbabilities: [],
     dataQuality: 30,
-    raceSummary: 'Market-only mode — probabilities derived from Betfair implied odds',
+    confidence: 25,
+    decisionSource: DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY,
+    raceSummary: 'Probabilities derived deterministically from Betfair implied odds',
   };
 }
 
@@ -417,6 +424,7 @@ export async function runExchangeCycle(params) {
   featherlessSettings = featherlessSettings || {};
   bankrollStats = bankrollStats || {};
   connectionState = connectionState || {};
+  const catalogueMarkets = [...markets];
 
   // ── Race-day cache: build static structures once, then merge dynamic books ──
   let raceCache = getRaceDayCache();
@@ -580,6 +588,8 @@ export async function runExchangeCycle(params) {
   const allOpportunities = [];
   const aiDecisions = [];
   const aiStatusLog = [];
+  const aiObservability = [];
+  let aiRequiredFailures = 0;
   let eventsScanned = 0;
   let eventsWithAI = 0;
   let cacheHits = 0;
@@ -622,11 +632,12 @@ export async function runExchangeCycle(params) {
   let featherlessTotalLatencyMs = 0;
   let localEngineOverruledFeatherless = 0;
   const featherlessAlwaysRequired = featherlessSettings?.featherlessAlwaysRequired !== false;
-  const allowMarketOnlyFallbackInNormalMode = featherlessSettings?.allowMarketOnlyFallbackInNormalMode === true;
-  const allowMarketOnlyFallbackInDebug = featherlessSettings?.allowMarketOnlyFallbackInDebug !== false;
-  const allowMarketOnlyFallbackInPaperProof = featherlessSettings?.allowMarketOnlyFallbackInPaperProof !== false;
+  const allowDeterministicFallback = featherlessSettings?.allowDeterministicFallback === true;
+  const selectedStrategies = botSettings?.selectedStrategies || [];
+  const aiRequired = featherlessAlwaysRequired || selectedStrategies.includes('Featherless AI Value Decision Engine');
 
-  const marketTypeCounts = eligibleMarkets.reduce((acc, m) => {
+  const uniqueEligibleMarkets = [...new Map(eligibleMarkets.map(m => [normalizedMarketId(m), m])).values()];
+  const marketTypeCounts = uniqueEligibleMarkets.reduce((acc, m) => {
     const type = detectMarketType(m);
     if (type === 'WIN') acc.winMarketsFound++;
     else if (type === 'PLACE') acc.placeMarketsFound++;
@@ -706,6 +717,7 @@ export async function runExchangeCycle(params) {
     // ── Step 3: Call Featherless with the FULL race pack ──
     const raceAiCache = !debugScanMode && selectedRace ? getRaceAiCache(selectedRace.raceKey, marketRunners, featherlessSettings?.majorPriceMoveTicks || 5, featherlessSettings?.rerunAiOnMajorPriceMove !== false) : null;
     let aiResult = debugScanMode ? null : (raceAiCache?.featherlessResult || getCachedAIResult(cluster, marketRunners));
+    let aiTrace = null;
     let usedMarketOnlyFallback = false;
     let featherlessStatus = 'not_called';
     let featherlessLatencyMs = 0;
@@ -715,18 +727,23 @@ export async function runExchangeCycle(params) {
 
     if (aiResult) {
       cacheHits++;
+      aiResult = { ...aiResult, decisionSource:DECISION_SOURCES.CACHE };
+      aiTrace = cacheAiTrace({ raceKey:cluster.raceKey || cluster.eventId, model:featherlessSettings?.modelName, runnerCount:marketRunners.length, result:aiResult });
       aiStatusLog.push({ eventId: cluster.eventId, status: 'cache_hit' });
       featherlessStatus = 'cache_hit';
       featherlessDataQuality = aiResult.dataQuality || 0;
       featherlessConfidence = aiResult.confidence || aiResult.dataQuality || 0;
     } else if (callAI) {
       featherlessCalled++;
+      aiTrace = beginAiTrace({ raceKey:cluster.raceKey || cluster.eventId, provider:'featherless', model:featherlessSettings?.modelName, runnerCount:marketRunners.length });
       const flStart = Date.now();
       try {
         aiResult = await callAI(cluster, primaryMarket, marketRunners, racePack);
         featherlessLatencyMs = Date.now() - flStart;
         featherlessTotalLatencyMs += featherlessLatencyMs;
         if (aiResult) {
+          aiResult = { ...aiResult, decisionSource:DECISION_SOURCES.FEATHERLESS_AI };
+          aiTrace = completeAiTrace(aiTrace, aiResult);
           if (!debugScanMode) {
             setCachedAIResult(cluster, marketRunners, aiResult);
             if (selectedRace) setRaceAiCache(selectedRace.raceKey, aiResult, marketRunners, featherlessSettings?.aiResultCacheTtlSeconds || 90);
@@ -745,6 +762,7 @@ export async function runExchangeCycle(params) {
         } else {
           featherlessFailed++;
           featherlessStatus = 'failed';
+          aiTrace = completeAiTrace(aiTrace, null, new Error('AI returned no valid response'));
           aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_called', success: false, reason: 'AI returned null' });
         }
       } catch (err) {
@@ -753,36 +771,39 @@ export async function runExchangeCycle(params) {
         featherlessTotalLatencyMs += featherlessLatencyMs;
         if (isTimeout) { featherlessTimedOut++; featherlessStatus = 'timeout'; }
         else { featherlessFailed++; featherlessStatus = 'failed'; }
+        aiTrace = completeAiTrace(aiTrace, null, err);
         aiStatusLog.push({ eventId: cluster.eventId, status: isTimeout ? 'ai_timeout' : 'ai_error', reason: err.message, latencyMs: featherlessLatencyMs });
       }
     } else {
       featherlessNotConfigured++;
       featherlessStatus = 'not_configured';
+      aiTrace = unusedAiTrace({ raceKey:cluster.raceKey || cluster.eventId, model:featherlessSettings?.modelName, runnerCount:marketRunners.length, error:'AI disabled or unavailable' });
       aiStatusLog.push({ eventId: cluster.eventId, status: 'ai_disabled' });
     }
+    aiObservability.push(aiTrace || unusedAiTrace({ raceKey:cluster.raceKey || cluster.eventId, model:featherlessSettings?.modelName, runnerCount:marketRunners.length }));
 
     // ── Step 4: Handle Featherless failure ──
     const isNormalMode = !paperProofMode && !debugScanMode;
-    const allowMarketOnlyFallback = paperProofMode ? allowMarketOnlyFallbackInPaperProof : debugScanMode ? allowMarketOnlyFallbackInDebug : allowMarketOnlyFallbackInNormalMode;
 
     if (!aiResult) {
-      if (allowMarketOnlyFallback) {
+      if (allowDeterministicFallback) {
         aiResult = buildMarketOnlyAIResult(cluster, marketRunners);
-        aiResult.decisionSource = 'MARKET_ONLY_FALLBACK';
+        aiResult.decisionSource = DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY;
         aiResult.featherlessStatus = featherlessStatus;
         usedMarketOnlyFallback = true;
         marketOnlyFallbacksUsed++;
         marketOnlyResultsCreated++;
         const reason = !callAI ? 'Featherless not configured — market-implied probabilities' : `Featherless ${featherlessStatus} — market-implied fallback`;
         aiStatusLog.push({ eventId: cluster.eventId, status: 'market_only_fallback', success: true, reason });
-      } else if (isNormalMode && featherlessAlwaysRequired) {
-        raceAssessments.push({ eventId: cluster.eventId, eventName: cluster.eventName, racePackSummary, featherlessCalled: featherlessStatus !== 'not_configured', featherlessStatus, featherlessLatencyMs, featherlessDataQuality: 0, featherlessConfidence: 0, runnerProbabilitiesReturned: 0, h2hProbabilitiesReturned: 0, recommendedOpportunitiesReturned: 0, featherlessRecommendedOpp: null, opportunitiesGenerated: 0, localEngineOverruled: false, overruleReason: `Featherless failed (${featherlessStatus})`, finalDecision: 'NO_BET', finalReason: `Featherless race assessment failed (${featherlessStatus})`, decisionSource: 'MARKET_ONLY_FALLBACK' });
+      } else if (aiRequired) {
+        aiRequiredFailures++;
+        raceAssessments.push({ eventId: cluster.eventId, eventName: cluster.eventName, racePackSummary, featherlessCalled: featherlessStatus !== 'not_configured', featherlessStatus, featherlessLatencyMs, featherlessDataQuality: 0, featherlessConfidence: 0, runnerProbabilitiesReturned: 0, h2hProbabilitiesReturned: 0, recommendedOpportunitiesReturned: 0, featherlessRecommendedOpp: null, opportunitiesGenerated: 0, localEngineOverruled: false, overruleReason: 'AI_REQUIRED_BUT_NOT_AVAILABLE', failedGate:'AI_REQUIRED_BUT_NOT_AVAILABLE', finalDecision: 'NO_BET', finalReason: 'AI_REQUIRED_BUT_NOT_AVAILABLE', decisionSource: null });
         continue;
       } else {
         continue;
       }
     }
-    if (aiResult && !aiResult.decisionSource) aiResult.decisionSource = usedMarketOnlyFallback ? 'MARKET_ONLY_FALLBACK' : 'FEATHERLESS_RACE_ASSESSMENT';
+    if (aiResult && !aiResult.decisionSource) aiResult.decisionSource = usedMarketOnlyFallback ? DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY : DECISION_SOURCES.FEATHERLESS_AI;
     if (aiResult) aiResult.featherlessStatus = featherlessStatus;
 
     // ── Step 5: Generate opportunities using Featherless probabilities ──
@@ -825,7 +846,7 @@ export async function runExchangeCycle(params) {
 
     // ── Track race assessment for diagnostics ──
     const betOpps = opportunities.filter(o => o.decision === 'BET');
-    const bestLocalOpp = betOpps.sort((a, b) => b.ev - a.ev)[0] || null;
+    const bestLocalOpp = rankOpportunities(betOpps)[0] || null;
     let localOverruled = false;
     let overruleReason = null;
     if (featherlessRecommendedOpp && bestLocalOpp) {
@@ -886,7 +907,7 @@ export async function runExchangeCycle(params) {
   }
 
   // 8. Rank all opportunities by EV
-  const ranked = rankOpportunities(allOpportunities);
+  let ranked = rankOpportunities(allOpportunities);
 
   // 9. Choose best positive-EV opportunity
   let bestNormalOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
@@ -904,9 +925,9 @@ export async function runExchangeCycle(params) {
     proofFallbackAttempted = true;
     const proofOpp = buildProofOpportunity(eventClusters, runners, paperOrders, settings);
     if (proofOpp) {
-      proofFallbackOpportunity = proofOpp;
-      bestOpportunity = proofOpp;
-      allOpportunities.push(proofOpp);
+      proofFallbackOpportunity = { ...proofOpp, decisionSource:DECISION_SOURCES.PROOF_OVERRIDE };
+      bestOpportunity = proofFallbackOpportunity;
+      allOpportunities.push(proofFallbackOpportunity);
       proofFallbackCreated = true;
       // Re-rank the final complete list so the proof fallback appears in tables/exports
       ranked = rankOpportunities(allOpportunities);
@@ -985,7 +1006,9 @@ export async function runExchangeCycle(params) {
     commissionRate: o.commissionRate,
     confidence: o.confidence,
     dataQuality: o.dataQuality,
-    dataSource: o.dataSource || 'BETFAIR_METADATA_PLUS_MARKET',
+    decisionSource: o.decisionSource,
+    dataSource: o.dataSource,
+    riskAdjustedScore: o.riskAdjustedScore,
     spreadTicks: o.spreadTicks,
     delayRiskScore: o.delayRiskScore,
     fillProbability: o.fillProbability,
@@ -1035,7 +1058,7 @@ export async function runExchangeCycle(params) {
 
   // ── Top 10 rejected opportunities ──
   const rejectedOpps = ranked
-    .filter(o => o.decision === 'NO_BET')
+    .filter(o => o.decision === 'NO_BET' || o.decision === 'REJECT')
     .slice(0, 10)
     .map(o => ({
       opportunityId: o.opportunityId,
@@ -1067,7 +1090,9 @@ export async function runExchangeCycle(params) {
       commissionRate: o.commissionRate,
       confidence: o.confidence,
       dataQuality: o.dataQuality,
-      dataSource: o.dataSource || 'BETFAIR_METADATA_PLUS_MARKET',
+      decisionSource: o.decisionSource,
+      dataSource: o.dataSource,
+      riskAdjustedScore: o.riskAdjustedScore,
       delayRiskScore: o.delayRiskScore,
       fillProbability: o.fillProbability,
       stake: o.stake,
@@ -1108,6 +1133,13 @@ export async function runExchangeCycle(params) {
       specificNoBetReason: o.specificNoBetReason ?? null,
     }));
 
+  const selectedCoverage = eventClusters[0] ? marketCoverage(eventClusters[0], runners) : null;
+  if (selectedCoverage) {
+    const relatedRejections = rejectedRelatedMarkets(eventClusters[0], catalogueMarkets);
+    selectedCoverage.rejectionReasons = [...selectedCoverage.rejectionReasons, ...relatedRejections];
+    selectedCoverage.marketsRejectedBeforeEngine = selectedCoverage.rejectionReasons.length;
+  }
+
   const diagnostics = {
     marketsScanned: eligibleMarkets.length,
     eventsScanned,
@@ -1115,10 +1147,13 @@ export async function runExchangeCycle(params) {
     maxEventsToScan,
     eventsWithAI,
     cacheHits,
-    aiCallsMade: eventsWithAI,
+    aiCallsMade: featherlessCalled,
     aiCacheHits: cacheHits,
-    aiCacheMisses: eventsWithAI,
+    aiCacheMisses: featherlessCalled,
     aiStatusLog,
+    aiObservability,
+    aiRequiredFailures,
+    aiStatus: featherlessCalled === 0 && cacheHits === 0 ? 'Not used' : cacheHits > 0 ? 'Cache used' : featherlessSucceeded > 0 ? 'Used' : 'Failed',
     aiDisabled: !callAI,
     aiResultsCreated: eventsWithAI,
     marketOnlyResultsCreated,
@@ -1128,6 +1163,11 @@ export async function runExchangeCycle(params) {
     placeMarketsFound: marketTypeCounts.placeMarketsFound,
     h2hMarketsFound: marketTypeCounts.h2hMarketsFound,
     unknownMarketsFound: marketTypeCounts.unknownMarketsFound,
+    uniqueWinMarketCount: marketTypeCounts.winMarketsFound,
+    uniquePlaceMarketCount: marketTypeCounts.placeMarketsFound,
+    uniqueH2HMarketCount: marketTypeCounts.h2hMarketsFound,
+    totalUniqueMarketCount: uniqueEligibleMarkets.length,
+    totalRunnerCount: runners.length,
     raceClustersCreated: eventClusters.length,
     totalOpportunities: allOpportunities.length,
     backOpportunities: allOpportunities.filter(o => o.side === 'BACK').length,
@@ -1178,11 +1218,15 @@ export async function runExchangeCycle(params) {
     mathematicallyPositiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
     gateApprovedOpportunities: allOpportunities.filter(o => o.decision === 'BET' && !o.proofMode).length,
     forcedProofOpportunities: allOpportunities.filter(o => o.proofMode === true).length,
-    rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET').length,
+    rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET' || o.decision === 'REJECT').length,
     topOpportunities,
     topRejected: rejectedOpps,
     bestOpportunity: bestOpportunity,
-    noBetReason: debugScanMode
+    decision: bestOpportunity ? 'BET' : 'NO_BET',
+    failedGate: aiRequiredFailures > 0 && allOpportunities.length === 0 ? 'AI_REQUIRED_BUT_NOT_AVAILABLE' : bestOpportunity ? null : ranked[0]?.failedGate || null,
+    noBetReason: aiRequiredFailures > 0 && allOpportunities.length === 0
+      ? 'AI_REQUIRED_BUT_NOT_AVAILABLE'
+      : debugScanMode
       ? (allOpportunities.length === 0
         ? 'Debug scan: no opportunities generated — check AI or price data'
         : `Debug scan: ${allOpportunities.length} opportunities generated, ${allOpportunities.filter(o => o.decision === 'BET').length} positive-EV — NO orders placed (debug mode)`)
@@ -1191,6 +1235,9 @@ export async function runExchangeCycle(params) {
         : (ranked[0]?.specificNoBetReason || `Best opportunity: ${ranked[0]?.runnerName || 'Unknown'} — ${ranked[0]?.blockers?.[0] || 'blocked by safety gate'}`))),
     favouriteValueDiagnostics: buildFavouriteValueDiagnostics(allOpportunities, favouriteContextsDetected),
     bestByCategory: getBestByCategory(allOpportunities),
+    candidateCountByMarketTypeAndSide: allOpportunities.reduce((counts, item) => { const key=`${item.marketType}_${item.side}`; counts[key]=(counts[key] || 0)+1; return counts; }, {}),
+    sideSelectionDiagnostics: buildSideSelectionDiagnostics(allOpportunities, bestOpportunity),
+    selectedRaceMarketCoverage: selectedCoverage,
     aiDecisions,
     marketFeedDiagnostics,
     marketFilterFunnel,
@@ -1279,8 +1326,10 @@ export async function runExchangeCycle(params) {
  * Convert an opportunity into a signal for the existing order pipeline.
  */
 export function opportunityToSignal(opportunity, settings) {
+  const decisionSource = opportunity.decisionSource || DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY;
   return {
-    strategyName: opportunity.proofMode ? 'Paper Proof Mode' : STRATEGY_NAME,
+    strategyName: strategyForDecisionSource(decisionSource),
+    decisionSource,
     marketId: opportunity.marketId,
     betfairMarketId: opportunity.betfairMarketId,
     selectionId: opportunity.selectionId,
@@ -1298,7 +1347,7 @@ export function opportunityToSignal(opportunity, settings) {
     persistenceType: 'LAPSE',
     spreadTicks: opportunity.spreadTicks,
     reason: opportunity.reasons.join('; '),
-    dataSource: opportunity.proofMode ? 'MARKET_ONLY_PROOF' : 'BETFAIR_METADATA_PLUS_MARKET',
+    dataSource: dataSourceForDecisionSource(decisionSource),
     marketType: opportunity.marketType,
     opponentSelectionId: opportunity.opponentSelectionId,
     liability: opportunity.liability,

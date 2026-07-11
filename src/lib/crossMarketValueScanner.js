@@ -19,8 +19,11 @@ import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment,
 import { isPaperProofModeActive, isSoftBlocker, calcProofStake } from './paperProofDefaults';
 import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { calculateFavouriteContext, calculateRunnerContextScores, applyFavouriteContextToOpportunity, generateSpecificNoBetReason } from './favouriteValueContext';
+import { compareOpportunities, scoreOpportunity } from './opportunityRanking';
+import { DECISION_SOURCES, dataSourceForDecisionSource } from './decisionProvenance';
+import { ACTIVE_ORDER_STATUSES, exposureBlock, normalizedMarketId } from './raceExposure';
 
-const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
+const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
 /**
  * Market-type-specific safety gate thresholds.
@@ -89,6 +92,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
   const raceSummary = aiResult?.raceSummary || '';
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extSearchSuccess = externalSearchResult?.searchStatus === 'success';
+  const baseDecisionSource = aiResult?.decisionSource || DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY;
 
   const allMarkets = [
     ...cluster.winMarkets,
@@ -98,7 +102,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 
   for (const market of allMarkets) {
     const marketType = detectMarketType(market);
-    if (marketType === 'OTHER') continue;
+    if (marketType === 'UNKNOWN') continue;
 
     const thresholds = resolveMarketTypeThresholds(marketType, featherlessSettings);
     const commissionRate = market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
@@ -114,14 +118,8 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
       const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
       if (!selectionId) continue;
 
-      // Skip if already has an open order for this strategy/market/runner
-      const hasDup = paperOrders.some(o =>
-        matchOrderToMarket(o, market) &&
-        (matchSelectionId(o.selectionId, selectionId) || matchSelectionId(o.runnerId, runner.id)) &&
-        o.strategyName === 'Featherless AI Value Decision Engine' &&
-        OPEN_ORDER_STATUSES.includes(o.status)
-      );
-      if (hasDup) continue;
+      // Existing exposure is recorded as an explicit rejection in buildOpportunity;
+      // candidates are retained so the scanner cannot silently move to another runner.
 
       // Get the appropriate probability for this market type
       let modelProbability = 0;
@@ -251,6 +249,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
           bankrollStats, paperOrders, modelProbability: adjustedProbability, probData, dataQuality, raceSummary, overround,
           side: 'BACK', odds: runner.bestBackPrice, availableSize: runner.bestBackSize || 0,
           opponentSelectionId,
+          decisionSource: externalSearchUsed ? DECISION_SOURCES.OPENAI_WEB_ENRICHED : baseDecisionSource,
           externalSearchFields: {
             externalSearchUsed, externalSearchStatus, externalSourceCount, externalDataQuality,
             preSearchProbability, postSearchProbability, probabilityDelta,
@@ -269,6 +268,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
           bankrollStats, paperOrders, modelProbability: adjustedProbability, probData, dataQuality, raceSummary, overround,
           side: 'LAY', odds: runner.bestLayPrice, availableSize: runner.bestLaySize || 0,
           opponentSelectionId,
+          decisionSource: externalSearchUsed ? DECISION_SOURCES.OPENAI_WEB_ENRICHED : baseDecisionSource,
           externalSearchFields: {
             externalSearchUsed, externalSearchStatus, externalSourceCount, externalDataQuality,
             preSearchProbability, postSearchProbability, probabilityDelta,
@@ -299,7 +299,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
         const market = allMarkets.find(m => String(m.id) === String(original.marketId) || String(m.betfairMarketId) === String(original.betfairMarketId));
         const runner = allRunners.find(r => matchRunnerToMarket(r, market) && String(r.betfairSelectionId || r.selectionId) === String(original.selectionId));
         if (market && runner) {
-          const rebuilt = buildOpportunity({ cluster, market, runner, marketType: original.marketType, thresholds: resolveMarketTypeThresholds(original.marketType, featherlessSettings), commissionRate: original.commissionRate, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, modelProbability: adjusted.finalProbabilityUsedInEV, probData: { ...(probMap.get(original.selectionId) || {}), confidence: adjusted.confidence }, dataQuality: adjusted.dataQuality, raceSummary, overround: original.overround, side: original.side, odds: original.odds, availableSize: original.availableSize, opponentSelectionId: original.opponentSelectionId, externalSearchFields: { externalSearchUsed: original.externalSearchUsed, externalSearchStatus: original.externalSearchStatus, externalSourceCount: original.externalSourceCount, externalDataQuality: original.externalDataQuality, preSearchProbability: original.preSearchProbability, postSearchProbability: original.postSearchProbability, probabilityDelta: original.probabilityDelta, preSearchConfidence: original.preSearchConfidence, postSearchConfidence: original.postSearchConfidence, confidenceDelta: original.confidenceDelta, externalPositiveSignals: original.externalPositiveSignals, externalNegativeSignals: original.externalNegativeSignals, externalNeutralSignals: original.externalNeutralSignals, externalSearchSummary: original.externalSearchSummary, externalSearchSourceUrls: original.externalSearchSourceUrls, decisionImpact: original.decisionImpact, marketOnlyFallbackReason: original.marketOnlyFallbackReason } });
+          const rebuilt = buildOpportunity({ cluster, market, runner, marketType: original.marketType, thresholds: resolveMarketTypeThresholds(original.marketType, featherlessSettings), commissionRate: original.commissionRate, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, modelProbability: adjusted.finalProbabilityUsedInEV, probData: { ...(probMap.get(original.selectionId) || {}), confidence: adjusted.confidence }, dataQuality: adjusted.dataQuality, raceSummary, overround: original.overround, side: original.side, odds: original.odds, availableSize: original.availableSize, opponentSelectionId: original.opponentSelectionId, decisionSource: original.decisionSource, externalSearchFields: { externalSearchUsed: original.externalSearchUsed, externalSearchStatus: original.externalSearchStatus, externalSourceCount: original.externalSourceCount, externalDataQuality: original.externalDataQuality, preSearchProbability: original.preSearchProbability, postSearchProbability: original.postSearchProbability, probabilityDelta: original.probabilityDelta, preSearchConfidence: original.preSearchConfidence, postSearchConfidence: original.postSearchConfidence, confidenceDelta: original.confidenceDelta, externalPositiveSignals: original.externalPositiveSignals, externalNegativeSignals: original.externalNegativeSignals, externalNeutralSignals: original.externalNeutralSignals, externalSearchSummary: original.externalSearchSummary, externalSearchSourceUrls: original.externalSearchSourceUrls, decisionImpact: original.decisionImpact, marketOnlyFallbackReason: original.marketOnlyFallbackReason } });
           finalOpportunity = { ...adjusted, ...rebuilt, favouriteSelectionId: adjusted.favouriteSelectionId, favouriteName: adjusted.favouriteName, isFavourite: adjusted.isFavourite, favouriteOdds: adjusted.favouriteOdds, favouriteDominanceScore: adjusted.favouriteDominanceScore, fieldStrengthCategory: adjusted.fieldStrengthCategory, qualityThreatCount: adjusted.qualityThreatCount, runnerContextScore: adjusted.runnerContextScore, marketScore: adjusted.marketScore, formScore: adjusted.formScore, pressureScore: adjusted.pressureScore, baseProbability: adjusted.baseProbability, favouriteContextAdjustment: adjusted.favouriteContextAdjustment, finalProbabilityUsedInEV: adjusted.finalProbabilityUsedInEV, contextAdjustmentReason: adjusted.contextAdjustmentReason, favouriteValueWarning: adjusted.favouriteValueWarning };
         }
       }
@@ -318,7 +318,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 function buildOpportunity({
   cluster, market, runner, marketType, thresholds, commissionRate, settings, botSettings, featherlessSettings,
   bankrollStats, paperOrders, modelProbability, probData, dataQuality, raceSummary, overround,
-  side, odds, availableSize, opponentSelectionId, externalSearchFields,
+  side, odds, availableSize, opponentSelectionId, decisionSource, externalSearchFields,
 }) {
   const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
   const startTime = market.startTime || market.marketStartTime;
@@ -492,8 +492,11 @@ function buildOpportunity({
     if (!paperProofMode) blockers.push(msg);
   }
 
+  const duplicateExposure = exposureBlock(paperOrders, { ...market, eventId: cluster.eventId, raceNumber: cluster.raceNumber, venue: cluster.venue, startTime: cluster.startTime }, settings);
+  if (duplicateExposure) blockers.unshift(duplicateExposure);
+
   // Max open orders — ALWAYS enforced (but limit is 50 in proof mode)
-  const openOrders = paperOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status));
+  const openOrders = paperOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status) || OPEN_ORDER_STATUSES.includes(o.settlementStatus));
   if (openOrders.length >= (settings.maxOpenOrders || 10)) {
     blockers.push('Max open orders reached');
   }
@@ -529,7 +532,7 @@ function buildOpportunity({
   const exposureAfterBet = (bankrollStats?.openPaperExposure || 0) + requiredFunds;
   const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
 
-  const decision = blockers.length === 0 ? 'BET' : 'NO_BET';
+  const decision = duplicateExposure ? 'REJECT' : blockers.length === 0 ? 'BET' : 'NO_BET';
   const maxProfit = side === 'BACK'
     ? (odds - 1) * stake * (1 - commissionRate)
     : stake * (1 - commissionRate);
@@ -544,15 +547,16 @@ function buildOpportunity({
   if (decision === 'BET') {
     reasons.push(`${marketType} ${side} ${runner.runnerName} @ ${odds.toFixed(2)} — EV $${ev.toFixed(2)}, ROI ${(roi * 100).toFixed(2)}%, edge ${(edge * 100).toFixed(2)}%`);
   }
-  if (raceSummary) reasons.push(`AI: ${raceSummary}`);
+  if (raceSummary && decisionSource !== DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY) reasons.push(`AI: ${raceSummary}`);
   if (probData?.reasons?.length) reasons.push(...probData.reasons.slice(0, 2));
 
-  return {
-    opportunityId: `opp_${cluster.eventId}_${market.id}_${selectionId}_${side}`,
+  const opportunity = {
+    opportunityId: `opp_${cluster.eventId}_${normalizedMarketId(market)}_${selectionId}_${side}`,
     eventId: cluster.eventId,
     eventName: cluster.eventName || market.eventName || '',
-    marketId: market.id,
-    betfairMarketId: market.betfairMarketId || market.id,
+    marketId: normalizedMarketId(market),
+    normalizedMarketId: normalizedMarketId(market),
+    betfairMarketId: normalizedMarketId(market),
     marketType,
     marketTypeCode: market.marketTypeCode || market.marketType || '',
     detectedMarketType: marketType,
@@ -582,7 +586,8 @@ function buildOpportunity({
     edge,
     confidence,
     dataQuality,
-    dataSource: 'BETFAIR_METADATA_PLUS_MARKET',
+    decisionSource,
+    dataSource: dataSourceForDecisionSource(decisionSource),
     spreadTicks,
     liquidityScore,
     delayRiskScore,
@@ -634,6 +639,9 @@ function buildOpportunity({
     favouriteValueWarning: null,
     specificNoBetReason: null,
   };
+  opportunity.priceFreshnessScore = market.priceFeedStale ? 0 : market.source === 'cached' ? 0.4 : 1;
+  opportunity.riskAdjustedScore = scoreOpportunity(opportunity);
+  return opportunity;
 }
 
 function allClusterMarketIds(cluster) {
@@ -650,14 +658,7 @@ function allClusterMarketIds(cluster) {
  * Only positive-EV opportunities with decision='BET' are candidates.
  */
 export function rankOpportunities(opportunities) {
-  return opportunities
-    .slice()
-    .sort((a, b) => {
-      // BET opportunities first, sorted by EV
-      if (a.decision === 'BET' && b.decision !== 'BET') return -1;
-      if (a.decision !== 'BET' && b.decision === 'BET') return 1;
-      return b.ev - a.ev;
-    });
+  return opportunities.slice().sort(compareOpportunities);
 }
 
 /**
@@ -670,7 +671,7 @@ export function getBestByCategory(opportunities) {
     const [side, type] = cat.split('_');
     result[cat] = opportunities
       .filter(o => o.side === side && o.marketType === type && o.decision === 'BET')
-      .sort((a, b) => b.ev - a.ev)[0] || null;
+      .sort(compareOpportunities)[0] || null;
   }
   return result;
 }
