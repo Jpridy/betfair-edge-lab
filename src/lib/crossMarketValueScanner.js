@@ -307,6 +307,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
         }
       }
       if (finalOpportunity.favouriteValueWarning?.startsWith('LAY favourite blocked')) finalOpportunity = { ...finalOpportunity, decision: 'NO_BET', blockers: [...finalOpportunity.blockers, finalOpportunity.favouriteValueWarning], failedGate: finalOpportunity.favouriteValueWarning };
+      if (!(finalOpportunity.ev > 0)) finalOpportunity = { ...finalOpportunity, decision:'NO_BET', gatesPassed:false, failedGate:'NON_POSITIVE_EV', blockers:['NON_POSITIVE_EV', ...(finalOpportunity.blockers || []).filter(item => item !== 'NON_POSITIVE_EV')] };
       if (finalOpportunity.decision === 'NO_BET') finalOpportunity.specificNoBetReason = generateSpecificNoBetReason(finalOpportunity, favouriteContext, featherlessSettings);
       opportunities[i] = finalOpportunity;
     }
@@ -356,6 +357,9 @@ function buildOpportunity({
   // ── Safety gate ──
   const blockers = [];
   const reasons = [];
+
+  // Positive EV is a hard gate in every mode and must be caught before final authority.
+  if (!(ev > 0)) blockers.push('NON_POSITIVE_EV');
 
   // Edge check (minEdge is in percent, edge is decimal) — soft in proof mode
   if (edge * 100 < thresholds.minEdge) {
@@ -511,6 +515,7 @@ function buildOpportunity({
   const exposureAfterBet = (bankrollStats?.openPaperExposure || 0) + requiredFunds;
   const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
 
+  if (!(ev > 0)) { const index=blockers.indexOf('NON_POSITIVE_EV'); if (index > 0) blockers.splice(index,1); if (blockers[0] !== 'NON_POSITIVE_EV') blockers.unshift('NON_POSITIVE_EV'); }
   const decision = duplicateExposure ? 'REJECT' : blockers.length === 0 ? 'BET' : 'NO_BET';
   const marketNameParts = [];
   if (market.venue) marketNameParts.push(market.venue);

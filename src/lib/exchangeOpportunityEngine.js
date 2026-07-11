@@ -38,6 +38,7 @@ import { buildSideSelectionDiagnostics } from './opportunityRanking';
 import { activeRaceOrders, exposureBlock, normalizedMarketId } from './raceExposure';
 import { marketCoverage, rejectedRelatedMarkets } from './marketClusterer';
 import { calculatePriceFeedStatus } from './marketFreshness';
+import { validateCompleteMarketBook } from './marketBookValidation';
 import { applyRaceOrderLock, buildRaceMonitoringDiagnostics } from './raceMonitoringDiagnostics';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
@@ -1280,6 +1281,7 @@ export async function runExchangeCycle(params) {
     marketFilterFunnel,
     timeWindowFunnel,
     loadedMarketsTable,
+    marketBookValidation: eligibleMarkets.map(market => ({ marketId:normalizedMarketId(market), marketType:detectMarketType(market), ...validateCompleteMarketBook(getRunnersForMarket(market, runnersByMarket)), runners:getRunnersForMarket(market, runnersByMarket).map(runner => ({ selectionId:runner.betfairSelectionId || runner.selectionId, runnerName:runner.runnerName, bestBackPrice:runner.bestBackPrice, bestBackSize:runner.bestBackSize, bestLayPrice:runner.bestLayPrice, bestLaySize:runner.bestLaySize })) })),
     connectionDiagnostics,
     scanStage: 'completed',
     lastCompletedStage: 'completed',

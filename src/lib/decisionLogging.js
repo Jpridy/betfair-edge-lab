@@ -15,6 +15,11 @@ export function hydrateOpportunityRunner(opportunity, runners = []) {
 
 export function toOpportunityLogRow(opportunity, context = {}) {
   const hydrated = hydrateOpportunityRunner(opportunity, context.runners);
+  const hasEv = opportunity?.ev !== null && opportunity?.ev !== undefined && opportunity?.ev !== '';
+  const nonPositiveEv = hasEv && Number.isFinite(Number(opportunity.ev)) && Number(opportunity.ev) <= 0;
+  const decision = nonPositiveEv ? 'NO_BET' : (opportunity?.decision || (opportunity?.gatesPassed === true ? 'BET' : 'NO_BET'));
+  const failedGate = nonPositiveEv ? 'NON_POSITIVE_EV' : (opportunity?.failedGate || opportunity?.blockers?.[0] || (decision !== 'BET' ? 'NO_VALID_CANDIDATE' : ''));
+  const blockers = nonPositiveEv ? ['NON_POSITIVE_EV', ...(opportunity?.blockers || []).filter(item => item !== 'NON_POSITIVE_EV')] : (opportunity?.blockers || []);
   return {
     cycleId:context.cycleId || '', cycleNumber:context.cycleNumber ?? '', rank:context.rank ?? '',
     opportunityId:opportunity?.opportunityId || '', raceKey:opportunity?.raceKey || context.raceKey || '',
@@ -23,12 +28,12 @@ export function toOpportunityLogRow(opportunity, context = {}) {
     side:opportunity?.side || '', odds:opportunity?.odds ?? '', availableSize:opportunity?.availableSize ?? '',
     modelProbability:opportunity?.modelProbability ?? '', finalProbabilityUsedInEV:opportunity?.finalProbabilityUsedInEV ?? opportunity?.modelProbability ?? '',
     impliedProbability:opportunity?.impliedProbability ?? '', fairOdds:opportunity?.fairOdds ?? '', edge:opportunity?.edge ?? '', ev:opportunity?.ev ?? '', roi:opportunity?.roi ?? '',
-    confidence:opportunity?.confidence ?? '', dataQuality:opportunity?.dataQuality ?? '', decision:opportunity?.decision || '',
-    gatesPassed:opportunity?.gatesPassed ?? opportunity?.decision === 'BET', failedGate:opportunity?.failedGate || opportunity?.blockers?.[0] || '',
-    blocker:opportunity?.blocker || opportunity?.failedGate || opportunity?.blockers?.[0] || '', blockers:opportunity?.blockers || [],
+    confidence:opportunity?.confidence ?? '', dataQuality:opportunity?.dataQuality ?? '', decision,
+    gatesPassed:nonPositiveEv ? false : (opportunity?.gatesPassed ?? decision === 'BET'), failedGate,
+    blocker:failedGate || opportunity?.blocker || '', blockers,
     decisionSource:opportunity?.decisionSource || '', probabilitySource:opportunity?.probabilitySource || opportunity?.dataSource || '',
     externalSearchStatus:opportunity?.externalSearchStatus || 'not_requested', aiStatus:opportunity?.aiStatus || context.aiStatus || 'not_used',
-    riskAdjustedScore:opportunity?.riskAdjustedScore ?? '', selectedAsBestBet:false, selectedAsBestRejected:false, selectedAsFinalCandidate:false,
+    riskAdjustedScore:opportunity?.riskAdjustedScore ?? '', stake:opportunity?.stake ?? '', liability:opportunity?.liability ?? '', maxProfit:opportunity?.maxProfit ?? '', maxLoss:opportunity?.maxLoss ?? '', normalizedCommissionRate:opportunity?.normalizedCommissionRate ?? opportunity?.commissionRate ?? '', rawCommissionRate:opportunity?.rawCommissionRate ?? '', commissionRate:opportunity?.commissionRate ?? '', breakevenProbability:opportunity?.breakevenProbability ?? '', mathematicalInvariantsPassed:opportunity?.mathematicalInvariantsPassed ?? opportunity?.calculationResult?.mathematicalInvariantsPassed ?? null, calculationResult:opportunity?.calculationResult || null, finalAuthorityRecalculation:opportunity?.finalAuthorityRecalculation || null, bestBackPrice:opportunity?.bestBackPrice ?? '', bestBackSize:opportunity?.bestBackSize ?? '', bestLayPrice:opportunity?.bestLayPrice ?? '', bestLaySize:opportunity?.bestLaySize ?? '', selectedAsBestBet:false, selectedAsBestRejected:false, selectedAsFinalCandidate:false,
   };
 }
 
@@ -66,7 +71,7 @@ export function buildDecisionLogging({ opportunities = [], runners = [], cycleId
     topRankedOpportunity:rows[0] || null, bestGatePassedOpportunity:bestGatePassed, bestRejectedCandidate:bestRejected, finalSelectedOpportunity:finalSelected,
     topRankedOpportunityId:rows[0]?.opportunityId || null, bestBetCandidateId:bestGatePassed?.opportunityId || null,
     bestRejectedCandidateId:bestRejected?.opportunityId || null, finalSelectedOpportunityId:finalSelected?.opportunityId || null,
-    gatePassedOpportunities:rows.filter(row => row.gatesPassed).length, candidateSummary, candidateSummaryJson:JSON.stringify(candidateSummary), opportunityLog:rows,
+    gatePassedOpportunities:rows.filter(row => row.gatesPassed).length, rejectedOpportunities:rows.length-rows.filter(row => row.gatesPassed).length, rejectionCountsByGate:byFailedGate, candidateSummary, candidateSummaryJson:JSON.stringify(candidateSummary), opportunityLog:rows, allOpportunitiesSnapshot:rows, opportunityLogCompleteness:'complete_cycle_snapshot',
     candidateChangedSincePreviousCycle, bestRejectedChangedSincePreviousCycle:comparable ? (bestRejected?.opportunityId || null) !== (previous.bestRejectedCandidateId || null) : false,
     priceChangedSincePreviousCycle, probabilityChangedSincePreviousCycle,
   };
