@@ -995,6 +995,10 @@ export async function runExchangeCycle(params) {
   ranked = rankOpportunities(allOpportunities);
   bestOpportunity = raceMonitoring.raceLocked ? null : (ranked.find(opportunity => opportunity.decision === 'BET') || null);
   if (raceMonitoring.raceLocked) bestNormalOpportunity = null;
+  const topRankedOpportunity = ranked[0] || null;
+  const bestGatePassedOpportunity = ranked.find(opportunity => opportunity.decision === 'BET') || null;
+  const bestRejectedCandidate = ranked.find(opportunity => opportunity.decision !== 'BET') || null;
+  const finalSelectedOpportunity = bestOpportunity;
 
   // ── Top 20 opportunities by EV ──
   const topOpportunities = ranked.slice(0, 20).map(o => ({
@@ -1248,7 +1252,11 @@ export async function runExchangeCycle(params) {
     rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET' || o.decision === 'REJECT').length,
     topOpportunities,
     topRejected: rejectedOpps,
-    bestOpportunity: bestOpportunity,
+    topRankedOpportunity,
+    bestGatePassedOpportunity,
+    bestRejectedCandidate,
+    finalSelectedOpportunity,
+    bestOpportunity: finalSelectedOpportunity,
     decision: bestOpportunity ? 'BET' : 'NO_BET',
     failedGate: raceMonitoring.raceLocked ? 'DUPLICATE_RACE_EXPOSURE' : aiRequiredFailures > 0 && allOpportunities.length === 0 ? 'AI_REQUIRED_BUT_NOT_AVAILABLE' : bestOpportunity ? null : ranked[0]?.failedGate || null,
     noBetReason: raceMonitoring.raceLocked
@@ -1354,8 +1362,12 @@ export async function runExchangeCycle(params) {
   };
 
   return {
-    bestOpportunity,
-    bestDebugCandidate: debugScanMode ? (ranked[0] || null) : null,
+    bestOpportunity: finalSelectedOpportunity,
+    topRankedOpportunity,
+    bestGatePassedOpportunity,
+    bestRejectedCandidate,
+    finalSelectedOpportunity,
+    bestDebugCandidate: debugScanMode ? topRankedOpportunity : null,
     wouldCreateOrder: debugScanMode ? !!bestOpportunity : null,
     wouldFailGate: debugScanMode ? (bestOpportunity?.failedGate || ranked[0]?.failedGate || null) : null,
     wouldUseDecisionSource: debugScanMode ? (bestOpportunity?.decisionSource || ranked[0]?.decisionSource || null) : null,

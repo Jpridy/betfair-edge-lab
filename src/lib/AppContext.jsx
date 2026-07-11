@@ -16,6 +16,7 @@ import { lapseUnmatchedOrder } from '@/lib/settlementService';
 import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { buildBetfairDiagnostics } from '@/lib/betfairDiagnostics';
+import { buildDecisionLogging, bestRejectedNoBetReason } from '@/lib/decisionLogging';
 
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
@@ -251,7 +252,7 @@ export function AppProvider({ children }) {
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings, featherlessSettingsRecordId };
+  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, botCycles, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings, featherlessSettingsRecordId };
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
@@ -961,8 +962,10 @@ export function AppProvider({ children }) {
         setLastExchangeDiagnostics(result.diagnostics);
 
         // Create a debug-only BotCycle record — NO signals, NO orders, NO bankroll changes
+        const debugCycleId = crypto.randomUUID();
+        const debugDecisionLogging = buildDecisionLogging({ opportunities:result.allOpportunities, runners:s.runners, cycleId:debugCycleId, cycleNumber:cycleNum, raceKey:result.diagnostics.selectedRaceKey || '', aiStatus:result.diagnostics.aiStatus, finalSelectedOpportunity:result.bestOpportunity, previousCycle:s.botCycles?.[0] || null });
         const cycleRecord = {
-          cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
+          cycleId: debugCycleId, cycleNumber: cycleNum,
           botMode: 'paper',
           startedAt: now,
           finishedAt: new Date().toISOString(),
@@ -1020,7 +1023,7 @@ export function AppProvider({ children }) {
             dataSource: result.bestOpportunity.dataSource,
             riskAdjustedScore: result.bestOpportunity.riskAdjustedScore,
           } : null,
-          noBetReason: result.diagnostics.noBetReason || 'Debug scan — no orders placed',
+          noBetReason: bestRejectedNoBetReason(debugDecisionLogging.bestRejectedCandidate, result.diagnostics.noBetReason || 'Debug scan — no orders placed'),
           scanSummary: {
             marketsScanned: result.diagnostics.marketsScanned, globalMarketsLoaded: result.diagnostics.globalMarketsLoaded, globalMarketsOpen: result.diagnostics.globalMarketsOpen, globalMarketsWithRunners: result.diagnostics.globalMarketsWithRunners, globalMarketsWithPrices: result.diagnostics.globalMarketsWithPrices, selectedRaceMarketsLoaded: result.diagnostics.selectedRaceMarketsLoaded, selectedRaceMarketsInsideWindow: result.diagnostics.selectedRaceMarketsInsideWindow, selectedRaceMarketsEligible: result.diagnostics.selectedRaceMarketsEligible, selectedRaceMarketsSentToEngine: result.diagnostics.selectedRaceMarketsSentToEngine,
             totalMarketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
@@ -1062,6 +1065,7 @@ export function AppProvider({ children }) {
             externalSearchDiagnostics: result.diagnostics.externalSearchDiagnostics ?? null,
             opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
             ...result.diagnostics.raceMonitoring,
+            ...debugDecisionLogging,
           },
           selectedMarketName: result.bestOpportunity?.marketName || null,
         };
@@ -1671,9 +1675,25 @@ export function AppProvider({ children }) {
     const useExchange = !!exchangeDiag;
     const bestOppForRecord = useExchange ? exchangeBestOpp : null;
     const oldBestCandidate = !useExchange ? (diagnostics?.bestCandidate || null) : null;
+    const cycleId = crypto.randomUUID();
+    const decisionLogging = buildDecisionLogging({
+      opportunities: exchangeAllOpps,
+      runners: s.runners,
+      cycleId,
+      cycleNumber: cycleNum,
+      raceKey: exchangeDiag?.selectedRaceKey || exchangeDiag?.raceMonitoring?.selectedRaceKey || '',
+      aiStatus: exchangeDiag?.aiStatus,
+      finalSelectedOpportunity: bestOppForRecord,
+      previousCycle: s.botCycles?.[0] || null,
+    });
+    const finalNoBetReason = ordersCreated > 0
+      ? null
+      : decisionLogging.finalSelectedOpportunity
+        ? (riskBlockedReason || cycleNoBetReason || 'A final candidate was selected, but no order was created.')
+        : bestRejectedNoBetReason(decisionLogging.bestRejectedCandidate, cycleNoBetReason || (useExchange ? exchangeDiag?.noBetReason : diagnostics?.noBetReason) || null);
 
     const cycleRecord = {
-      cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
+      cycleId, cycleNumber: cycleNum,
       botMode: 'paper',
       startedAt: now,
       finishedAt: new Date().toISOString(),
@@ -1761,7 +1781,7 @@ export function AppProvider({ children }) {
             marketOnlyFallbackReason: bestOppForRecord.marketOnlyFallbackReason || null,
           } : null)
         : oldBestCandidate,
-      noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || (useExchange ? exchangeDiag.noBetReason : diagnostics?.noBetReason) || null),
+      noBetReason: finalNoBetReason,
       scanSummary: useExchange ? {
         marketsScanned: exchangeDiag.marketsScanned, globalMarketsLoaded: exchangeDiag.globalMarketsLoaded, globalMarketsOpen: exchangeDiag.globalMarketsOpen, globalMarketsWithRunners: exchangeDiag.globalMarketsWithRunners, globalMarketsWithPrices: exchangeDiag.globalMarketsWithPrices, selectedRaceMarketsLoaded: exchangeDiag.selectedRaceMarketsLoaded, selectedRaceMarketsInsideWindow: exchangeDiag.selectedRaceMarketsInsideWindow, selectedRaceMarketsEligible: exchangeDiag.selectedRaceMarketsEligible, selectedRaceMarketsSentToEngine: exchangeDiag.selectedRaceMarketsSentToEngine,
         totalMarketsLoaded: exchangeDiag.totalMarketsLoaded ?? 0,
@@ -1795,7 +1815,8 @@ export function AppProvider({ children }) {
         marketDetectionLog: exchangeDiag.marketDetectionLog?.slice(0, 20),
         topOpportunities: exchangeDiag.topOpportunities,
         topRejected: exchangeDiag.topRejected,
-        noBetReason: exchangeDiag.noBetReason,
+        noBetReason: finalNoBetReason,
+        failedGate: exchangeDiag.failedGate || decisionLogging.bestRejectedCandidate?.failedGate || null,
         debugScanMode: exchangeDiag.debugScanMode ?? false,
         marketFeedDiagnostics: exchangeDiag.marketFeedDiagnostics ?? null,
         marketFilterFunnel: exchangeDiag.marketFilterFunnel ?? null,
@@ -1805,6 +1826,7 @@ export function AppProvider({ children }) {
         externalSearchDiagnostics: exchangeDiag.externalSearchDiagnostics ?? null,
         opportunityFunnel: exchangeDiag.opportunityFunnel ?? null,
         ...exchangeDiag.raceMonitoring,
+        ...decisionLogging,
       } : (diagnostics?.scanSummary || null),
       assessedRunners: useExchange ? (exchangeDiag.topOpportunities || []) : (diagnostics?.assessedRunners || []),
       selectedMarketName: useExchange
@@ -2033,8 +2055,10 @@ export function AppProvider({ children }) {
 
       // Build cycle record
       const now = new Date().toISOString();
+      const proofCycleId = crypto.randomUUID();
+      const proofDecisionLogging = buildDecisionLogging({ opportunities:result.allOpportunities, runners:s.runners, cycleId:proofCycleId, cycleNumber:cycleNum, raceKey:result.diagnostics.selectedRaceKey || '', aiStatus:result.diagnostics.aiStatus, finalSelectedOpportunity:result.bestOpportunity, previousCycle:s.botCycles?.[0] || null });
       const cycleRecord = {
-        cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
+        cycleId: proofCycleId, cycleNumber: cycleNum,
         botMode: 'paper_proof',
         startedAt: now,
         finishedAt: new Date().toISOString(),
@@ -2073,7 +2097,7 @@ export function AppProvider({ children }) {
           proofMode: result.bestOpportunity.proofMode || false,
           proofReason: result.bestOpportunity.proofReason || null,
         } : null,
-        noBetReason: paperOrderCreated ? null : (result.diagnostics.noBetReason || 'No proof opportunity created'),
+        noBetReason: paperOrderCreated ? null : bestRejectedNoBetReason(proofDecisionLogging.bestRejectedCandidate, result.diagnostics.noBetReason || 'No proof opportunity created'),
         scanSummary: {
           marketsScanned: result.diagnostics.marketsScanned,
           totalMarketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
@@ -2089,6 +2113,7 @@ export function AppProvider({ children }) {
           paperProofMode: true,
           opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
           ...result.diagnostics.raceMonitoring,
+          ...proofDecisionLogging,
         },
         selectedMarketName: result.bestOpportunity?.marketName || null,
       };
