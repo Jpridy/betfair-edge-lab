@@ -57,6 +57,8 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
   const roi = Number(opportunity.roi);
   const rankedCalculation = opportunity.calculationResult || {};
   const recomputedCalculation = buildCalculationResult({ side:opportunity.side, probability:opportunity.finalProbabilityUsedInEV ?? opportunity.modelProbability, odds, normalizedCommissionRate:commission.normalizedRate, stake });
+  opportunity.finalAuthorityRecalculation = recomputedCalculation;
+  opportunity.finalAuthorityReached = true;
   const comparable = ['probability','impliedProbability','odds','normalizedCommissionRate','stake','liability','profitIfWin','lossIfLose','ev','roi','edge','breakevenProbability'];
   const mathMatches = comparable.every(key => close(Number(rankedCalculation[key]), Number(recomputedCalculation[key]), 1e-6));
   const mathValid = recomputedCalculation.mathematicalInvariantsPassed === true && opportunity.mathematicalInvariantsPassed === true && mathMatches && close(maxLoss, recomputedCalculation.lossIfLose, 1e-6) && close(liability, recomputedCalculation.liability, 1e-6);

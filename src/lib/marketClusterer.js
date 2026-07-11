@@ -4,6 +4,20 @@ const WIN_TYPES = new Set(['WIN', 'WIN_MARKET']);
 const PLACE_TYPES = new Set(['PLACE', 'PLACE_MARKET', 'TO_BE_PLACED', 'TOP_2_FINISH', 'TOP_3_FINISH', 'TOP_4_FINISH']);
 const H2H_TYPES = new Set(['MATCH_ODDS', 'MATCH_BET', 'AVB', 'HEAD_TO_HEAD']);
 
+export function parseRaceNumber(...values) {
+  for (const value of values) { const match=String(value || '').match(/(?:^|\s)R(?:ACE)?\s*(\d+)\b/i); if (match) return Number(match[1]); }
+  return 0;
+}
+
+export function resolveNumberOfWinners(market) {
+  const supplied=Number(market?.numberOfWinners);
+  if (supplied > 0) return {numberOfWinners:supplied,numberOfWinnersSource:market?.numberOfWinnersSource || 'BETFAIR'};
+  const type=detectMarketType(market);
+  if (type === 'WIN') return {numberOfWinners:1,numberOfWinnersSource:'INFERRED'};
+  if (type === 'PLACE') { const inferred=extractPlaceTerms(market); return inferred > 0 ? {numberOfWinners:inferred,numberOfWinnersSource:'INFERRED'} : {numberOfWinners:'UNKNOWN',numberOfWinnersSource:'UNKNOWN'}; }
+  return {numberOfWinners:'UNKNOWN',numberOfWinnersSource:'UNKNOWN'};
+}
+
 export function detectMarketType(market) {
   const exact = String(market?.marketTypeCode || market?.marketType || '').trim().toUpperCase();
   if (WIN_TYPES.has(exact)) return 'WIN';
@@ -44,7 +58,7 @@ export function clusterMarketsByEvent(markets = []) {
     if (!marketId || seenMarketIds.has(marketId)) continue;
     seenMarketIds.add(marketId);
     const raceKey = raceKeyOf(market);
-    if (!clusters.has(raceKey)) clusters.set(raceKey, { raceKey, eventId:market.eventId || market.betfairEventId || null, eventTypeId:market.eventTypeId || null, eventName:market.eventName || '', venue:market.venue || '', startTime:market.startTime || market.marketStartTime || null, raceNumber:market.raceNumber || 0, markets:[], winMarkets:[], placeMarkets:[], h2hMarkets:[], otherMarkets:[], rejectedRelatedMarkets:[] });
+    if (!clusters.has(raceKey)) clusters.set(raceKey, { raceKey, eventId:market.eventId || market.betfairEventId || null, eventTypeId:market.eventTypeId || null, eventName:market.eventName || '', venue:market.venue || '', startTime:market.startTime || market.marketStartTime || null, raceNumber:market.raceNumber || parseRaceNumber(market.marketName, market.eventName) || 0, markets:[], winMarkets:[], placeMarkets:[], h2hMarkets:[], otherMarkets:[], rejectedRelatedMarkets:[] });
     const cluster = clusters.get(raceKey);
     const prepared = { ...market, normalizedMarketId:marketId, detectedMarketType:detectMarketType(market) };
     cluster.markets.push(prepared);

@@ -17,6 +17,7 @@ import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHER
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { buildBetfairDiagnostics } from '@/lib/betfairDiagnostics';
 import { buildDecisionLogging, bestRejectedNoBetReason } from '@/lib/decisionLogging';
+import { invokeOpenAIWebSearchWithBackoff } from '@/lib/openAIWebSearchBackoff';
 
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
@@ -945,17 +946,7 @@ export function AppProvider({ children }) {
             if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
             return resp.data?.aiResult ? { ...resp.data.aiResult, aiTelemetry: resp.data.aiTelemetry } : null;
           } : null, // null callAI = market-only mode
-          callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
-            try {
-              const resp = await base44.functions.invoke('openAIWebSearch', {
-                market: primaryMarket, runners: marketRunners, settings: s.featherlessSettings,
-              });
-              if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
-              return resp.data?.externalSearchResult || null;
-            } catch (err) {
-              return { searchStatus: 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: err.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
-            }
-          } : null,
+          callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => invokeOpenAIWebSearchWithBackoff(base44.functions.invoke.bind(base44.functions), { market:primaryMarket, runners:marketRunners, settings:s.featherlessSettings }) : null,
         });
 
         setExchangeOpportunities(result.allOpportunities);
@@ -1053,8 +1044,8 @@ export function AppProvider({ children }) {
             sideSelectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
             selectedRaceMarketCoverage: result.diagnostics.selectedRaceMarketCoverage,
             marketDetectionLog: result.diagnostics.marketDetectionLog?.slice(0, 20),
-            topOpportunities: result.diagnostics.topOpportunities,
-            topRejected: result.diagnostics.topRejected,
+            topOpportunities: debugDecisionLogging.opportunityLog.slice(0, 20),
+            topRejected: debugDecisionLogging.opportunityLog.filter(item => item.gatesPassed !== true).slice(0, 10),
             noBetReason: result.diagnostics.noBetReason,
             debugScanMode: true,
             marketFeedDiagnostics: result.diagnostics.marketFeedDiagnostics ?? null,
@@ -1523,25 +1514,7 @@ export function AppProvider({ children }) {
             if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
             return resp.data?.aiResult ? { ...resp.data.aiResult, aiTelemetry: resp.data.aiTelemetry } : null;
           } : null, // null = market-only probabilities
-          callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
-            try {
-              const resp = await base44.functions.invoke('openAIWebSearch', {
-                market: primaryMarket,
-                runners: marketRunners,
-                settings: s.featherlessSettings,
-              });
-              if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
-              return resp.data?.externalSearchResult || null;
-            } catch (err) {
-              notes.push(`External search error: ${err.message}`);
-              return {
-                searchStatus: err.message?.toLowerCase().includes('timeout') ? 'timeout' : 'error',
-                sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '',
-                dataQuality: 0, errorMessage: err.message, searchQuery: '',
-                searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search',
-              };
-            }
-          } : null,
+          callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => invokeOpenAIWebSearchWithBackoff(base44.functions.invoke.bind(base44.functions), { market:primaryMarket, runners:marketRunners, settings:s.featherlessSettings }) : null,
         });
 
         marketsScanned = result.diagnostics.marketsScanned;
@@ -1583,6 +1556,7 @@ export function AppProvider({ children }) {
             const authority = canPlaceOrders
               ? await authorizeAndCreatePaperOrder({ opportunity: opp, market, runner, marketRunners: s.runners.filter(item => matchRunnerToMarket(item, market)), settings: s.settings, botSettings: s.botSettings, featherlessSettings: s.featherlessSettings, bankrollStats: s.bankrollStats, existingOrders: s.paperOrders, emergencyStop: s.emergencyStop, apiConnected: s.apiConnected, connectionState, positiveEvOpportunityCount: result.diagnostics.positiveEVOpportunities, strategyRequiresAI: ['FEATHERLESS_AI','CACHE','OPENAI_WEB_ENRICHED'].includes(opp.decisionSource), aiResult: result.diagnostics.aiDecisions?.[0]?.aiResult || null, strategyName, source: 'bot', persistenceType: 'LAPSE', selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder })
               : { authorized:false, persisted:false, order:null, failedGate:'AUTO_PAPER_ORDERING_PAUSED', reason:'Automatic paper ordering is paused' };
+            if (!authority.authorized) { opp.decision='NO_BET'; opp.gatesPassed=false; opp.failedGate=authority.failedGate || 'ORDER_AUTHORITY_REJECTED'; opp.blockers=[opp.failedGate,...(opp.blockers || []).filter(item => item !== opp.failedGate)]; }
             const validatedOrder = authority.order || authority.rejectedOrder || null;
             const wasRejected = !authority.authorized;
             const rejectionReason = authority.reason;
@@ -1813,8 +1787,8 @@ export function AppProvider({ children }) {
         sideSelectionDiagnostics: exchangeDiag.sideSelectionDiagnostics,
         selectedRaceMarketCoverage: exchangeDiag.selectedRaceMarketCoverage,
         marketDetectionLog: exchangeDiag.marketDetectionLog?.slice(0, 20),
-        topOpportunities: exchangeDiag.topOpportunities,
-        topRejected: exchangeDiag.topRejected,
+        topOpportunities: decisionLogging.opportunityLog.slice(0, 20),
+        topRejected: decisionLogging.opportunityLog.filter(item => item.gatesPassed !== true).slice(0, 10),
         noBetReason: finalNoBetReason,
         failedGate: exchangeDiag.failedGate || decisionLogging.bestRejectedCandidate?.failedGate || null,
         debugScanMode: exchangeDiag.debugScanMode ?? false,
@@ -1972,17 +1946,7 @@ export function AppProvider({ children }) {
           return resp.data?.aiResult ? { ...resp.data.aiResult, aiTelemetry: resp.data.aiTelemetry } : null;
         } : null,
         // Proof mode can use external search independently (paperProofExternalSearchEnabled)
-        callExternalSearch: s.featherlessSettings?.paperProofExternalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
-          try {
-            const resp = await base44.functions.invoke('openAIWebSearch', {
-              market: primaryMarket, runners: marketRunners, settings: s.featherlessSettings,
-            });
-            if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
-            return resp.data?.externalSearchResult || null;
-          } catch (err) {
-            return { searchStatus: 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: err.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
-          }
-        } : null,
+        callExternalSearch: s.featherlessSettings?.paperProofExternalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => invokeOpenAIWebSearchWithBackoff(base44.functions.invoke.bind(base44.functions), { market:primaryMarket, runners:marketRunners, settings:s.featherlessSettings }) : null,
       });
 
       setExchangeOpportunities(result.allOpportunities);
@@ -2020,6 +1984,7 @@ export function AppProvider({ children }) {
 
           // Route through centralized validated order creation (proof mode relaxes thresholds)
           const authority = await authorizeAndCreatePaperOrder({ opportunity: opp, market, runner, marketRunners: s.runners.filter(item => matchRunnerToMarket(item, market)), settings: s.settings, botSettings: s.botSettings, featherlessSettings: s.featherlessSettings, bankrollStats: s.bankrollStats, existingOrders: s.paperOrders, emergencyStop: s.emergencyStop, apiConnected: s.apiConnected, connectionState, positiveEvOpportunityCount: result.diagnostics.positiveEVOpportunities, strategyRequiresAI: opp.decisionSource === 'FEATHERLESS_AI', aiResult: result.diagnostics.aiDecisions?.[0]?.aiResult || null, strategyName: 'Paper Proof Mode', source: 'bot_proof', persistenceType: 'LAPSE', selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder });
+          if (!authority.authorized) { opp.decision='NO_BET'; opp.gatesPassed=false; opp.failedGate=authority.failedGate || 'ORDER_AUTHORITY_REJECTED'; opp.blockers=[opp.failedGate,...(opp.blockers || []).filter(item => item !== opp.failedGate)]; }
           const validatedOrder = authority.order || authority.rejectedOrder || null;
           const wasRejected = !authority.authorized;
           const rejectionReason = authority.reason;

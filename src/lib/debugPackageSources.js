@@ -1,4 +1,6 @@
 import { buildDecisionLogging, bestRejectedNoBetReason, toOpportunityLogRow } from '@/lib/decisionLogging';
+import { buildRunnerSnapshot } from '@/lib/runnerSnapshot';
+import { parseRaceNumber, resolveNumberOfWinners } from '@/lib/marketClusterer';
 
 const asArray = value => Array.isArray(value) ? value : [];
 const keyOf = (item, index) => item?.opportunityId || `${item?.marketId || item?.betfairMarketId || 'market'}|${item?.selectionId || index}|${item?.side || ''}`;
@@ -29,7 +31,7 @@ export function enrichLatestCycleForExport(cycles, snapshot) {
   const logging = buildDecisionLogging({ opportunities:snapshot.opportunities, cycleId:latest.cycleId || latest.id, cycleNumber:latest.cycleNumber, raceKey:summary.selectedRaceKey, aiStatus:summary.aiStatus, finalSelectedOpportunity:summary.finalSelectedOpportunity });
   const generated = Number(summary.totalOpportunities ?? snapshot.expectedCount ?? snapshot.opportunities.length);
   const passed = logging.gatePassedOpportunities;
-  const enrichedSummary = {...summary,...logging,allOpportunitiesSnapshot:snapshot.opportunities,opportunityLogCompleteness:snapshot.opportunityLogCompleteness,totalOpportunities:generated,gatePassedOpportunities:passed,rejectedOpportunities:Math.max(0,generated-passed),rejectionCountsByGate:logging.rejectionCountsByGate,failedGate:logging.bestRejectedCandidate?.failedGate || summary.failedGate || (generated ? 'NO_VALID_CANDIDATE' : summary.failedGate)};
+  const enrichedSummary = {...summary,...logging,allOpportunitiesSnapshot:logging.opportunityLog,topOpportunities:logging.opportunityLog.slice(0,20),topRejected:logging.opportunityLog.filter(item=>item.gatesPassed!==true).slice(0,10),opportunityLogCompleteness:snapshot.opportunityLogCompleteness,totalOpportunities:generated,gatePassedOpportunities:passed,rejectedOpportunities:Math.max(0,generated-passed),rejectionCountsByGate:logging.rejectionCountsByGate,failedGate:logging.bestRejectedCandidate?.failedGate || summary.failedGate || (generated ? 'NO_VALID_CANDIDATE' : summary.failedGate)};
   const noBetReason = latest.ordersCreated > 0 ? null : bestRejectedNoBetReason(logging.bestRejectedCandidate, latest.noBetReason || summary.noBetReason || 'No valid candidate');
   return [{...latest,noBetReason,scanSummary:enrichedSummary},...rest];
 }
@@ -37,9 +39,11 @@ export function enrichLatestCycleForExport(cycles, snapshot) {
 export function resolveMarketAndRunnerSnapshots(state, latest, summary) {
   const selectedDetails=asArray(summary.selectedRaceMarketDetails || summary.raceMonitoring?.selectedRaceMarketDetails);
   const loaded=asArray(summary.loadedMarketsTable);
-  const markets=asArray(state.markets).length ? state.markets : (selectedDetails.length ? selectedDetails : loaded);
-  const runnerFallback=asArray(latest.assessedRunners).length ? latest.assessedRunners : asArray(summary.allOpportunitiesSnapshot).length ? summary.allOpportunitiesSnapshot : [...asArray(summary.topOpportunities),...asArray(summary.topRejected)];
-  const runners=asArray(state.runners).length ? state.runners : runnerFallback.map(item => ({...item,marketId:item.marketId || item.betfairMarketId,selectionId:item.selectionId,status:item.status || 'ACTIVE'}));
+  const marketSource=asArray(state.markets).length ? state.markets : (selectedDetails.length ? selectedDetails : loaded);
+  const markets=marketSource.map(market => ({...market,raceNumber:market.raceNumber || parseRaceNumber(market.marketName,market.eventName) || 0,...resolveNumberOfWinners(market)}));
+  const marketIds=selectedDetails.map(item => item.marketId || item.normalizedMarketId).filter(Boolean);
+  const runnerSource=asArray(state.runners).length ? state.runners : asArray(summary.selectedRaceRunnerSnapshot);
+  const runners=buildRunnerSnapshot(runnerSource, marketIds);
   return {markets,runners,loadedMarkets:loaded,selectedDetails};
 }
 

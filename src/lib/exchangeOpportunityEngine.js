@@ -615,6 +615,8 @@ export async function runExchangeCycle(params) {
   let extLatestQuery = '';
   let extLatestSummary = '';
   let extLatestStatus = 'not_requested';
+  let extNextRetryAt = null;
+  let extErrorType = null;
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extCacheTtlMs = (featherlessSettings?.externalSearchCacheTtlMinutes || 5) * 60 * 1000;
 
@@ -692,6 +694,9 @@ export async function runExchangeCycle(params) {
             extLatestQuery = externalSearchResult.searchQuery || extLatestQuery;
             if (externalSearchResult.searchStatus === 'no_results') externalSearchResult = { ...externalSearchResult, searchStatus: 'error', errorCode: 'EMPTY_RESULTS', errorMessage: externalSearchResult.errorMessage || 'Search returned no usable sources' };
             extLatestStatus = externalSearchResult.searchStatus || extLatestStatus;
+            extNextRetryAt = externalSearchResult.nextRetryAt || extNextRetryAt;
+            extErrorType = externalSearchResult.errorType || extErrorType;
+            if (externalSearchResult.searchStatus === 'error_backoff') extSearchCalls=Math.max(0,extSearchCalls-1);
             if (externalSearchResult.searchStatus === 'success' && externalSearchResult.raceLevelNotes) extLatestSummary = externalSearchResult.raceLevelNotes.slice(0, 200);
             if (externalSearchResult.searchStatus === 'timeout') extSearchTimeouts++;
             else if (externalSearchResult.searchStatus === 'error') extSearchErrors++;
@@ -1317,6 +1322,8 @@ export async function runExchangeCycle(params) {
       latestSearchQuery: extLatestQuery,
       latestSearchSummary: extLatestSummary,
       latestSearchStatus: extLatestStatus,
+      nextRetryAt: extNextRetryAt,
+      openAIWebSearchErrorType: extErrorType,
       perEventResults: externalSearchPerEvent,
       cacheStats: getExternalSearchCacheStats(),
     },
@@ -1343,6 +1350,8 @@ export async function runExchangeCycle(params) {
     openAIWebSearchRequested: extSearchCalls > 0,
     openAIWebSearchStatus: extLatestStatus,
     openAIWebSearchError: externalSearchPerEvent.find(item => item.errorMessage)?.errorMessage || null,
+    openAIWebSearchNextRetryAt: extNextRetryAt,
+    openAIWebSearchErrorType: extErrorType,
     raceAssessmentDiagnostics: {
       racePacksBuilt,
       featherlessCalled,

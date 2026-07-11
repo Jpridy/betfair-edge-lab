@@ -183,6 +183,7 @@ export function getMarketOnlyFallbackReason(externalSearchResult) {
     case 'success': return null; // No fallback — search succeeded
     case 'timeout': return 'OPENAI_SEARCH_TIMEOUT';
     case 'error': return 'OPENAI_SEARCH_ERROR';
+    case 'error_backoff': return 'OPENAI_SEARCH_QUOTA_BACKOFF';
     case 'no_results': return 'OPENAI_SEARCH_NO_RESULTS';
     case 'not_called': return 'OPENAI_SEARCH_DISABLED';
     default: return 'MARKET_ONLY_FALLBACK';

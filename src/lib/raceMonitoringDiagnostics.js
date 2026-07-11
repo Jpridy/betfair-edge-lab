@@ -1,4 +1,5 @@
-import { detectMarketType } from './marketClusterer';
+import { detectMarketType, parseRaceNumber, resolveNumberOfWinners } from './marketClusterer';
+import { buildRunnerSnapshot } from './runnerSnapshot';
 import { ACTIVE_ORDER_STATUSES, activeRaceOrders, normalizedMarketId } from './raceExposure';
 
 const sourceOf = market => String(market?.source || 'unknown').toLowerCase();
@@ -39,11 +40,16 @@ export function buildRaceMonitoringDiagnostics({ selectedRace = null, runners = 
     activeOrderExistsForRace:false, activeOrderIdsForRace:[], reasonStillScanningRace:'No valid race is currently selected.', selectedRaceMarketDetails:[], selectedRaceUniqueMarketCount:0,
     selectedRaceWinMarketCount:0, selectedRacePlaceMarketCount:0, selectedRaceH2HMarketCount:0, selectedRaceUnknownMarketCount:0, selectedRaceDuplicateMarketCount:0,
     duplicateMarketRecordDetected:false, diagnosticError:null, primaryWinMarketId:null, secondaryWinMarketIds:[], primaryMarketSelectionReason:null,
+    windowStartSeconds:Number(windowStart), windowEndSeconds:Number(windowEnd), selectedRaceWindowOpensAt:null, selectedRaceWindowClosesAt:null, selectedRaceRunnerSnapshot:[],
   };
 
   const startTime = selectedRace.startTime || selectedRace.marketStartTime || null;
   const startMs = new Date(startTime || 0).getTime();
   const secondsToStart = Number.isFinite(startMs) ? Math.round((startMs - now) / 1000) : null;
+  const windowStartSeconds=Number(windowStart);
+  const windowEndSeconds=Number(windowEnd);
+  const selectedRaceWindowOpensAt=Number.isFinite(startMs) ? new Date(startMs-windowStartSeconds*1000).toISOString() : null;
+  const selectedRaceWindowClosesAt=Number.isFinite(startMs) ? new Date(startMs-windowEndSeconds*1000).toISOString() : null;
   const activeOrders = activeRaceOrders(orders, selectedRace);
   const accepted = new Set(acceptedMarketIds.map(String));
   const grouped = new Map();
@@ -62,7 +68,8 @@ export function buildRaceMonitoringDiagnostics({ selectedRace = null, runners = 
       const marketRunners = runners.filter(runner => normalizedMarketId(runner) === id);
       const type = detectMarketType(market);
       const rejectionReason = duplicateIndex > 0 ? reason : (!accepted.has(id) ? (type === 'UNKNOWN' ? 'UNSUPPORTED_MARKET_TYPE' : 'NOT_ACCEPTED_BY_ENGINE_FILTERS') : null);
-      details.push({ marketId:market.betfairMarketId || market.marketId || market.id || null, normalizedMarketId:id, eventId:market.eventId || market.betfairEventId || null, marketName:market.marketName || '', marketType:type, marketTypeCode:market.marketTypeCode || market.marketType || '', numberOfWinners:Number(market.numberOfWinners || 0), runnerCount:marketRunners.length, activeRunnerCount:marketRunners.filter(r => r.status === 'ACTIVE').length, pricedRunnerCount:marketRunners.filter(r => Number(r.bestBackPrice) > 0 || Number(r.bestLayPrice) > 0).length, totalMatched:Number(market.totalMatched || 0), marketStartTime:market.marketStartTime || market.startTime || null, source:market.source || 'unknown', accepted:duplicateIndex === 0 && accepted.has(id), acceptanceReason:duplicateIndex === 0 && accepted.has(id) ? 'ELIGIBLE_UNIQUE_MARKET' : null, rejectionReason, duplicateReason:reason, catalogueIndex:index });
+      const winnerMetadata=resolveNumberOfWinners(market);
+      details.push({ marketId:market.betfairMarketId || market.marketId || market.id || null, normalizedMarketId:id, eventId:market.eventId || market.betfairEventId || null, marketName:market.marketName || '', marketType:type, marketTypeCode:market.marketTypeCode || market.marketType || '', ...winnerMetadata, runnerCount:marketRunners.length, activeRunnerCount:marketRunners.filter(r => r.status === 'ACTIVE').length, pricedRunnerCount:marketRunners.filter(r => Number(r.bestBackPrice) > 0 || Number(r.bestLayPrice) > 0).length, totalMatched:Number(market.totalMatched || 0), marketStartTime:market.marketStartTime || market.startTime || null, source:market.source || 'unknown', accepted:duplicateIndex === 0 && accepted.has(id), acceptanceReason:duplicateIndex === 0 && accepted.has(id) ? 'ELIGIBLE_UNIQUE_MARKET' : null, rejectionReason, duplicateReason:reason, catalogueIndex:index });
     });
   }
 
@@ -85,8 +92,10 @@ export function buildRaceMonitoringDiagnostics({ selectedRace = null, runners = 
   const primary = choosePrimaryWin(unique);
 
   return {
-    selectedRaceKey:selectedRace.raceKey || null, selectedRaceEventId:selectedRace.eventId || null, selectedRaceVenue:selectedRace.venue || '', selectedRaceNumber:selectedRace.raceNumber || 0,
+    selectedRaceKey:selectedRace.raceKey || null, selectedRaceEventId:selectedRace.eventId || null, selectedRaceVenue:selectedRace.venue || '', selectedRaceNumber:selectedRace.raceNumber || parseRaceNumber(selectedRace.eventName, selectedRace.markets?.[0]?.marketName) || 0,
     selectedRaceName:selectedRace.eventName || '', selectedRaceStartTime:startTime, secondsToStart, raceMonitoringStatus, cyclesScannedOnThisRace:cycles,
+    windowStartSeconds, windowEndSeconds, selectedRaceWindowOpensAt, selectedRaceWindowClosesAt,
+    selectedRaceRunnerSnapshot:buildRunnerSnapshot(runners, [...grouped.keys()]),
     firstCycleSeenForRace:selectedRace.firstCycleSeenForRace ?? null, latestCycleSeenForRace:selectedRace.latestCycleSeenForRace ?? null,
     raceLocked:activeOrders.length > 0, raceLockReason:activeOrders.length ? 'ACTIVE_ORDER_EXISTS_FOR_RACE' : null, activeOrderExistsForRace:activeOrders.length > 0,
     activeOrderIdsForRace:activeOrders.map(order => String(order.id || order.customerRef || order.betfairBetId || '')).filter(Boolean), reasonStillScanningRace,
