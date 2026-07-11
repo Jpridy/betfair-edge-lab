@@ -27,7 +27,7 @@
     },
     "autoPaperTradingEnabled": {
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "liveTradingLocked": {
       "type": "boolean",

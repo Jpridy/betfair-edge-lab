@@ -19,6 +19,7 @@ export function calcLayEdge(p, odds) { return odds > 0 ? 1 / odds - p : 0; }
 export function calcOverround(odds = []) { return odds.reduce((sum, value) => sum + (value > 0 ? 1 / value : 0), 0) - 1; }
 
 export function buildCalculationResult({ side, probability, odds, normalizedCommissionRate, stake }) {
+  if (side !== 'BACK' && side !== 'LAY') return { mathematicalInvariantsPassed: false, error: 'INVALID_SIDE' };
   const p = Number(probability), price = Number(odds), rate = Number(normalizedCommissionRate), amount = Number(stake);
   if (![p, price, rate, amount].every(finite) || p <= 0 || p >= 1 || price <= 1 || rate < 0 || rate > .2 || amount < 0) return { mathematicalInvariantsPassed: false, error: 'INVALID_CALCULATION_INPUT' };
   const impliedProbability = 1 / price;
@@ -41,13 +42,13 @@ export function calcKellyStake(p, odds, bankroll, confidence = .75, kellyMultipl
 }
 
 export function calcLayKellyStake(p, odds, bankroll, confidence = .75, kellyMultiplier = .25, commissionRate = 0) {
-  if (odds <= 1 || bankroll <= 0) return { kellyFraction:0, stake:0, liability:0 };
+  if (odds <= 1 || bankroll <= 0 || p <= 0 || p >= 1 || commissionRate < 0 || commissionRate > .2) return { kellyFraction:0, stake:0, liability:0 };
   const liabilityPerStake = odds - 1;
-  const capitalGrowthEdge = (1 - p) * (1 - commissionRate) - p * liabilityPerStake;
-  const liabilityFraction = Math.max(0, capitalGrowthEdge / Math.max(liabilityPerStake, 1e-12));
-  const liability = bankroll * liabilityFraction * kellyMultiplier * confidence;
-  const stake = liability / liabilityPerStake;
-  return { kellyFraction:liabilityFraction, stake, liability };
+  const netLayWinPerStake = 1 - commissionRate;
+  const edge = (1 - p) * netLayWinPerStake - p * liabilityPerStake;
+  const stakeFraction = Math.max(0, edge / (netLayWinPerStake * liabilityPerStake));
+  const stake = bankroll * stakeFraction * kellyMultiplier * confidence;
+  return { kellyFraction:stakeFraction, stake, liability:stake * liabilityPerStake };
 }
 
 export function applyStakeCaps(stake, bankroll, settings = {}) {

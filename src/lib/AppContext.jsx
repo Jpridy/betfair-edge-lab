@@ -316,6 +316,7 @@ export function AppProvider({ children }) {
           botSettingsRecordId.current = rec.id;
           const clean = stripDbMeta(rec);
           clean.liveTradingEnabled = false;
+          clean.autoPaperTradingEnabled = false;
           setBotSettings(prev => ({ ...prev, ...clean }));
         }
         if (featherlessRecs && featherlessRecs.length > 0) {
@@ -1572,7 +1573,9 @@ export function AppProvider({ children }) {
 
             // ── Route through centralized validated order creation ──
             const canPlaceOrders = !s.botState.paused && s.botSettings.autoPaperTradingEnabled && !forceDebugOnly;
-            const authority = await authorizeAndCreatePaperOrder({ opportunity: opp, market, runner, marketRunners: s.runners.filter(item => matchRunnerToMarket(item, market)), settings: s.settings, botSettings: s.botSettings, featherlessSettings: s.featherlessSettings, bankrollStats: s.bankrollStats, existingOrders: s.paperOrders, emergencyStop: s.emergencyStop, apiConnected: s.apiConnected, connectionState, positiveEvOpportunityCount: result.diagnostics.positiveEVOpportunities, strategyRequiresAI: opp.decisionSource === 'FEATHERLESS_AI', aiResult: result.diagnostics.aiDecisions?.[0]?.aiResult || null, strategyName, source: 'bot', persistenceType: 'LAPSE', selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder });
+            const authority = canPlaceOrders
+              ? await authorizeAndCreatePaperOrder({ opportunity: opp, market, runner, marketRunners: s.runners.filter(item => matchRunnerToMarket(item, market)), settings: s.settings, botSettings: s.botSettings, featherlessSettings: s.featherlessSettings, bankrollStats: s.bankrollStats, existingOrders: s.paperOrders, emergencyStop: s.emergencyStop, apiConnected: s.apiConnected, connectionState, positiveEvOpportunityCount: result.diagnostics.positiveEVOpportunities, strategyRequiresAI: ['FEATHERLESS_AI','CACHE','OPENAI_WEB_ENRICHED'].includes(opp.decisionSource), aiResult: result.diagnostics.aiDecisions?.[0]?.aiResult || null, strategyName, source: 'bot', persistenceType: 'LAPSE', selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder })
+              : { authorized:false, persisted:false, order:null, failedGate:'AUTO_PAPER_ORDERING_PAUSED', reason:'Automatic paper ordering is paused' };
             const validatedOrder = authority.order || authority.rejectedOrder || null;
             const wasRejected = !authority.authorized;
             const rejectionReason = authority.reason;

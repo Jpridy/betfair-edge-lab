@@ -24,6 +24,7 @@ import { DECISION_SOURCES, dataSourceForDecisionSource } from './decisionProvena
 import { ACTIVE_ORDER_STATUSES, exposureBlock, normalizedMarketId } from './raceExposure';
 import { resolveCommissionRate } from './commission';
 import { validateCompleteMarketBook } from './marketBookValidation';
+import { buildNormalizedFavouriteProbabilityField } from './favouriteProbabilityField';
 
 const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
@@ -285,12 +286,16 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
     const winRunners = allRunners.filter(r => matchRunnerToMarket(r, winMarket) && r.status === 'ACTIVE');
     const favouriteContext = calculateFavouriteContext(winRunners);
     const runnerContextScores = calculateRunnerContextScores(winRunners, favouriteContext, externalSearchResult);
+    const normalizedFavouriteField = buildNormalizedFavouriteProbabilityField(opportunities, favouriteContext, runnerContextScores, featherlessSettings);
 
     for (let i = 0; i < opportunities.length; i++) {
       const original = opportunities[i];
       const runnerScore = runnerContextScores.find(s => s.selectionId === original.selectionId);
       const contextAdjusted = applyFavouriteContextToOpportunity(original, favouriteContext, runnerScore, featherlessSettings);
-      const adjusted = original.marketType === 'WIN' ? { ...contextAdjusted, favouriteContextAdjustment:0, finalProbabilityUsedInEV:original.modelProbability } : contextAdjusted;
+      const normalizedFavourite = normalizedFavouriteField.get(String(original.selectionId));
+      const adjusted = original.marketType === 'WIN' && normalizedFavourite
+        ? { ...contextAdjusted, favouriteContextAdjustment:normalizedFavourite.adjustment, finalProbabilityUsedInEV:normalizedFavourite.probability }
+        : contextAdjusted;
       let finalOpportunity = adjusted;
 
       if (Math.abs((adjusted.finalProbabilityUsedInEV ?? original.modelProbability) - original.modelProbability) > 0.000001) {
@@ -595,6 +600,13 @@ function buildOpportunity({
     marketOnlyProbability: externalSearchFields?.preSearchProbability ?? modelProbability,
     openAIProbabilityAdjustment: externalSearchFields?.probabilityDelta ?? 0,
     finalProbabilityUsedInEV: modelProbability, // This is the probability actually used in EV maths (post-adjustment, clamped)
+    requiredMinEdge: thresholds.minEdge,
+    requiredMinROI: thresholds.minROI,
+    requiredMinConfidence: featherlessSettings?.minConfidence ?? 50,
+    requiredMinLiquidity: thresholds.minLiquidity,
+    requiredMinOdds: thresholds.minOdds,
+    requiredMaxOdds: thresholds.maxOdds,
+    thresholdSource: `${marketType}_MARKET_SETTINGS`,
     // ── Favourite Value Context (populated by post-processing in generateOpportunitiesForEvent) ──
     favouriteSelectionId: null,
     favouriteName: null,

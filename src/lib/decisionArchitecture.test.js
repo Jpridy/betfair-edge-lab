@@ -9,7 +9,9 @@ import { runExchangeCycle } from './exchangeOpportunityEngine';
 
 const start = new Date(Date.now() + 300000).toISOString();
 const market = (id, type, count = 8) => ({ id, betfairMarketId:id, eventId:'e1', eventTypeId:'7', venue:'Test', raceNumber:2, startTime:start, marketStartTime:start, marketTypeCode:type, marketType:type, marketName:type, status:'OPEN', numberOfRunners:count });
-const runners = (id, count) => Array.from({length:count},(_,i)=>({id:`${id}_${i}`,marketId:id,betfairSelectionId:String(i+1),runnerName:`Runner ${i+1}`,status:'ACTIVE',bestBackPrice:2+i,bestLayPrice:2.02+i,bestBackSize:100,bestLaySize:100}));
+const backPrices = [2,3,4,5,6,7,8,9];
+const layPrices = [2.02,3.05,4.1,5.1,6.2,7.2,8.2,9.2];
+const runners = (id, count) => Array.from({length:count},(_,i)=>({id:`${id}_${i}`,marketId:id,betfairSelectionId:String(i+1),runnerName:`Runner ${i+1}`,status:'ACTIVE',bestBackPrice:backPrices[i],bestLayPrice:layPrices[i],bestBackSize:100,bestLaySize:100}));
 
 describe('decision architecture',()=>{
   it('counts eight runners as one WIN market',()=>{const c=clusterMarketsByEvent([market('m1','WIN')]);expect(c[0].winMarkets).toHaveLength(1);});

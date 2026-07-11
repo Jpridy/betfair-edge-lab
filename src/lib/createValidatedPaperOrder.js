@@ -85,6 +85,7 @@ export function createValidatedPaperOrder({
   calculationResult = null,
 }) {
   const failures = [];
+  if (side !== 'BACK' && side !== 'LAY') failures.push({ field:'INVALID_SIDE', reason:'Order side must be BACK or LAY' });
   if (decisionSource) {
     strategyName = strategyForDecisionSource(decisionSource);
     dataSource = dataSourceForDecisionSource(decisionSource);
@@ -131,8 +132,11 @@ export function createValidatedPaperOrder({
     persistenceType = 'LAPSE';
   }
 
-  // ── Determine price ──
-  const price = odds || (side === 'BACK' ? runner?.bestBackPrice : runner?.bestLayPrice) || 0;
+  // ── Determine price from the current executable book ──
+  const currentPrice = Number(side === 'BACK' ? runner?.bestBackPrice : runner?.bestLayPrice) || 0;
+  const requestedPrice = Number(odds) || currentPrice;
+  const price = currentPrice;
+  if (currentPrice > 0 && Math.abs(requestedPrice - currentPrice) > 1e-9) failures.push({ field:'PRICE_MOVED', reason:`Requested odds ${requestedPrice} no longer match current odds ${currentPrice}` });
 
   // ── Odds Bounds ── (relaxed in proof mode)
   const minOddsCheck = paperProofMode ? (settings.minOdds || 1.01) : (settings.minOdds || 1.5);

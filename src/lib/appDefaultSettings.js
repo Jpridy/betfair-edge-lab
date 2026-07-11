@@ -71,7 +71,7 @@ export const DEFAULT_BOT_SETTINGS = {
   botMode: 'demo',
   scanIntervalSeconds: 30,
   selectedStrategies: ['Featherless AI Value Decision Engine'],
-  autoPaperTradingEnabled: true,
+  autoPaperTradingEnabled: false,
   liveTradingLocked: true,
   liveTradingEnabled: false,
   requireLiveConfirmationText: true,
