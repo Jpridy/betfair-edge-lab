@@ -14,8 +14,9 @@
 import { detectMarketType } from './marketClusterer';
 import { calcProofStake } from './paperProofDefaults';
 import { matchRunnerToMarket } from './marketIdMatcher';
-import { activeRaceOrders } from './raceExposure';
+import { activeRaceOrders, exposureBlock } from './raceExposure';
 import { compareOpportunities } from './opportunityRanking';
+import { validateCompleteMarketBook } from './marketBookValidation';
 import { DECISION_SOURCES } from './decisionProvenance';
 import { resolveCommissionRate } from './commission';
 import { buildCalculationResult } from './exchangeMath';
@@ -29,8 +30,20 @@ import { buildCalculationResult } from './exchangeMath';
  * @param {object} settings - App settings
  * @returns {object|null} Proof opportunity or null if no suitable market
  */
-export function buildProofOpportunity(eventClusters, allRunners, paperOrders, settings) {
+export function getProofFallbackHardGate({ priceFeedStatus, raceMonitoring } = {}) {
+  if (priceFeedStatus !== 'LIVE') return priceFeedStatus === 'STALE' ? 'STALE_PRICE_DATA' : 'PRICE_DATA_UNAVAILABLE';
+  if (raceMonitoring?.raceLocked || raceMonitoring?.activeOrderExistsForRace) return 'DUPLICATE_RACE_EXPOSURE';
+  if (raceMonitoring?.duplicateMarketRecordDetected) return 'DUPLICATE_MARKET_EXPOSURE';
+  return null;
+}
+
+export function buildProofOpportunity(eventClusters, allRunners, paperOrders, settings, safetyContext = {}) {
+  const hardGate = getProofFallbackHardGate(safetyContext);
+  if (hardGate) return null;
   const candidates = [];
+  const nowMs = safetyContext.now ?? Date.now();
+  const windowStart = safetyContext.windowStart ?? settings.defaultTimeWindowStartSeconds ?? 500;
+  const windowEnd = safetyContext.windowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30;
 
   for (const cluster of eventClusters) {
     const allMarkets = [
@@ -40,22 +53,22 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
     ];
 
     for (const market of allMarkets) {
-      if (market.status !== 'OPEN') continue;
-      if (market.inPlay) continue;
-
+      if (market.status !== 'OPEN' || market.inPlay) continue;
       const marketType = detectMarketType(market);
-      if (marketType === 'UNKNOWN') continue;
-
-      const marketRunners = allRunners.filter(r =>
-        matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
-      );
+      if (marketType === 'UNKNOWN' || marketType === 'PLACE') continue;
+      const startTime = market.startTime || market.marketStartTime;
+      const secondsToStart = startTime ? Math.round((new Date(startTime).getTime() - nowMs) / 1000) : null;
+      if (secondsToStart == null || secondsToStart <= windowEnd || secondsToStart > windowStart) continue;
+      const raceLike = { ...market, eventId:cluster.eventId, eventName:cluster.eventName, raceNumber:cluster.raceNumber, venue:cluster.venue, startTime:cluster.startTime || startTime };
+      if (activeRaceOrders(paperOrders, raceLike).length || exposureBlock(paperOrders, raceLike, settings)) continue;
+      const commission = resolveCommissionRate(market, settings);
+      if (!commission.valid) continue;
+      const marketRunners = allRunners.filter(r => matchRunnerToMarket(r, market) && r.status === 'ACTIVE');
+      if (!validateCompleteMarketBook(marketRunners, settings.maxBackBookPercentage || 150).valid) continue;
 
       for (const runner of marketRunners) {
         const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
         if (!selectionId) continue;
-
-        // Proof mode never bypasses the one-order-per-race guard.
-        if (activeRaceOrders(paperOrders, { ...market, eventId:cluster.eventId }).length) continue;
 
         // Prefer BACK side
         if (runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) {
@@ -86,7 +99,6 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
 
   if (candidates.length === 0) return null;
 
-  const nowMs = Date.now();
   candidates.sort((a,b)=>compareOpportunities(
     { ...a, decision:'BET', roi:0, ev:0, confidence:25, dataQuality:30, fillProbability:.9, liquidityScore:Math.min(1,a.availableSize/10), spreadTicks:0, delayRiskScore:0, marketId:a.market.betfairMarketId || a.market.id },
     { ...b, decision:'BET', roi:0, ev:0, confidence:25, dataQuality:30, fillProbability:.9, liquidityScore:Math.min(1,b.availableSize/10), spreadTicks:0, delayRiskScore:0, marketId:b.market.betfairMarketId || b.market.id }
@@ -99,6 +111,7 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
   const commission = resolveCommissionRate(market, settings);
   if (!commission.valid) return null;
   const calculationResult = buildCalculationResult({ side, probability:1/odds, odds, normalizedCommissionRate:commission.normalizedRate, stake });
+  if (!calculationResult.mathematicalInvariantsPassed) return null;
   const liability = calculationResult.liability;
   const maxLoss = calculationResult.lossIfLose;
   const maxProfit = calculationResult.profitIfWin;

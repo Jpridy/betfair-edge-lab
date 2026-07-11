@@ -23,7 +23,7 @@ import { resolveMarketTypeThresholds, MARKET_TYPE_THRESHOLDS } from './crossMark
 import { getCachedAIResult, setCachedAIResult, getCacheStats } from './exchangeEngineCache';
 import { getCachedExternalSearch, setCachedExternalSearch, getExternalSearchCacheStats } from './externalSearchCache';
 import { isPaperProofModeActive } from './paperProofDefaults';
-import { buildProofOpportunity } from './paperProofScanner';
+import { buildProofOpportunity, getProofFallbackHardGate } from './paperProofScanner';
 import { matchRunnerToMarket } from './marketIdMatcher';
 import { buildRacePack, summarizeRacePack } from './racePackBuilder';
 import { checkMarketEligibility } from './marketEligibility';
@@ -35,7 +35,7 @@ import { scheduleRaceScan, consumeForcedRaceScan } from './raceScanScheduler';
 import { DECISION_SOURCES, strategyForDecisionSource, dataSourceForDecisionSource } from './decisionProvenance';
 import { beginAiTrace, completeAiTrace, cacheAiTrace, unusedAiTrace } from './aiObservability';
 import { buildSideSelectionDiagnostics } from './opportunityRanking';
-import { normalizedMarketId } from './raceExposure';
+import { activeRaceOrders, exposureBlock, normalizedMarketId } from './raceExposure';
 import { marketCoverage, rejectedRelatedMarkets } from './marketClusterer';
 import { calculatePriceFeedStatus } from './marketFreshness';
 import { applyRaceOrderLock, buildRaceMonitoringDiagnostics } from './raceMonitoringDiagnostics';
@@ -490,30 +490,10 @@ export async function runExchangeCycle(params) {
     const trackedRace = markRaceScanned(selectedRace.raceKey, Date.now(), '', cycleNumber);
     if (trackedRace) Object.assign(selectedRace, { cyclesScannedOnThisRace:trackedRace.cyclesScannedOnThisRace, firstCycleSeenForRace:trackedRace.firstCycleSeenForRace, latestCycleSeenForRace:trackedRace.latestCycleSeenForRace });
   }
-  let raceMonitoring = buildRaceMonitoringDiagnostics({ selectedRace, runners, orders:paperOrders, acceptedMarketIds:[], windowStart:featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500, windowEnd:featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30 });
+  let raceMonitoring = buildRaceMonitoringDiagnostics({ selectedRace:null, runners, orders:paperOrders, windowStart:featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500, windowEnd:featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30 });
 
   if (!selectedRace && raceCache.loadedAt && !emergencyStop) {
     return { bestOpportunity: null, allOpportunities: [], eventClusters: [], diagnostics: { raceMonitoring, ...raceMonitoring, noBetReason: 'No cached race currently inside scan window', noScanReason: schedule.selectionReason, marketsScanned: 0, eventsScanned: 0, totalMarketsLoaded: raceCache.summary.totalMarketsLoaded || 0, marketsSentToExchangeEngine: 0, raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt, opportunityFunnel: { ...raceMonitoring, raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, noScanReason: schedule.selectionReason, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt }, nextRace: schedule.nextRace ? { raceKey: schedule.nextRace.raceKey, eventName: schedule.nextRace.eventName, startTime: schedule.nextRace.startTime, secondsToJump: schedule.nextRace.secondsToJump } : null, marketFeedDiagnostics, marketFilterFunnel, timeWindowFunnel, loadedMarketsTable, connectionDiagnostics, debugScanMode } };
-  }
-
-  if (emergencyStop) {
-    return {
-      bestOpportunity: null,
-      allOpportunities: [],
-      eventClusters: [],
-      diagnostics: {
-        raceMonitoring,
-        ...raceMonitoring,
-        noBetReason: 'Emergency stop active',
-        marketsScanned: 0,
-        eventsScanned: 0,
-        marketFeedDiagnostics,
-        timeWindowFunnel,
-        loadedMarketsTable,
-        connectionDiagnostics,
-        debugScanMode,
-      },
-    };
   }
 
   const totalMarketsLoaded = markets.length;
@@ -529,6 +509,10 @@ export async function runExchangeCycle(params) {
     return marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
   }).length;
   raceMonitoring = buildRaceMonitoringDiagnostics({ selectedRace, runners, orders:paperOrders, acceptedMarketIds:eligibleMarkets.map(normalizedMarketId), windowStart:featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500, windowEnd:featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30 });
+
+  if (emergencyStop) {
+    return { bestOpportunity:null, allOpportunities:[], eventClusters:[], diagnostics:{ raceMonitoring, ...raceMonitoring, noBetReason:'Emergency stop active', marketsScanned:0, eventsScanned:0, marketFeedDiagnostics, timeWindowFunnel, loadedMarketsTable, connectionDiagnostics, debugScanMode } };
+  }
 
   if (eligibleMarkets.length === 0) {
     let reason;
@@ -945,24 +929,27 @@ export async function runExchangeCycle(params) {
   let proofFallbackOpportunity = null;
   const normalOpportunities = [...ranked];
 
-  // ── Paper Proof Fallback ──
-  // 1. Build normal opportunities (done above)
-  // 2. Rank normal opportunities (done above)
-  // 3. Determine whether proof fallback is required
-  // 4. Add proof fallback to allOpportunities
-  // 5. Re-rank the final complete list
+  // ── Paper Proof Fallback: only after every hard gate is known to pass ──
   if (!debugScanMode && !bestOpportunity && paperProofMode) {
     proofFallbackAttempted = true;
-    const proofOpp = buildProofOpportunity(eventClusters, runners, paperOrders, settings);
+    const proofSafetyContext = {
+      priceFeedStatus:connectionDiagnostics.priceFeedStatus,
+      raceMonitoring,
+      now:Date.now(),
+      windowStart:featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500,
+      windowEnd:featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30,
+    };
+    const hardGate = getProofFallbackHardGate(proofSafetyContext);
+    const proofOpp = hardGate ? null : buildProofOpportunity(eventClusters, runners, paperOrders, settings, proofSafetyContext);
     if (proofOpp) {
       proofFallbackOpportunity = { ...proofOpp, decisionSource:DECISION_SOURCES.PROOF_OVERRIDE };
-      bestOpportunity = proofFallbackOpportunity;
       allOpportunities.push(proofFallbackOpportunity);
       proofFallbackCreated = true;
-      // Re-rank the final complete list so the proof fallback appears in tables/exports
-      ranked = rankOpportunities(allOpportunities);
     } else {
-      if (eventClusters.length === 0) {
+      proofFallbackBlockedReason = hardGate || proofFallbackBlockedReason;
+      if (hardGate) {
+        // The authoritative hard-gate reason must not be replaced by candidate diagnostics.
+      } else if (eventClusters.length === 0) {
         proofFallbackBlockedReason = 'no eligible event clusters';
       } else {
         let hasMatchedRunners = false;
@@ -970,31 +957,30 @@ export async function runExchangeCycle(params) {
         let hasBackOrLayPrices = false;
         let hasDuplicateOrder = false;
         let hasOpenMarket = false;
+        let hasPlaceMarket = false;
+        let hasSupportedProofMarket = false;
         for (const cluster of eventClusters) {
           const allMarkets = [...cluster.winMarkets, ...cluster.placeMarkets, ...cluster.h2hMarkets];
           for (const market of allMarkets) {
             if (market.status !== 'OPEN') continue;
             hasOpenMarket = true;
             if (market.inPlay) continue;
+            const proofMarketType = detectMarketType(market);
+            if (proofMarketType === 'PLACE') hasPlaceMarket = true;
+            else if (proofMarketType !== 'UNKNOWN') hasSupportedProofMarket = true;
+            const raceLike = { ...market, eventId:cluster.eventId, eventName:cluster.eventName, raceNumber:cluster.raceNumber, venue:cluster.venue, startTime:cluster.startTime || market.startTime || market.marketStartTime };
+            if (activeRaceOrders(paperOrders, raceLike).length || exposureBlock(paperOrders, raceLike, settings)) hasDuplicateOrder = true;
             const marketRunners = getRunnersForMarket(market, runnersByMarket);
             if (marketRunners.length > 0) hasMatchedRunners = true;
             for (const runner of marketRunners) {
               hasActiveRunners = true;
               if ((runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) ||
-                  (runner.bestLayPrice > 0 && (runner.bestLaySize || 0) >= 2)) {
-                hasBackOrLayPrices = true;
-              }
-              const selId = String(runner.betfairSelectionId || runner.selectionId || '');
-              const hasDup = paperOrders.some(o =>
-                matchRunnerToMarket(o, market) &&
-                (String(o.selectionId) === selId || String(o.runnerId) === String(runner.id)) &&
-                OPEN_ORDER_STATUSES.includes(o.status)
-              );
-              if (hasDup) hasDuplicateOrder = true;
+                  (runner.bestLayPrice > 0 && (runner.bestLaySize || 0) >= 2)) hasBackOrLayPrices = true;
             }
           }
         }
         if (!hasOpenMarket) proofFallbackBlockedReason = 'no OPEN markets in event clusters';
+        else if (hasPlaceMarket && !hasSupportedProofMarket) proofFallbackBlockedReason = 'PLACE_MODEL_NOT_VALIDATED';
         else if (!hasMatchedRunners) proofFallbackBlockedReason = 'no market matched runners';
         else if (!hasActiveRunners) proofFallbackBlockedReason = 'no ACTIVE runners';
         else if (!hasBackOrLayPrices) proofFallbackBlockedReason = 'no back/lay prices with sufficient size (>= $2)';
@@ -1003,6 +989,12 @@ export async function runExchangeCycle(params) {
       }
     }
   }
+
+  // Proof opportunities must pass the same final race lock as normal opportunities.
+  applyRaceOrderLock(allOpportunities, raceMonitoring);
+  ranked = rankOpportunities(allOpportunities);
+  bestOpportunity = raceMonitoring.raceLocked ? null : (ranked.find(opportunity => opportunity.decision === 'BET') || null);
+  if (raceMonitoring.raceLocked) bestNormalOpportunity = null;
 
   // ── Top 20 opportunities by EV ──
   const topOpportunities = ranked.slice(0, 20).map(o => ({
