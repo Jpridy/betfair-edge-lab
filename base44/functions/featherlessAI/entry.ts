@@ -35,96 +35,31 @@ CONFIDENCE:
 
 Return valid JSON only. No markdown, no code fences, no commentary outside the JSON.`;
 
-const USER_PROMPT = `You are assessing one complete Betfair exchange race. Analyse the full race pack below and return structured probabilities and value assessments.
+const USER_PROMPT = `Price every active runner in this Betfair race pack.
 
 <RACE_PACK>
 __RACE_PACK_JSON__
 </RACE_PACK>
 
-Return ONLY this JSON (no markdown, no commentary):
+Return JSON only:
 {
-  "decisionSource": "FEATHERLESS_RACE_ASSESSMENT",
-  "raceId": "<raceId from race pack>",
-  "eventId": "<eventId from race pack>",
-  "eventName": "<eventName from race pack>",
-  "dataQuality": <0-100>,
-  "confidence": <0-100, overall race-level confidence>,
-  "raceSummary": "<max 50 words summarising the race and key factors>",
-  "marketRead": "<brief read on market overround, liquidity, anomalies>",
-  "keyRisks": ["<race-level risk factor>"],
-  "runnerProbabilities": [
+  "results": [
     {
-      "selectionId": "<selection_id from race pack>",
-      "runnerName": "<runner name>",
-      "pWin": <0-1>,
-      "pPlace": <0-1, must be >= pWin>,
-      "confidence": <0-100>,
-      "fairWinOdds": <decimal odds = 1/pWin>,
-      "fairPlaceOdds": <decimal odds = 1/pPlace>,
-      "positiveSignals": ["<factor supporting this runner>"],
-      "negativeSignals": ["<factor against this runner>"],
-      "reasoning": "<brief explanation>",
-      "dataQuality": <0-100 for this runner's data>
+      "selectionId": "<exact selectionId from race pack>",
+      "probability": <number greater than 0 and less than 1>,
+      "confidence": <number from 0 to 1>,
+      "reasoningSummary": "<brief evidence-based reason>"
     }
   ],
-  "h2hProbabilities": [
-    {
-      "marketId": "<market_id from race pack>",
-      "selectionId": "<selection_id>",
-      "runnerName": "<runner name>",
-      "opponentSelectionId": "<opponent selection_id>",
-      "opponentName": "<opponent name>",
-      "pBeatsOpponent": <0-1>,
-      "fairOdds": <decimal odds = 1/pBeatsOpponent>,
-      "confidence": <0-100>,
-      "reasoning": "<brief explanation>"
-    }
-  ],
-  "recommendedOpportunities": [
-    {
-      "marketId": "<market_id>",
-      "marketType": "WIN" | "PLACE" | "H2H",
-      "selectionId": "<selection_id>",
-      "runnerName": "<runner name>",
-      "side": "BACK" | "LAY",
-      "modelProbability": <0-1>,
-      "fairOdds": <decimal>,
-      "betfairOdds": <decimal from race pack>,
-      "estimatedEdge": <percent>,
-      "estimatedROI": <percent>,
-      "confidence": <0-100>,
-      "reasoning": "<brief explanation>",
-      "risks": ["<risk factor>"]
-    }
-  ],
-  "noBetReasons": [
-    {
-      "reason": "<reason not to bet>",
-      "severity": "info" | "warning" | "critical",
-      "affectedMarketId": "<market_id or null>",
-      "affectedSelectionId": "<selection_id or null>"
-    }
-  ],
-  "finalRaceView": {
-    "bestRunner": "<runner name or null>",
-    "mostOverpricedRunner": "<runner name or null>",
-    "mostUnderpricedRunner": "<runner name or null>",
-    "bestBackCandidate": "<runner name or null>",
-    "bestLayCandidate": "<runner name or null>",
-    "shouldBetThisRace": <true/false>,
-    "summaryReason": "<max 30 words>"
-  }
+  "raceSummary": "<brief summary>"
 }
 
 Rules:
-- Include EVERY active runner in runnerProbabilities.
-- pWin values MUST sum to ~1.0.
-- pPlace must be >= pWin for each runner.
-- Only include h2hProbabilities if H2H markets exist in the race pack.
-- If no H2H markets, return empty h2hProbabilities array.
-- All probabilities are decimals (0.55 = 55%), never percentages.
-- recommendedOpportunities should list spots where model probability differs from Betfair odds — the local engine will verify with its own maths.
-- Do NOT include any API keys or secrets in your response.`;
+- Return exactly one result for every active runner.
+- Match runners only by exact selectionId; names are descriptive only.
+- Do not add unknown or duplicate selection IDs.
+- Win probabilities must sum to approximately 1.
+- Return no markdown, hidden reasoning, API keys, or commentary outside JSON.`;
 
 const RESPONSE_SCHEMA = {
   type: 'object',
@@ -227,49 +162,33 @@ const RESPONSE_SCHEMA = {
 
 function validateAIResponse(parsed, racePack) {
   const errors = [];
-  const runners = racePack?.runners || [];
-
-  if (!parsed.runnerProbabilities || !Array.isArray(parsed.runnerProbabilities)) {
-    errors.push('Missing or invalid runnerProbabilities array');
-    return { valid: false, errors };
+  const requestedIds = (racePack?.runners || []).map((runner) => String(runner.selectionId || runner.betfairSelectionId || '')).filter(Boolean);
+  const requestedSet = new Set(requestedIds);
+  const results = Array.isArray(parsed?.results) ? parsed.results : [];
+  const seen = new Set();
+  const usable = [];
+  for (const result of results) {
+    const selectionId = String(result?.selectionId || '');
+    if (!selectionId) { errors.push('Result missing selectionId'); continue; }
+    if (seen.has(selectionId)) { errors.push(`Duplicate selectionId: ${selectionId}`); continue; }
+    seen.add(selectionId);
+    if (!requestedSet.has(selectionId)) { errors.push(`Unknown selectionId: ${selectionId}`); continue; }
+    if (typeof result.probability !== 'number' || result.probability <= 0 || result.probability >= 1) { errors.push(`Invalid probability for ${selectionId}: ${result.probability}`); continue; }
+    if (typeof result.confidence !== 'number' || result.confidence < 0 || result.confidence > 1) { errors.push(`Invalid confidence for ${selectionId}: ${result.confidence}`); continue; }
+    if (typeof result.reasoningSummary !== 'string') { errors.push(`Missing reasoningSummary for ${selectionId}`); continue; }
+    usable.push({ selectionId, probability: result.probability, confidence: result.confidence, reasoningSummary: result.reasoningSummary });
   }
-
-  if (parsed.runnerProbabilities.length === 0) {
-    errors.push('runnerProbabilities is empty');
-  }
-
-  for (const rp of parsed.runnerProbabilities) {
-    if (!rp.selectionId) {
-      errors.push('Runner probability missing selectionId');
-      continue;
-    }
-    if (typeof rp.pWin !== 'number' || rp.pWin < 0 || rp.pWin > 1) {
-      errors.push(`Invalid pWin for ${rp.runnerName || rp.selectionId}: ${rp.pWin}`);
-    }
-    if (typeof rp.pPlace !== 'number' || rp.pPlace < 0 || rp.pPlace > 1) {
-      errors.push(`Invalid pPlace for ${rp.runnerName || rp.selectionId}: ${rp.pPlace}`);
-    }
-    if (typeof rp.pWin === 'number' && typeof rp.pPlace === 'number' && rp.pPlace < rp.pWin) {
-      errors.push(`pPlace < pWin for ${rp.runnerName || rp.selectionId}`);
-    }
-    if (typeof rp.confidence !== 'number' || rp.confidence < 0 || rp.confidence > 100) {
-      errors.push(`Invalid confidence for ${rp.runnerName || rp.selectionId}: ${rp.confidence}`);
-    }
-  }
-
-  const totalPWin = parsed.runnerProbabilities.reduce((s, rp) => s + (rp.pWin || 0), 0);
-  if (totalPWin < 0.85 || totalPWin > 1.15) {
-    errors.push(`pWin values sum to ${totalPWin.toFixed(3)} — should be ~1.0`);
-  }
-
-  if (typeof parsed.dataQuality !== 'number' || parsed.dataQuality < 0 || parsed.dataQuality > 100) {
-    errors.push(`Invalid dataQuality: ${parsed.dataQuality}`);
-  }
-
-  return { valid: errors.length === 0, errors };
+  const missingSelectionIds = requestedIds.filter((id) => !seen.has(id));
+  if (missingSelectionIds.length) errors.push(`Missing runners: ${missingSelectionIds.join(', ')}`);
+  const total = usable.reduce((sum, result) => sum + result.probability, 0);
+  if (usable.length && (total < 0.85 || total > 1.15)) errors.push(`Probabilities sum to ${total.toFixed(3)}; expected approximately 1`);
+  return { valid: errors.length === 0 && usable.length === requestedIds.length, errors, usable, requestedIds, returnedIds: results.map((result) => String(result?.selectionId || '')).filter(Boolean), missingSelectionIds };
 }
 
 Deno.serve(async (req) => {
+  let telemetryModel = 'unknown';
+  let telemetrySelectionIds = [];
+  let telemetryStartedAt = null;
   try {
     const body = await req.json();
     const { racePack, settings, strategySettings, bankrollStats, action } = body;
@@ -335,6 +254,9 @@ Deno.serve(async (req) => {
     ];
 
     const requestStart = Date.now();
+    const aiStartedAt = new Date(requestStart).toISOString();
+    const selectionIdsRequested = (racePack?.runners || []).map((runner) => String(runner.selectionId || runner.betfairSelectionId || '')).filter(Boolean);
+    telemetryModel = modelName; telemetrySelectionIds = selectionIdsRequested; telemetryStartedAt = aiStartedAt;
 
     const apiResp = await fetch(`${FEATHERLESS_BASE_URL}/chat/completions`, {
       method: 'POST',
@@ -357,11 +279,13 @@ Deno.serve(async (req) => {
       const errText = await apiResp.text();
       let errMessage = `Featherless API error ${apiResp.status}`;
       try { const errJson = JSON.parse(errText); errMessage = errJson.error?.message || errMessage; } catch (_) {}
+      const aiCallStatus = apiResp.status === 401 || apiResp.status === 403 ? 'authentication_error' : 'provider_error';
       return Response.json({
         error: errMessage,
-        featherlessStatus: 'failed',
+        featherlessStatus: aiCallStatus,
         responseTimeMs,
         aiResult: null,
+        aiTelemetry: { aiRequested: true, aiProvider: 'featherless', aiModel: modelName, aiRequestId: apiResp.headers.get('x-request-id'), aiStartedAt, aiCompletedAt: new Date().toISOString(), aiLatencyMs: responseTimeMs, aiHttpStatus: apiResp.status, aiCallStatus, aiErrorCode: `HTTP_${apiResp.status}`, aiErrorMessage: errMessage, aiTimedOut: false, aiRawResponseReceived: !!errText, aiResponseParseStatus: 'not_applicable', aiSchemaValidationStatus: 'not_applicable', aiRunnerCountRequested: selectionIdsRequested.length, aiRunnerCountReturned: 0, aiSelectionIdsRequested: selectionIdsRequested, aiSelectionIdsReturned: [], aiUsableProbabilityCount: 0 },
       }, { status: 200 });
     }
 
@@ -396,77 +320,29 @@ Deno.serve(async (req) => {
         parsed = JSON.parse(fixed);
       } catch (_) {
         return Response.json({
-          error: 'AI returned invalid JSON',
-          featherlessStatus: 'failed',
-          responseTimeMs,
-          aiResult: null,
-          rawResponse: rawContent.slice(0, 2000),
+          error: 'AI returned invalid JSON', featherlessStatus: 'invalid_response', responseTimeMs, aiResult: null, rawResponse: rawContent.slice(0, 2000),
+          aiTelemetry: { aiRequested: true, aiProvider: 'featherless', aiModel: modelName, aiRequestId: apiData.id || null, aiStartedAt, aiCompletedAt: new Date().toISOString(), aiLatencyMs: responseTimeMs, aiHttpStatus: apiResp.status, aiCallStatus: 'invalid_response', aiErrorCode: 'INVALID_JSON', aiErrorMessage: 'AI returned invalid JSON', aiTimedOut: false, aiRawResponseReceived: !!rawContent, aiResponseParseStatus: 'failed', aiSchemaValidationStatus: 'not_applicable', aiRunnerCountRequested: selectionIdsRequested.length, aiRunnerCountReturned: 0, aiSelectionIdsRequested: selectionIdsRequested, aiSelectionIdsReturned: [], aiUsableProbabilityCount: 0 },
         }, { status: 200 });
       }
     }
 
     const validation = validateAIResponse(parsed, racePack);
 
-    // Build AI result for the exchange engine
+    if (!validation.valid) {
+      const status = validation.usable.length === 0 ? 'no_usable_probabilities' : validation.errors.some((error) => error.includes('selectionId') || error.includes('Missing runners')) ? 'selection_mapping_error' : 'schema_error';
+      return Response.json({ error: validation.errors.join('; '), featherlessStatus: status, responseTimeMs, aiResult: null, validation,
+        aiTelemetry: { aiRequested: true, aiProvider: 'featherless', aiModel: modelName, aiRequestId: apiData.id || null, aiStartedAt, aiCompletedAt: new Date().toISOString(), aiLatencyMs: responseTimeMs, aiHttpStatus: apiResp.status, aiCallStatus: status, aiErrorCode: status.toUpperCase(), aiErrorMessage: validation.errors.join('; '), aiTimedOut: false, aiRawResponseReceived: !!rawContent, aiResponseParseStatus: 'success', aiSchemaValidationStatus: 'failed', aiRunnerCountRequested: validation.requestedIds.length, aiRunnerCountReturned: validation.returnedIds.length, aiSelectionIdsRequested: validation.requestedIds, aiSelectionIdsReturned: validation.returnedIds, aiUsableProbabilityCount: validation.usable.length },
+      }, { status: 200 });
+    }
+
+    const runnerById = new Map((racePack.runners || []).map((runner) => [String(runner.selectionId || runner.betfairSelectionId || ''), runner]));
     const aiResult = {
-      decisionSource: 'FEATHERLESS_AI',
-      raceId: racePack.raceId,
-      eventId: racePack.eventId,
-      eventName: racePack.eventName,
-      raceSummary: parsed.raceSummary || '',
-      dataQuality: parsed.dataQuality || 50,
-      confidence: parsed.confidence || parsed.dataQuality || 50,
-      marketRead: parsed.marketRead || '',
-      keyRisks: parsed.keyRisks || [],
-      runnerProbabilities: (parsed.runnerProbabilities || []).map(rp => ({
-        selectionId: String(rp.selectionId),
-        runnerName: rp.runnerName || '',
-        pWin: Math.min(0.95, Math.max(0.01, rp.pWin || 0)),
-        pPlace: Math.min(0.95, Math.max(0.01, rp.pPlace || rp.pWin || 0)),
-        confidence: rp.confidence || 50,
-        fairWinOdds: rp.fairWinOdds || (rp.pWin > 0 ? 1 / rp.pWin : 0),
-        fairPlaceOdds: rp.fairPlaceOdds || (rp.pPlace > 0 ? 1 / rp.pPlace : 0),
-        positiveSignals: rp.positiveSignals || [],
-        negativeSignals: rp.negativeSignals || [],
-        reasoning: rp.reasoning || '',
-        dataQuality: rp.dataQuality || parsed.dataQuality || 50,
-      })),
-      h2hProbabilities: (parsed.h2hProbabilities || []).map(h => ({
-        marketId: h.marketId || racePack.raceId,
-        selectionId: String(h.selectionId),
-        runnerName: h.runnerName || '',
-        opponentSelectionId: String(h.opponentSelectionId),
-        opponentName: h.opponentName || '',
-        pBeatsOpponent: Math.min(0.95, Math.max(0.05, h.pBeatsOpponent || 0.5)),
-        fairOdds: h.fairOdds || (h.pBeatsOpponent > 0 ? 1 / h.pBeatsOpponent : 0),
-        confidence: h.confidence || 50,
-        reasoning: h.reasoning || '',
-      })),
-      recommendedOpportunities: (parsed.recommendedOpportunities || []).map(ro => ({
-        marketId: ro.marketId || '',
-        marketType: ro.marketType || '',
-        selectionId: String(ro.selectionId),
-        runnerName: ro.runnerName || '',
-        side: ro.side || 'BACK',
-        modelProbability: ro.modelProbability || 0,
-        fairOdds: ro.fairOdds || 0,
-        betfairOdds: ro.betfairOdds || 0,
-        estimatedEdge: ro.estimatedEdge || 0,
-        estimatedROI: ro.estimatedROI || 0,
-        confidence: ro.confidence || 50,
-        reasoning: ro.reasoning || '',
-        risks: ro.risks || [],
-      })),
-      noBetReasons: parsed.noBetReasons || [],
-      finalRaceView: parsed.finalRaceView || {
-        bestRunner: null,
-        mostOverpricedRunner: null,
-        mostUnderpricedRunner: null,
-        bestBackCandidate: null,
-        bestLayCandidate: null,
-        shouldBetThisRace: false,
-        summaryReason: '',
-      },
+      decisionSource: 'FEATHERLESS_AI', raceId: racePack.raceId, eventId: racePack.eventId, eventName: racePack.eventName,
+      raceSummary: parsed.raceSummary || '', dataQuality: Math.round((validation.usable.reduce((sum, item) => sum + item.confidence, 0) / validation.usable.length) * 100),
+      confidence: Math.round((validation.usable.reduce((sum, item) => sum + item.confidence, 0) / validation.usable.length) * 100), marketRead: '', keyRisks: [],
+      runnerProbabilities: validation.usable.map((item) => { const runner = runnerById.get(item.selectionId); const pPlace = Math.min(0.95, Math.max(item.probability, item.probability * 1.5)); return { selectionId: item.selectionId, runnerName: runner?.runnerName || '', pWin: item.probability, pPlace, confidence: item.confidence * 100, fairWinOdds: 1 / item.probability, fairPlaceOdds: 1 / pPlace, positiveSignals: [], negativeSignals: [], reasoning: item.reasoningSummary, dataQuality: item.confidence * 100 }; }),
+      h2hProbabilities: [], recommendedOpportunities: [], noBetReasons: [],
+      finalRaceView: { bestRunner: null, mostOverpricedRunner: null, mostUnderpricedRunner: null, bestBackCandidate: null, bestLayCandidate: null, shouldBetThisRace: false, summaryReason: parsed.raceSummary || '' },
     };
 
     // Save to database for audit trail
@@ -526,13 +402,15 @@ Deno.serve(async (req) => {
       aiProvider: 'featherless',
       aiModel: modelName,
       aiResponseRunnerCount: aiResult.runnerProbabilities.length,
+      aiTelemetry: { aiRequested: true, aiProvider: 'featherless', aiModel: modelName, aiRequestId: apiData.id || null, aiStartedAt, aiCompletedAt: new Date().toISOString(), aiLatencyMs: responseTimeMs, aiHttpStatus: apiResp.status, aiCallStatus: 'success', aiErrorCode: null, aiErrorMessage: null, aiTimedOut: false, aiRawResponseReceived: !!rawContent, aiResponseParseStatus: 'success', aiSchemaValidationStatus: 'valid', aiRunnerCountRequested: validation.requestedIds.length, aiRunnerCountReturned: validation.returnedIds.length, aiSelectionIdsRequested: validation.requestedIds, aiSelectionIdsReturned: validation.returnedIds, aiUsableProbabilityCount: validation.usable.length },
     });
   } catch (error) {
     const isTimeout = error.message?.toLowerCase().includes('timeout') || error.name === 'AbortError';
     return Response.json({
       error: error.message,
-      featherlessStatus: isTimeout ? 'timeout' : 'failed',
+      featherlessStatus: isTimeout ? 'timeout' : 'provider_error',
       aiResult: null,
+      aiTelemetry: { aiRequested: true, aiProvider: 'featherless', aiModel: telemetryModel, aiRequestId: null, aiStartedAt: telemetryStartedAt, aiCompletedAt: new Date().toISOString(), aiLatencyMs: telemetryStartedAt ? Math.max(0, Date.now() - new Date(telemetryStartedAt).getTime()) : null, aiHttpStatus: null, aiCallStatus: isTimeout ? 'timeout' : 'provider_error', aiErrorCode: isTimeout ? 'TIMEOUT' : (error.name || 'PROVIDER_ERROR'), aiErrorMessage: error.message, aiTimedOut: isTimeout, aiRawResponseReceived: false, aiResponseParseStatus: 'not_applicable', aiSchemaValidationStatus: 'not_applicable', aiRunnerCountRequested: telemetrySelectionIds.length, aiRunnerCountReturned: 0, aiSelectionIdsRequested: telemetrySelectionIds, aiSelectionIdsReturned: [], aiUsableProbabilityCount: 0 },
     }, { status: 200 });
   }
 });

@@ -2,6 +2,9 @@
   "name": "BotCycle",
   "type": "object",
   "properties": {
+    "cycleId": {
+      "type": "string"
+    },
     "cycleNumber": {
       "type": "number"
     },
@@ -22,6 +25,16 @@
         "blocked",
         "failed"
       ]
+    },
+    "cycleOutcome": {
+      "type": "string",
+      "enum": [
+        "BET",
+        "NO_BET"
+      ]
+    },
+    "settlementStatus": {
+      "type": "string"
     },
     "debugOnly": {
       "type": "boolean",

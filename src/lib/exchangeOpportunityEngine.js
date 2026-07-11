@@ -37,6 +37,7 @@ import { beginAiTrace, completeAiTrace, cacheAiTrace, unusedAiTrace } from './ai
 import { buildSideSelectionDiagnostics } from './opportunityRanking';
 import { normalizedMarketId } from './raceExposure';
 import { marketCoverage, rejectedRelatedMarkets } from './marketClusterer';
+import { calculatePriceFeedStatus } from './marketFreshness';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -459,6 +460,7 @@ export async function runExchangeCycle(params) {
   // ── Build loaded markets debug table (first 50) ──
   const loadedMarketsTable = buildLoadedMarketsTable(markets, runnersByMarket);
 
+  const authoritativePrice = calculatePriceFeedStatus(connectionState?.lastPriceUpdateAt || connectionState?.lastStreamUpdateAt || connectionState?.lastCatalogueRefreshAt, Date.now(), settings?.dataFreshnessLimit || 30, !!connectionState?.streamError);
   const connectionDiagnostics = {
     betfairApiConnected: connectionState?.apiConnected ?? false,
     streamConnected: connectionState?.streamConnected ?? false,
@@ -466,7 +468,11 @@ export async function runExchangeCycle(params) {
     lastCatalogueRefreshAt: connectionState?.lastCatalogueRefreshAt ?? null,
     marketCatalogueError: connectionState?.marketCatalogueError ?? null,
     streamError: connectionState?.streamError ?? null,
-    priceFeedStale: connectionState?.priceFeedStale ?? false,
+    priceFeedStatus: authoritativePrice.priceFeedStatus,
+    priceAgeSeconds: authoritativePrice.priceAgeSeconds,
+    staleThresholdSeconds: authoritativePrice.staleThresholdSeconds,
+    authoritativePriceTimestamp: authoritativePrice.authoritativePriceTimestamp,
+    priceFeedStale: authoritativePrice.priceFeedStale,
   };
 
   const forcedScan = consumeForcedRaceScan();
@@ -613,7 +619,7 @@ export async function runExchangeCycle(params) {
   const extDecisionChanges = [];
   let extLatestQuery = '';
   let extLatestSummary = '';
-  let extLatestStatus = 'not_called';
+  let extLatestStatus = 'not_requested';
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extCacheTtlMs = (featherlessSettings?.externalSearchCacheTtlMinutes || 5) * 60 * 1000;
 
@@ -673,11 +679,13 @@ export async function runExchangeCycle(params) {
       const cached = debugScanMode ? null : getCachedExternalSearch(cluster.eventId, eventName, marketStartTime, marketRunners);
       if (cached) {
         extSearchCacheHits++;
-        externalSearchResult = cached;
-        externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: cached.searchStatus, sourceCount: cached.sourceCount || 0, dataQuality: cached.dataQuality || 0, runnersResearched: (cached.runnerResearch || []).length, cacheHit: true });
+        externalSearchResult = { ...cached, searchStatus: 'success', operationStatus: cached.cacheStatus || 'cache_hit_success' };
+        extLatestStatus = externalSearchResult.operationStatus;
+        externalSearchPerEvent.push({ eventId: cluster.eventId, eventName, searchStatus: externalSearchResult.operationStatus || externalSearchResult.searchStatus, sourceCount: cached.sourceCount || 0, dataQuality: cached.dataQuality || 0, runnersResearched: (cached.runnerResearch || []).length, cacheHit: true });
       } else {
         extSearchCacheMisses++;
         extSearchCalls++;
+        extLatestStatus = 'requested';
         try {
           externalSearchResult = await callExternalSearch(cluster, primaryMarket, marketRunners);
           if (externalSearchResult) {
@@ -687,6 +695,7 @@ export async function runExchangeCycle(params) {
             extTotalSources += externalSearchResult.sourceCount || 0;
             extRunnersAffected += (externalSearchResult.runnerResearch || []).length;
             extLatestQuery = externalSearchResult.searchQuery || extLatestQuery;
+            if (externalSearchResult.searchStatus === 'no_results') externalSearchResult = { ...externalSearchResult, searchStatus: 'error', errorCode: 'EMPTY_RESULTS', errorMessage: externalSearchResult.errorMessage || 'Search returned no usable sources' };
             extLatestStatus = externalSearchResult.searchStatus || extLatestStatus;
             if (externalSearchResult.searchStatus === 'success' && externalSearchResult.raceLevelNotes) extLatestSummary = externalSearchResult.raceLevelNotes.slice(0, 200);
             if (externalSearchResult.searchStatus === 'timeout') extSearchTimeouts++;
@@ -735,7 +744,7 @@ export async function runExchangeCycle(params) {
       featherlessConfidence = aiResult.confidence || aiResult.dataQuality || 0;
     } else if (callAI) {
       featherlessCalled++;
-      aiTrace = beginAiTrace({ raceKey:cluster.raceKey || cluster.eventId, provider:'featherless', model:featherlessSettings?.modelName, runnerCount:marketRunners.length });
+      aiTrace = beginAiTrace({ raceKey:cluster.raceKey || cluster.eventId, provider:'featherless', model:featherlessSettings?.modelName, runnerCount:marketRunners.length, selectionIds: marketRunners.map(runner => String(runner.betfairSelectionId || runner.selectionId || '')).filter(Boolean) });
       const flStart = Date.now();
       try {
         aiResult = await callAI(cluster, primaryMarket, marketRunners, racePack);
@@ -1021,7 +1030,7 @@ export async function runExchangeCycle(params) {
     blockers: o.blockers,
     decision: o.decision,
     externalSearchUsed: o.externalSearchUsed || false,
-    externalSearchStatus: o.externalSearchStatus || 'not_called',
+    externalSearchStatus: o.externalSearchStatus || 'not_requested',
     externalSourceCount: o.externalSourceCount || 0,
     externalDataQuality: o.externalDataQuality || 0,
     preSearchProbability: o.preSearchProbability ?? null,
@@ -1103,7 +1112,7 @@ export async function runExchangeCycle(params) {
       blocker: o.blockers?.[0] || 'Unknown',
       blockers: o.blockers,
       externalSearchUsed: o.externalSearchUsed || false,
-      externalSearchStatus: o.externalSearchStatus || 'not_called',
+      externalSearchStatus: o.externalSearchStatus || 'not_requested',
       externalSourceCount: o.externalSourceCount || 0,
       externalDataQuality: o.externalDataQuality || 0,
       preSearchProbability: o.preSearchProbability ?? null,
@@ -1138,6 +1147,8 @@ export async function runExchangeCycle(params) {
     const relatedRejections = rejectedRelatedMarkets(eventClusters[0], catalogueMarkets);
     selectedCoverage.rejectionReasons = [...selectedCoverage.rejectionReasons, ...relatedRejections];
     selectedCoverage.marketsRejectedBeforeEngine = selectedCoverage.rejectionReasons.length;
+    selectedCoverage.relatedMarkets = getAllMarketsInCluster(eventClusters[0]).map(market => { const rejected = selectedCoverage.rejectionReasons.find(item => String(item.marketId) === String(market.betfairMarketId || market.id)); return { marketId: market.betfairMarketId || market.id, marketType: detectMarketType(market), accepted: !rejected, rejectionReason: rejected?.reason || null }; });
+    selectedCoverage.h2hStatus = selectedCoverage.uniqueH2HMarketCount > 0 ? 'returned_and_supported' : catalogueMarkets.some(market => detectMarketType(market) === 'H2H') ? 'returned_but_filtered_out' : 'not_offered_by_betfair';
   }
 
   const diagnostics = {
@@ -1249,6 +1260,14 @@ export async function runExchangeCycle(params) {
     failedStage: null,
     engineError: null,
     debugScanMode,
+    globalMarketsLoaded: marketFeedDiagnostics.marketsInMemory,
+    globalMarketsOpen: marketFeedDiagnostics.marketsOpen,
+    globalMarketsWithRunners: marketFeedDiagnostics.marketsWithRunners,
+    globalMarketsWithPrices: marketFeedDiagnostics.marketsWithPriceData,
+    selectedRaceMarketsLoaded: markets.length,
+    selectedRaceMarketsInsideWindow: markets.filter(m => { const t = new Date(m.marketStartTime || m.startTime).getTime(); const s = (t - Date.now()) / 1000; return Number.isFinite(t) && s > (settings.defaultTimeWindowEndSeconds || 30) && s <= (settings.defaultTimeWindowStartSeconds || 500); }).length,
+    selectedRaceMarketsEligible: eligibleMarkets.length,
+    selectedRaceMarketsSentToEngine: eligibleMarkets.length,
     totalMarketsLoaded,
     openPreRaceMarkets,
     marketsInsideTimeWindow,
@@ -1290,6 +1309,12 @@ export async function runExchangeCycle(params) {
     openAICalled: extSearchCalls > 0,
     racesInsideWindow: schedule.racesInsideWindow,
     nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt,
+    featherlessRequested: featherlessCalled > 0,
+    featherlessStatus: aiObservability[aiObservability.length - 1]?.aiCallStatus || 'not_requested',
+    featherlessError: aiObservability[aiObservability.length - 1]?.aiErrorMessage || null,
+    openAIWebSearchRequested: extSearchCalls > 0,
+    openAIWebSearchStatus: extLatestStatus,
+    openAIWebSearchError: externalSearchPerEvent.find(item => item.errorMessage)?.errorMessage || null,
     raceAssessmentDiagnostics: {
       racePacksBuilt,
       featherlessCalled,

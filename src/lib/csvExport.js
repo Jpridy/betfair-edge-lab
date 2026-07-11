@@ -8,6 +8,9 @@ export function exportToCSV(filename, rows, columns) {
   }
 
   const cols = columns || Object.keys(rows[0]).filter(k => !k.startsWith('_'));
+  const requiresCycleIdentity = cols.some(col => col.key === 'cycleId') && cols.some(col => col.key === 'timestamp');
+  const validRows = requiresCycleIdentity ? rows.filter(row => String(row?.cycleId || '').trim() && String(row?.timestamp || '').trim()) : rows;
+  if (validRows.length === 0) { console.warn(`CSV export skipped for "${filename}" — no valid data rows`); return false; }
 
   const escape = (val) => {
     if (val === null || val === undefined) return '';
@@ -19,7 +22,7 @@ export function exportToCSV(filename, rows, columns) {
   };
 
   const header = cols.map(c => escape(c.label || c.key)).join(',');
-  const body = rows.map(row =>
+  const body = validRows.map(row =>
     cols.map(c => escape(row[c.key])).join(',')
   ).join('\n');
 

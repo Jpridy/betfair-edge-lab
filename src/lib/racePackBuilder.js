@@ -213,7 +213,7 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
   // ── External research context (compact) ──
   const externalResearchContext = {
     searchUsed: !!externalResearch,
-    searchStatus: externalResearch?.searchStatus || 'not_called',
+    searchStatus: externalResearch?.searchStatus || 'not_requested',
     sourceCount: externalResearch?.sourceCount || 0,
     dataQuality: externalResearch?.dataQuality || 0,
     runnersResearched: (externalResearch?.runnerResearch || []).length,
@@ -302,7 +302,7 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
 
     externalResearch: includeOpenAIResearch ? {
       openAiSearchUsed: !!externalResearch,
-      searchStatus: externalResearch?.searchStatus || 'not_called',
+      searchStatus: externalResearch?.searchStatus || 'not_requested',
       sourceCount: externalResearch?.sourceCount || 0,
       sources: (externalResearch?.sources || []).slice(0, 10),
       raceSummary: externalResearch?.raceLevelNotes || '',
@@ -322,7 +322,7 @@ export function buildRacePack(eventCluster, allRunners, allMarkets, settings, fe
       }),
     } : {
       openAiSearchUsed: false,
-      searchStatus: 'disabled',
+      searchStatus: 'not_requested',
       sourceCount: 0,
       sources: [],
       raceSummary: '',

@@ -32,7 +32,7 @@ export default function OpenAISearchDebugPanel() {
     decisionChanges = [],
     latestSearchQuery = '',
     latestSearchSummary = '',
-    latestSearchStatus = 'not_called',
+    latestSearchStatus = 'not_requested',
     perEventResults = [],
   } = searchDiag;
 
@@ -49,7 +49,7 @@ export default function OpenAISearchDebugPanel() {
   };
 
   const statusBadge = (status) => {
-    const map = { success: 'ok', timeout: 'warning', error: 'danger', no_results: 'warning', not_called: 'neutral', disabled: 'neutral' };
+    const map = { success: 'ok', timeout: 'warning', error: 'danger', requested: 'warning', not_requested: 'neutral', cache_hit_success: 'ok', cache_hit_empty: 'warning', cache_hit_error: 'danger' };
     return <StatusBadge status={map[status] || 'neutral'}>{status?.toUpperCase().replace(/_/g, ' ')}</StatusBadge>;
   };
 

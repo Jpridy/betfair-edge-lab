@@ -33,8 +33,9 @@ export function createSearchDiagnostics(overrides = {}) {
 }
 
 export function createSearchFailure(searchStatus, errorMessage) {
+  const canonicalStatus = searchStatus === 'not_called' || searchStatus === 'disabled' ? 'not_requested' : searchStatus === 'no_results' ? 'error' : searchStatus;
   return {
-    externalSearchResult: { searchStatus, sourceCount: 0, sources: [], runnerResearch: [], errorMessage },
+    externalSearchResult: { searchStatus: canonicalStatus, sourceCount: 0, sources: [], runnerResearch: [], errorCode: canonicalStatus === 'timeout' ? 'TIMEOUT' : 'SEARCH_ERROR', errorMessage },
     ...createSearchDiagnostics({ errorMessage }),
   };
 }

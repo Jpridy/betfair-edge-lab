@@ -1,3 +1,5 @@
+import { calculatePriceFeedStatus } from './marketFreshness';
+
 const MARKET_STATUSES = new Set(['OPEN', 'SUSPENDED', 'CLOSED', 'SETTLED']);
 const CONNECTION_STATES = new Set(['CONNECTED', 'CONNECTING', 'DISCONNECTED', 'ERROR', 'NOT_CONFIGURED']);
 
@@ -109,11 +111,8 @@ export function buildBetfairDiagnostics({ catalogueMarkets = [], marketBooks = [
   const stream = connectionState(connection.streamConnectionStatus || connection.streamStatus, connection.streamConfigured !== false);
   const lastStreamUpdateAt = timestamps.lastStreamUpdateAt || connection.lastStreamUpdateAt || null;
   const lastCatalogueRefreshAt = timestamps.lastCatalogueRefreshAt || connection.lastCatalogueRefreshAt || null;
-  let priceFeedStatus = 'UNAVAILABLE';
-  if (stream === 'ERROR') priceFeedStatus = 'ERROR';
-  else if (stream === 'CONNECTED' && !connection.streamSubscribed) priceFeedStatus = 'NOT_SUBSCRIBED';
-  else if (stream === 'CONNECTED' && lastStreamUpdateAt) priceFeedStatus = connection.priceFeedStale ? 'STALE' : 'LIVE';
-  else if (stream !== 'CONNECTED' && lastStreamUpdateAt) priceFeedStatus = 'STALE';
+  const authoritativePrice = calculatePriceFeedStatus(connection.lastPriceFetchAt || lastStreamUpdateAt, Date.now(), settings.dataFreshnessLimit || 30, stream === 'ERROR');
+  const priceFeedStatus = stream === 'CONNECTED' && !connection.streamSubscribed ? 'UNAVAILABLE' : authoritativePrice.priceFeedStatus;
   const snapshotStatus = api === 'CONNECTED' || stream === 'CONNECTED' ? 'LIVE' : valid.length ? 'CACHED' : 'EMPTY';
   const uniqueCatalogueMarketIds = Number(rawCounts.uniqueCatalogueMarketIds ?? new Set(array(catalogueMarkets).map(marketIdOf).filter(Boolean)).size);
   const snapshot = {
@@ -125,7 +124,7 @@ export function buildBetfairDiagnostics({ catalogueMarkets = [], marketBooks = [
     marketsWithRunners: runnerCounts.withRunners, marketsWithPriceData: priceCounts.withPriceData, missingPriceData: priceCounts.missingPriceData, insideTimeWindow,
     statusCounts, inPlayCounts, startTimeCounts, runnerCounts, priceCounts,
     connectionStates: { api, stream }, apiConnected: api, streamConnected: stream,
-    priceFeedStatus, snapshotStatus, snapshotCapturedAt: timestamps.snapshotCapturedAt || new Date().toISOString(),
+    priceFeedStatus, priceAgeSeconds: authoritativePrice.priceAgeSeconds, staleThresholdSeconds: authoritativePrice.staleThresholdSeconds, authoritativePriceTimestamp: authoritativePrice.authoritativePriceTimestamp, priceFeedStale: authoritativePrice.priceFeedStale, snapshotStatus, snapshotCapturedAt: timestamps.snapshotCapturedAt || new Date().toISOString(),
     timestamps: { lastStreamUpdateAt, lastCatalogueRefreshAt, lastMarketBookRefreshAt: timestamps.lastMarketBookRefreshAt || connection.lastPriceFetchAt || null },
     errors: { catalogue: connection.marketCatalogueError || null, marketBooks: connection.marketBookError || null, stream: connection.streamError || null, connection: connection.lastConnectionError || null },
     stream: { subscribedMarkets: Number(connection.subscribedMarkets || 0), marketsUpdated: Number(rawCounts.streamMarketsUpdated ?? streamMarkets.length) },

@@ -910,8 +910,9 @@ export function AppProvider({ children }) {
         const connectionState = {
           apiConnected: s.apiConnected,
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
-          lastStreamUpdateAt: conn.lastMarketSyncTime || null,
-          lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || conn.lastMarketSyncTime || null,
+          lastStreamUpdateAt: conn.lastStreamUpdateAt || null,
+          lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || null,
+          lastPriceUpdateAt: conn.lastStreamUpdateAt || conn.lastPriceFetchAt || null,
           marketCatalogueError: conn.marketCatalogueError || null,
           streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
           priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
@@ -932,15 +933,15 @@ export function AppProvider({ children }) {
             const resp = await base44.functions.invoke('featherlessAI', {
               racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
             });
-            if (resp.data?.error) throw new Error(resp.data.error);
-            return resp.data?.aiResult || null;
+            if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
+            return resp.data?.aiResult ? { ...resp.data.aiResult, aiTelemetry: resp.data.aiTelemetry } : null;
           } : null, // null callAI = market-only mode
           callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
             try {
               const resp = await base44.functions.invoke('openAIWebSearch', {
                 market: primaryMarket, runners: marketRunners, settings: s.featherlessSettings,
               });
-              if (resp.data?.error) throw new Error(resp.data.error);
+              if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
               return resp.data?.externalSearchResult || null;
             } catch (err) {
               return { searchStatus: 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: err.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
@@ -953,11 +954,11 @@ export function AppProvider({ children }) {
 
         // Create a debug-only BotCycle record — NO signals, NO orders, NO bankroll changes
         const cycleRecord = {
-          cycleNumber: cycleNum,
+          cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
           botMode: 'paper',
           startedAt: now,
           finishedAt: new Date().toISOString(),
-          status: 'completed',
+          status: 'completed', cycleOutcome: 'NO_BET', settlementStatus: 'not_applicable',
           debugOnly: true,
           scanStage: result.diagnostics.scanStage || 'completed',
           lastCompletedStage: result.diagnostics.lastCompletedStage || 'completed',
@@ -1013,7 +1014,7 @@ export function AppProvider({ children }) {
           } : null,
           noBetReason: result.diagnostics.noBetReason || 'Debug scan — no orders placed',
           scanSummary: {
-            marketsScanned: result.diagnostics.marketsScanned,
+            marketsScanned: result.diagnostics.marketsScanned, globalMarketsLoaded: result.diagnostics.globalMarketsLoaded, globalMarketsOpen: result.diagnostics.globalMarketsOpen, globalMarketsWithRunners: result.diagnostics.globalMarketsWithRunners, globalMarketsWithPrices: result.diagnostics.globalMarketsWithPrices, selectedRaceMarketsLoaded: result.diagnostics.selectedRaceMarketsLoaded, selectedRaceMarketsInsideWindow: result.diagnostics.selectedRaceMarketsInsideWindow, selectedRaceMarketsEligible: result.diagnostics.selectedRaceMarketsEligible, selectedRaceMarketsSentToEngine: result.diagnostics.selectedRaceMarketsSentToEngine,
             totalMarketsLoaded: result.diagnostics.totalMarketsLoaded ?? 0,
             openPreRaceMarkets: result.diagnostics.openPreRaceMarkets ?? 0,
             marketsInsideTimeWindow: result.diagnostics.marketsInsideTimeWindow ?? 0,
@@ -1076,7 +1077,7 @@ export function AppProvider({ children }) {
         const scanResult = {
           success: true,
           cycleCreated: true,
-          cycleNumber: cycleNum,
+          cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
           botCycleId: savedCycleId,
           marketsLoaded,
           eligibleMarkets: result.diagnostics.marketsSentToExchangeEngine ?? 0,
@@ -1100,7 +1101,7 @@ export function AppProvider({ children }) {
 
         // Create a failed BotCycle so Last Cycle doesn't stay "Never"
         const failedCycleRecord = {
-          cycleNumber: cycleNum,
+          cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
           botMode: 'paper',
           startedAt: now,
           finishedAt: new Date().toISOString(),
@@ -1140,7 +1141,7 @@ export function AppProvider({ children }) {
         const failResult = {
           success: false,
           cycleCreated: false,
-          cycleNumber: cycleNum,
+          cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
           marketsLoaded,
           eligibleMarkets: 0,
           opportunitiesGenerated: 0,
@@ -1175,7 +1176,7 @@ export function AppProvider({ children }) {
         requestedMarketTypes: ['WIN', 'PLACE', 'TO_BE_PLACED', 'MATCH_BET'],
       });
 
-      if (resp.data?.error) throw new Error(resp.data.error);
+      if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
 
       const catMarkets = resp.data?.markets || [];
       const catRunners = resp.data?.runners || [];
@@ -1413,7 +1414,7 @@ export function AppProvider({ children }) {
               : 'No markets loaded — click "Refresh Markets" or reconnect your Betfair session.';
 
       const cycleRecord = {
-        cycleNumber: cycleNum,
+        cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
         botMode: 'paper',
         startedAt: now,
         finishedAt: new Date().toISOString(),
@@ -1479,8 +1480,9 @@ export function AppProvider({ children }) {
         const connectionState = {
           apiConnected: s.apiConnected,
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
-          lastStreamUpdateAt: conn.lastMarketSyncTime || null,
-          lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || conn.lastMarketSyncTime || null,
+          lastStreamUpdateAt: conn.lastStreamUpdateAt || null,
+          lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || null,
+          lastPriceUpdateAt: conn.lastStreamUpdateAt || conn.lastPriceFetchAt || null,
           marketCatalogueError: conn.marketCatalogueError || null,
           streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
           priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
@@ -1499,8 +1501,8 @@ export function AppProvider({ children }) {
             const resp = await base44.functions.invoke('featherlessAI', {
               racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
             });
-            if (resp.data?.error) throw new Error(resp.data.error);
-            return resp.data?.aiResult || null;
+            if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
+            return resp.data?.aiResult ? { ...resp.data.aiResult, aiTelemetry: resp.data.aiTelemetry } : null;
           } : null, // null = market-only probabilities
           callExternalSearch: s.featherlessSettings?.externalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
             try {
@@ -1509,7 +1511,7 @@ export function AppProvider({ children }) {
                 runners: marketRunners,
                 settings: s.featherlessSettings,
               });
-              if (resp.data?.error) throw new Error(resp.data.error);
+              if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
               return resp.data?.externalSearchResult || null;
             } catch (err) {
               notes.push(`External search error: ${err.message}`);
@@ -1660,7 +1662,7 @@ export function AppProvider({ children }) {
 
     setBotState(prev => ({
       ...prev,
-      cycleNumber: cycleNum,
+      cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
       lastCycleTime: now,
       stepStatuses: steps,
       signalsToday: prev.signalsToday + signalsCreated,
@@ -1676,11 +1678,11 @@ export function AppProvider({ children }) {
     const oldBestCandidate = !useExchange ? (diagnostics?.bestCandidate || null) : null;
 
     const cycleRecord = {
-      cycleNumber: cycleNum,
+      cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
       botMode: 'paper',
       startedAt: now,
       finishedAt: new Date().toISOString(),
-      status: errors > 0 ? 'failed' : ordersBlocked > 0 ? 'blocked' : 'completed',
+      status: errors > 0 ? 'failed' : ordersBlocked > 0 ? 'blocked' : 'completed', cycleOutcome: ordersCreated > 0 ? 'BET' : 'NO_BET', settlementStatus: ordersCreated > 0 ? 'awaiting_result' : 'not_applicable',
       scanStage: exchangeDiag?.scanStage || 'completed',
       lastCompletedStage: exchangeDiag?.lastCompletedStage || 'completed',
       failedStage: exchangeDiag?.failedStage || null,
@@ -1766,7 +1768,7 @@ export function AppProvider({ children }) {
         : oldBestCandidate,
       noBetReason: ordersCreated > 0 ? null : (cycleNoBetReason || (useExchange ? exchangeDiag.noBetReason : diagnostics?.noBetReason) || null),
       scanSummary: useExchange ? {
-        marketsScanned: exchangeDiag.marketsScanned,
+        marketsScanned: exchangeDiag.marketsScanned, globalMarketsLoaded: exchangeDiag.globalMarketsLoaded, globalMarketsOpen: exchangeDiag.globalMarketsOpen, globalMarketsWithRunners: exchangeDiag.globalMarketsWithRunners, globalMarketsWithPrices: exchangeDiag.globalMarketsWithPrices, selectedRaceMarketsLoaded: exchangeDiag.selectedRaceMarketsLoaded, selectedRaceMarketsInsideWindow: exchangeDiag.selectedRaceMarketsInsideWindow, selectedRaceMarketsEligible: exchangeDiag.selectedRaceMarketsEligible, selectedRaceMarketsSentToEngine: exchangeDiag.selectedRaceMarketsSentToEngine,
         totalMarketsLoaded: exchangeDiag.totalMarketsLoaded ?? 0,
         openPreRaceMarkets: exchangeDiag.openPreRaceMarkets ?? 0,
         marketsInsideTimeWindow: exchangeDiag.marketsInsideTimeWindow ?? 0,
@@ -1923,8 +1925,9 @@ export function AppProvider({ children }) {
       const connectionState = {
         apiConnected: s.apiConnected,
         streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
-        lastStreamUpdateAt: conn.lastMarketSyncTime || null,
-        lastCatalogueRefreshAt: conn.lastMarketSyncTime || null,
+        lastStreamUpdateAt: conn.lastStreamUpdateAt || null,
+        lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || null,
+        lastPriceUpdateAt: conn.lastStreamUpdateAt || conn.lastPriceFetchAt || null,
         marketCatalogueError: null,
         streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
         priceFeedStale: conn.dataFresh === false,
@@ -1945,8 +1948,8 @@ export function AppProvider({ children }) {
           const resp = await base44.functions.invoke('featherlessAI', {
             racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
           });
-          if (resp.data?.error) throw new Error(resp.data.error);
-          return resp.data?.aiResult || null;
+          if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
+          return resp.data?.aiResult ? { ...resp.data.aiResult, aiTelemetry: resp.data.aiTelemetry } : null;
         } : null,
         // Proof mode can use external search independently (paperProofExternalSearchEnabled)
         callExternalSearch: s.featherlessSettings?.paperProofExternalSearchEnabled ? async (cluster, primaryMarket, marketRunners) => {
@@ -1954,7 +1957,7 @@ export function AppProvider({ children }) {
             const resp = await base44.functions.invoke('openAIWebSearch', {
               market: primaryMarket, runners: marketRunners, settings: s.featherlessSettings,
             });
-            if (resp.data?.error) throw new Error(resp.data.error);
+            if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
             return resp.data?.externalSearchResult || null;
           } catch (err) {
             return { searchStatus: 'error', sourceCount: 0, sources: [], runnerResearch: [], raceLevelNotes: '', dataQuality: 0, errorMessage: err.message, searchQuery: '', searchedAt: new Date().toISOString(), searchProvider: 'openai_web_search' };
@@ -2057,11 +2060,11 @@ export function AppProvider({ children }) {
       const cycleNum = s.botState.cycleNumber + 1;
       const now = new Date().toISOString();
       const cycleRecord = {
-        cycleNumber: cycleNum,
+        cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
         botMode: 'paper_proof',
         startedAt: now,
         finishedAt: new Date().toISOString(),
-        status: 'completed',
+        status: 'completed', cycleOutcome: paperOrderCreated ? 'BET' : 'NO_BET', settlementStatus: paperOrderCreated ? (settlementStatus || 'awaiting_result') : 'not_applicable',
         paperProofMode: true,
         proofDefaultsApplied: true,
         proofFallbackUsed,
@@ -2239,7 +2242,7 @@ export function AppProvider({ children }) {
           requestedMarketTypes: ['WIN', 'PLACE', 'TO_BE_PLACED', 'MATCH_BET'],
         });
         if (cancelled) return;
-        if (resp.data?.error) throw new Error(resp.data.error);
+        if (resp.data?.error) { const error = new Error(resp.data.error); error.aiTelemetry = resp.data.aiTelemetry; throw error; }
         const catMarkets = resp.data?.markets || [];
         const catRunners = resp.data?.runners || [];
         setBetfairRawDiagnostics(prev => ({

@@ -43,23 +43,22 @@ export function getCachedExternalSearch(eventId, eventName, marketStartTime, mar
     _cache.delete(key);
     return null;
   }
-  return entry.result;
+  return { ...entry.result, cacheStatus: entry.cacheStatus, cacheCreatedAt: entry.createdAt, cacheExpiresAt: entry.expiresAt };
 }
 
 /**
  * Store an external search result in the cache.
  */
 export function setCachedExternalSearch(eventId, eventName, marketStartTime, marketRunners, result, ttlMs = DEFAULT_TTL_MS) {
+  if (result?.searchStatus !== 'success' || Number(result?.sourceCount || 0) <= 0) return false;
   const key = buildCacheKey(eventId, eventName, marketStartTime, marketRunners);
   if (_cache.size >= MAX_ENTRIES) {
     const oldestKey = _cache.keys().next().value;
     if (oldestKey) _cache.delete(oldestKey);
   }
-  _cache.set(key, {
-    result,
-    timestamp: Date.now(),
-    ttl: ttlMs,
-  });
+  const createdAt = new Date().toISOString();
+  _cache.set(key, { result, timestamp: Date.now(), ttl: ttlMs, cacheStatus: 'cache_hit_success', createdAt, expiresAt: new Date(Date.now() + ttlMs).toISOString(), sourceCount: result.sourceCount || 0, errorCode: null, errorMessage: null });
+  return true;
 }
 
 /**

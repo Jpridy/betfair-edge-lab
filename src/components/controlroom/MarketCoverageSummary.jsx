@@ -14,6 +14,8 @@ export default function MarketCoverageSummary({ coverage }) {
       <Metric label="Runners" value={coverage.totalRunnerCount || 0} />
     </div>
     <div className="text-[10px] text-muted-foreground">{coverage.uniquePlaceMarketCount ? 'PLACE returned by Betfair.' : 'PLACE unavailable on Betfair for this race.'} {coverage.uniqueH2HMarketCount ? 'H2H returned by Betfair.' : 'H2H unavailable on Betfair for this race.'}</div>
+    <div className="text-[10px] text-muted-foreground">H2H: {(coverage.h2hStatus || 'not_offered_by_betfair').replaceAll('_', ' ')}</div>
+    {(coverage.relatedMarkets || []).map(market => <div key={market.marketId} className={market.accepted ? 'text-[10px] text-success' : 'text-[10px] text-warning'}>{market.marketId} · {market.marketType} · {market.accepted ? 'accepted' : `rejected — ${market.rejectionReason}`}</div>)}
     {filtered > 0 && <div className="text-[10px] text-warning">Returned but filtered by this app: {coverage.rejectionReasons.map(item=>`${item.marketId}: ${item.reason}`).join('; ')}</div>}
   </div>;
 }
