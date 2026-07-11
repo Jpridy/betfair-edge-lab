@@ -1,5 +1,12 @@
 // Generic CSV export utility for any array of objects.
 
+export function rowsToCSV(rows = [], columns) {
+  const cols = columns || (rows[0] ? Object.keys(rows[0]).filter(k => !k.startsWith('_')).map(key => ({key,label:key})) : []);
+  const escape = val => { const str = val == null ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val)); return /[,"\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str; };
+  const header = cols.map(c => escape(c.label || c.key)).join(',');
+  return header + '\n' + rows.map(row => cols.map(c => escape(row[c.key])).join(',')).join('\n');
+}
+
 export function exportToCSV(filename, rows, columns) {
   if (!rows || rows.length === 0) {
     // Don't create blank rows — return early with a notification
@@ -7,7 +14,7 @@ export function exportToCSV(filename, rows, columns) {
     return false;
   }
 
-  const cols = columns || Object.keys(rows[0]).filter(k => !k.startsWith('_'));
+  const cols = columns || Object.keys(rows[0]).filter(k => !k.startsWith('_')).map(key => ({key,label:key}));
   const requiresCycleIdentity = cols.some(col => col.key === 'cycleId') && cols.some(col => col.key === 'timestamp');
   const validRows = requiresCycleIdentity ? rows.filter(row => String(row?.cycleId || '').trim() && String(row?.timestamp || '').trim()) : rows;
   if (validRows.length === 0) { console.warn(`CSV export skipped for "${filename}" — no valid data rows`); return false; }
