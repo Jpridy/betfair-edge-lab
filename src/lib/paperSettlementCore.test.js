@@ -13,7 +13,7 @@ describe('paper settlement worker core', () => {
   it('calculates BACK loser as negative stake', () => expect(calculateOrderGross(back, ['99']).grossProfit).toBe(-2));
   it('calculates LAY winner liability loss', () => expect(calculateOrderGross(lay, ['11']).grossProfit).toBe(-6));
   it('calculates LAY loser stake profit', () => expect(calculateOrderGross(lay, ['10']).grossProfit).toBe(2));
-  it('charges commission only on positive market gross', () => { expect(allocateMarketCommission([{grossProfit:4},{grossProfit:-2}],0.05).reduce((s,x)=>s+x.commission,0)).toBeCloseTo(.1); expect(allocateMarketCommission([{grossProfit:1},{grossProfit:-2}],0.05).reduce((s,x)=>s+x.commission,0)).toBe(0); });
+  it('charges commission only on positive market gross', () => { const positive=allocateMarketCommission([{grossProfit:4},{grossProfit:-2}],0.05); expect(positive.reduce((s,x)=>s+x.commission,0)).toBeCloseTo(.1); expect(positive[1].commission).toBe(0); expect(allocateMarketCommission([{grossProfit:1},{grossProfit:-2}],0.05).reduce((s,x)=>s+x.commission,0)).toBe(0); });
   it('keeps open markets awaiting', () => expect(settleMarketOrders([back], {...closed,status:'OPEN'})[0].settlementStatus).toBe('awaiting_result'));
   it('settles closed markets', () => expect(settleMarketOrders([back], closed)[0].resultSource).toBe('BETFAIR_MARKET_BOOK'));
   it('voids and refunds void markets', () => expect(settleMarketOrders([back], {...closed,voided:true})[0].netProfit).toBe(0));

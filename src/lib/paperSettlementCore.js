@@ -22,11 +22,15 @@ export function calculateOrderGross(order, winnerSelectionIds) {
 export function allocateMarketCommission(calculations, rate) {
   const totalGross = calculations.reduce((sum, item) => sum + item.grossProfit, 0);
   const marketCommission = totalGross > 0 ? totalGross * normalizeCommissionRate(rate) : 0;
-  const positiveGross = calculations.reduce((sum, item) => sum + Math.max(0, item.grossProfit), 0);
+  const positiveIndexes = calculations.map((item, index) => item.grossProfit > 0 ? index : -1).filter(index => index >= 0);
+  const positiveGross = positiveIndexes.reduce((sum, index) => sum + calculations[index].grossProfit, 0);
+  let allocated = 0;
   return calculations.map((item, index) => {
-    const commission = marketCommission === 0 ? 0 : index === calculations.length - 1
-      ? marketCommission - calculations.slice(0, -1).reduce((sum, previous) => sum + (positiveGross > 0 ? marketCommission * Math.max(0, previous.grossProfit) / positiveGross : 0), 0)
-      : positiveGross > 0 ? marketCommission * Math.max(0, item.grossProfit) / positiveGross : 0;
+    let commission = 0;
+    if (marketCommission > 0 && item.grossProfit > 0) {
+      commission = index === positiveIndexes.at(-1) ? marketCommission - allocated : marketCommission * item.grossProfit / positiveGross;
+      allocated += commission;
+    }
     return { ...item, commission, netProfit: item.grossProfit - commission, marketGrossProfit: totalGross, marketCommission };
   });
 }

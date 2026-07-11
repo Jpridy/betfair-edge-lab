@@ -1805,8 +1805,9 @@ export function AppProvider({ children }) {
     if (riskBlockedReason) {
       addToBotActivity('Risk blocked', riskBlockedReason);
     }
-    const settlementResponse = await base44.functions.invoke('runPaperSettlementWorker', { trigger: 'bot_cycle' });
-    setSettlementReport(settlementResponse.data);
+    base44.functions.invoke('runPaperSettlementWorker', { trigger: 'bot_cycle' })
+      .then(response => setSettlementReport(response.data))
+      .catch(error => setSettlementReport({ checkedAt: new Date().toISOString(), errors: 1, errorMessages: [error.message] }));
     } finally {
       cycleInProgressRef.current = false;
     }

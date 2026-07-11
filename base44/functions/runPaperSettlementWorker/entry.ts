@@ -63,11 +63,15 @@ function grossFor(order, winners) {
 function allocateCommission(calculations, rate) {
   const totalGross = calculations.reduce((sum, item) => sum + item.grossProfit, 0);
   const marketCommission = totalGross > 0 ? totalGross * rate : 0;
-  const positiveTotal = calculations.reduce((sum, item) => sum + Math.max(0, item.grossProfit), 0);
+  const positiveIndexes = calculations.map((item, index) => item.grossProfit > 0 ? index : -1).filter(index => index >= 0);
+  const positiveTotal = positiveIndexes.reduce((sum, index) => sum + calculations[index].grossProfit, 0);
   let allocated = 0;
   return calculations.map((item, index) => {
-    const commission = marketCommission === 0 ? 0 : index === calculations.length - 1 ? marketCommission - allocated : marketCommission * Math.max(0, item.grossProfit) / positiveTotal;
-    allocated += commission;
+    let commission = 0;
+    if (marketCommission > 0 && item.grossProfit > 0) {
+      commission = index === positiveIndexes.at(-1) ? marketCommission - allocated : marketCommission * item.grossProfit / positiveTotal;
+      allocated += commission;
+    }
     return { ...item, commission, netProfit: item.grossProfit - commission, marketGrossProfit: totalGross, marketCommission };
   });
 }
@@ -123,16 +127,18 @@ Deno.serve(async (req) => {
     const groups = new Map(); for (const order of valid) { if (!groups.has(order.normalizedMarketId)) groups.set(order.normalizedMarketId, []); groups.get(order.normalizedMarketId).push(order); }
     let books = [], fetchError = null;
     if (groups.size) { try { books = await fetchMarketBooks([...groups.keys()]); } catch (error) { fetchError = error.message; errorMessages.push(error.message); } }
-    const updates = []; let marketsStillOpen=0, marketsClosed=0, ordersSettled=0, ordersVoided=0;
+    const updates = []; const marketLookups = []; let marketsStillOpen=0, marketsClosed=0, ordersSettled=0, ordersVoided=0;
     for (const [marketId, marketOrders] of groups) {
       let book = books.find(item => normalizeMarketId(item.marketId) === marketId);
       if (!book && fetchError) { try { book = await fallbackLookup(base44, marketOrders, marketId); } catch (error) { errorMessages.push(error.message); } }
       if (!book) { for (const order of marketOrders) { const reason=fetchError || 'BETFAIR_MARKET_RESULT_NOT_AVAILABLE'; unresolved.push({orderId:order.id,runnerName:order.runnerName,marketId,reason}); updates.push({id:order.id,betfairMarketId:order.betfairMarketId,normalizedMarketId:marketId,normalizedSelectionId:order.normalizedSelectionId,raceStartTime:order.raceStartTime,normalizedCommissionRate:order.normalizedCommissionRate,settlementStatus:'awaiting_result',settlementAttempts:(order.settlementAttempts||0)+1,settlementError:reason,settlementLastCheckedAt:now.toISOString(),settlementWorkerRunId:runId,marketStatusAtLastCheck:'UNAVAILABLE'}); } continue; }
       const status=String(book.status || '').toUpperCase();
-      if (OPEN_STATES.has(status) || book.inplay) { marketsStillOpen++; for (const order of marketOrders) updates.push({id:order.id,betfairMarketId:order.betfairMarketId,normalizedMarketId:marketId,normalizedSelectionId:order.normalizedSelectionId,raceStartTime:order.raceStartTime,normalizedCommissionRate:order.normalizedCommissionRate,settlementStatus:'awaiting_result',settlementAttempts:(order.settlementAttempts||0)+1,settlementError:null,settlementLastCheckedAt:now.toISOString(),settlementWorkerRunId:runId,marketStatusAtLastCheck:status}); continue; }
-      marketsClosed++;
       const runnerResults=(book.runners || []).map(runner => ({selectionId:normalizeSelectionId(runner.selectionId),status:String(runner.status || '').toUpperCase(),adjustmentFactor:runner.adjustmentFactor ?? null}));
-      const winners=runnerResults.filter(runner=>runner.status==='WINNER').map(runner=>runner.selectionId);
+      const lookupWinners=runnerResults.filter(runner=>runner.status==='WINNER').map(runner=>runner.selectionId);
+      marketLookups.push({ marketId, status, inPlay:book.inplay === true, winnerSelectionIds:lookupWinners, runnerResults });
+      if (OPEN_STATES.has(status) || (book.inplay && !['CLOSED','SETTLED'].includes(status))) { marketsStillOpen++; for (const order of marketOrders) updates.push({id:order.id,betfairMarketId:order.betfairMarketId,normalizedMarketId:marketId,normalizedSelectionId:order.normalizedSelectionId,raceStartTime:order.raceStartTime,normalizedCommissionRate:order.normalizedCommissionRate,settlementStatus:'awaiting_result',settlementAttempts:(order.settlementAttempts||0)+1,settlementError:null,settlementLastCheckedAt:now.toISOString(),settlementWorkerRunId:runId,marketStatusAtLastCheck:status}); continue; }
+      marketsClosed++;
+      const winners=lookupWinners;
       const voided=book.voided === true || runnerResults.length > 0 && runnerResults.every(runner=>['REMOVED','VOIDED'].includes(runner.status));
       if (voided) { for (const order of marketOrders) { ordersVoided++; updates.push({id:order.id,status:'voided',settlementStatus:'voided',result:'void',grossProfit:0,commission:0,netProfit:0,netPL:0,voided:true,voidReason:'BETFAIR_MARKET_VOIDED',settledAt:now.toISOString(),settled_date:now.toISOString(),resultSource:'BETFAIR_MARKET_BOOK',resultConfidence:1,settlementAttempts:(order.settlementAttempts||0)+1,settlementError:null,settlementLastCheckedAt:now.toISOString(),settlementWorkerRunId:runId,marketStatusAtLastCheck:status,marketStatusAtSettlement:status,normalizedMarketId:marketId,normalizedSelectionId:order.normalizedSelectionId,raceStartTime:order.raceStartTime,normalizedCommissionRate:order.normalizedCommissionRate}); } continue; }
       if (!winners.length) { for (const order of marketOrders) { const reason='CLOSED_MARKET_WITHOUT_WINNER'; unresolved.push({orderId:order.id,runnerName:order.runnerName,marketId,reason}); updates.push({id:order.id,settlementStatus:'awaiting_result',settlementAttempts:(order.settlementAttempts||0)+1,settlementError:reason,settlementLastCheckedAt:now.toISOString(),settlementWorkerRunId:runId,marketStatusAtLastCheck:status,normalizedMarketId:marketId,normalizedSelectionId:order.normalizedSelectionId,raceStartTime:order.raceStartTime,normalizedCommissionRate:order.normalizedCommissionRate}); } continue; }
@@ -148,6 +154,6 @@ Deno.serve(async (req) => {
       const safeUpdates=updates.filter(update=>{const existing=currentById.get(update.id);return existing && existing.settlementStatus!=='settled' && !existing.settledAt && !['won','lost'].includes(existing.result);});
       if (safeUpdates.length) await base44.asServiceRole.entities.PaperOrder.bulkUpdate(safeUpdates);
     }
-    return Response.json({ runId, trigger:body.trigger || 'manual', checkedAt:now.toISOString(), ordersChecked:candidates.length, marketsChecked:groups.size, marketsStillOpen, marketsClosed, ordersSettled, ordersVoided, ordersUnresolved:unresolved.length + missing.length, errors:errorMessages.length, unresolved:[...missing.map(order=>({orderId:order.id,runnerName:order.runnerName,reason:'MISSING_MARKET_ID'})),...unresolved], errorMessages });
+    return Response.json({ runId, trigger:body.trigger || 'manual', checkedAt:now.toISOString(), ordersChecked:candidates.length, marketsChecked:groups.size, marketsStillOpen, marketsClosed, ordersSettled, ordersVoided, ordersUnresolved:unresolved.length + missing.length, errors:errorMessages.length, marketLookups, unresolved:[...missing.map(order=>({orderId:order.id,runnerName:order.runnerName,reason:'MISSING_MARKET_ID'})),...unresolved], errorMessages });
   } catch (error) { console.error(error); return Response.json({ error:error.message, checkedAt:new Date().toISOString() }, { status:500 }); }
 });
