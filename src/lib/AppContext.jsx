@@ -11,10 +11,10 @@ import { computeCalibration } from './calibration';
 import { fmtPct } from './candidateScoring';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
 import { runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
-import { settleOrderWithResult, lapseUnmatchedOrder } from '@/lib/settlementService';
+import { lapseUnmatchedOrder } from '@/lib/settlementService';
 import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
 import { buildProofOpportunity } from '@/lib/paperProofScanner';
-import { runSettlementCheck } from '@/lib/settlementWatcher';
+
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
 import { safeEntityWrite, generateIdempotencyKey } from '@/lib/safePersistence';
@@ -229,6 +229,8 @@ export function AppProvider({ children }) {
   const [lastDebugScanResult, setLastDebugScanResult] = useState(null);
   const [lastDebugScanError, setLastDebugScanError] = useState(null);
   const [lastDebugScanAt, setLastDebugScanAt] = useState(null);
+  const [settlementReport, setSettlementReport] = useState(null);
+  const [settlementRunning, setSettlementRunning] = useState(false);
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
@@ -282,6 +284,12 @@ export function AppProvider({ children }) {
         setBacktestRuns(runs);
         setStrategyStats(stats);
         setAiDecisions(aiDecls);
+        base44.functions.invoke('runPaperSettlementWorker', { trigger: 'app_load' }).then(async response => {
+          if (cancelled) return;
+          setSettlementReport(response.data);
+          const refreshed = await base44.entities.PaperOrder.filter({}, '-created_date', 200);
+          if (!cancelled) setPaperOrders(refreshed);
+        }).catch(error => { if (!cancelled) setSettlementReport({ checkedAt: new Date().toISOString(), errors: 1, errorMessages: [error.message] }); });
         // Load persisted settings — strip DB metadata, merge with defaults so new fields are never lost
         if (appSettingsRecs && appSettingsRecs.length > 0) {
           const rec = appSettingsRecs[0];
@@ -1400,6 +1408,7 @@ export function AppProvider({ children }) {
       safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', localBcId), entityApi: base44.entities.BotCycle });
       setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
       addAuditLog(`Bot Cycle #${cycleNum} — No Markets`, 'system', 'warning', noMarketsReason);
+      await base44.functions.invoke('runPaperSettlementWorker', { trigger: 'bot_cycle' });
       return;
     }
 
@@ -1796,6 +1805,8 @@ export function AppProvider({ children }) {
     if (riskBlockedReason) {
       addToBotActivity('Risk blocked', riskBlockedReason);
     }
+    const settlementResponse = await base44.functions.invoke('runPaperSettlementWorker', { trigger: 'bot_cycle' });
+    setSettlementReport(settlementResponse.data);
     } finally {
       cycleInProgressRef.current = false;
     }
@@ -2105,57 +2116,23 @@ export function AppProvider({ children }) {
     }
   };
 
-  // ── Paper Proof Mode: Run Settlement Check ──
+  // ── Independent database settlement worker ──
   const runSettlementCheckNow = async () => {
-    const s = stateRef.current;
+    setSettlementRunning(true);
     try {
-      const result = await runSettlementCheck({
-        paperOrders: s.paperOrders,
-        markets: s.markets,
-        runners: s.runners,
-        settings: s.settings,
-        updateOrder: async (orderId, settledOrder) => {
-          setPaperOrders(prev => prev.map(o => o.id === orderId ? settledOrder : o));
-          safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...settledOrder, id: orderId }, entityApi: base44.entities.PaperOrder });
-          if (settledOrder.netProfit != null) {
-            setBankrollStats(prev => ({
-              ...prev,
-              bankroll: prev.bankroll + settledOrder.netProfit,
-              todayPL: prev.todayPL + settledOrder.netProfit,
-              totalPL: prev.totalPL + settledOrder.netProfit,
-              available: prev.available + settledOrder.netProfit,
-              commissionPaid: prev.commissionPaid + (settledOrder.commission || 0),
-              wins: settledOrder.result === 'won' ? prev.wins + 1 : prev.wins,
-              losses: settledOrder.result === 'lost' ? prev.losses + 1 : prev.losses,
-            }));
-          }
-        },
-        invokeFunction: (name, payload) => base44.functions.invoke(name, payload),
-        addAuditLog,
-      });
-      return result;
-    } catch (err) {
-      addAuditLog('Settlement Check Error', 'system', 'error', `Settlement check error: ${err.message}`);
-      return { error: err.message };
+      const response = await base44.functions.invoke('runPaperSettlementWorker', { trigger: 'manual' });
+      setSettlementReport(response.data);
+      const refreshed = await base44.entities.PaperOrder.filter({}, '-created_date', 200);
+      setPaperOrders(refreshed);
+      return response.data;
+    } catch (error) {
+      const report = { checkedAt: new Date().toISOString(), errors: 1, errorMessages: [error.message] };
+      setSettlementReport(report);
+      return report;
+    } finally {
+      setSettlementRunning(false);
     }
   };
-
-  // ── Settlement Watcher — runs every 30s when there are awaiting_result orders ──
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const s = stateRef.current;
-      const hasAwaiting = s.paperOrders.some(o =>
-        o.status === 'awaiting_result' ||
-        (o.result === 'pending' && o.status !== 'settled' && o.status !== 'voided' && o.status !== 'lapsed' && o.status !== 'cancelled' && o.status !== 'rejected')
-      );
-      if (!hasAwaiting) return;
-      if (cycleInProgressRef.current) return;
-      try {
-        await runSettlementCheckNow();
-      } catch (_) {}
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   // ── Bot Cycle Interval ──
   useEffect(() => {
@@ -2346,67 +2323,10 @@ export function AppProvider({ children }) {
           addAuditLog('Stream Error', 'api', 'warning', message);
         }
       },
-      onMarketSettled: ({ marketId, winners, placedRunners, venue, marketName, placeTerms }) => {
-        if (cancelled) return;
-        const s = stateRef.current;
-
-        // If no winners provided, we cannot settle — mark orders as awaiting_result
-        const hasWinners = winners && winners.length > 0;
-
-        for (const order of s.paperOrders) {
-          if (order.result !== 'pending') continue;
-          const orderMarketId = order.betfairMarketId || order.marketId;
-          if (orderMarketId !== marketId) continue;
-
-          // Unmatched orders lapse at market close
-          if (order.status !== 'matched' && order.status !== 'partially_matched') {
-            const lapsed = lapseUnmatchedOrder(order, `Market closed — order was not matched (${venue || ''} ${marketName || ''})`);
-            setPaperOrders(prev => prev.map(o => o.id === order.id ? lapsed : o));
-            safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...lapsed, id: order.id }, entityApi: base44.entities.PaperOrder });
-            addAuditLog('Paper Order Lapsed', 'order', 'info', `${order.runnerName} — unmatched at market close (${venue || ''} ${marketName || ''})`);
-            continue;
-          }
-
-          // If no winners, set to awaiting_result — do NOT guess
-          if (!hasWinners) {
-            const awaiting = {
-              ...order,
-              status: 'awaiting_result',
-              settlementStatus: 'result_unknown',
-              settledAt: new Date().toISOString(),
-              netProfit: null,
-              exitReason: 'Result unknown — no winner data from stream',
-              resultSource: 'betfair_stream',
-              resultConfidence: 'unknown',
-            };
-            setPaperOrders(prev => prev.map(o => o.id === order.id ? awaiting : o));
-            safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...awaiting, id: order.id }, entityApi: base44.entities.PaperOrder });
-            addAuditLog('Order Awaiting Result', 'order', 'warning', `${order.runnerName} — no winner data available (${venue || ''} ${marketName || ''})`);
-            continue;
-          }
-
-          // Matched orders settle using real race results via settlement service
-          const settled = settleOrderWithResult(order, { venue, marketName }, s.settings, {
-            winners,
-            placedRunners: placedRunners || [],
-            placeTerms: placeTerms || null,
-            resultSource: 'betfair_stream',
-            marketType: order.marketType || null,
-          });
-          setPaperOrders(prev => prev.map(o => o.id === order.id ? settled : o));
-          safeEntityWrite({ entityName: 'PaperOrder', operation: 'update', payload: { ...settled, id: order.id }, entityApi: base44.entities.PaperOrder });
-          setBankrollStats(prev => ({
-            ...prev,
-            bankroll: prev.bankroll + settled.netProfit,
-            todayPL: prev.todayPL + settled.netProfit,
-            totalPL: prev.totalPL + settled.netProfit,
-            available: prev.available + settled.netProfit,
-            commissionPaid: prev.commissionPaid + (settled.commission || 0),
-            wins: settled.result === 'won' ? prev.wins + 1 : prev.wins,
-            losses: settled.result === 'lost' ? prev.losses + 1 : prev.losses,
-          }));
-          addAuditLog('Paper Order Settled', 'order', 'info', `${order.runnerName} ${settled.result.toUpperCase()} — Net $${settled.netProfit.toFixed(2)} (${venue || ''} ${marketName || ''})`);
-        }
+      onMarketSettled: () => {
+        base44.functions.invoke('runPaperSettlementWorker', { trigger: 'stream_notification' })
+          .then(response => setSettlementReport(response.data))
+          .catch(error => setSettlementReport({ checkedAt: new Date().toISOString(), errors: 1, errorMessages: [error.message] }));
       },
     }).then(({ client }) => {
       if (cancelled) {
@@ -2460,8 +2380,8 @@ export function AppProvider({ children }) {
     // Bot
     botState, botSettings, updateBotSettings, botCycles, clearBotCycles, strategyStats, botActivity,
     startBot, pauseBot, stopBot, runManualScan, runDebugScanCycle, addToBotActivity,
-    // Paper Proof Mode
-    applyPaperProofDefaults, runProofScan, runSettlementCheckNow,
+    // Paper Proof Mode and independent settlement
+    applyPaperProofDefaults, runProofScan, runSettlementCheckNow, settlementReport, settlementRunning,
     // Strategy Library
     strategyLibrary,
     // Emergency controls

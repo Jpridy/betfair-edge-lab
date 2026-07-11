@@ -1,0 +1,47 @@
+{
+  "name": "Paper Settlement Worker",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "Australia/Brisbane",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "paper_settlement_worker",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_worker": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runPaperSettlementWorker",
+            "args": {
+              "trigger": "scheduled"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Settle paper orders",
+            "description": "Check exact Betfair markets"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Checks unsettled paper orders directly against exact Betfair market results every five minutes."
+}

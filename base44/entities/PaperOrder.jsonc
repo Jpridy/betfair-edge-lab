@@ -11,7 +11,13 @@
     "betfairMarketId": {
       "type": "string"
     },
+    "normalizedMarketId": {
+      "type": "string"
+    },
     "selectionId": {
+      "type": "string"
+    },
+    "normalizedSelectionId": {
       "type": "string"
     },
     "runnerId": {
@@ -35,6 +41,9 @@
     "marketStartTime": {
       "type": "string"
     },
+    "raceStartTime": {
+      "type": "string"
+    },
     "eventName": {
       "type": "string"
     },
@@ -55,12 +64,7 @@
       ]
     },
     "orderType": {
-      "type": "string",
-      "enum": [
-        "LIMIT",
-        "LIMIT_ON_CLOSE",
-        "MARKET_ON_CLOSE"
-      ]
+      "type": "string"
     },
     "size": {
       "type": "number"
@@ -69,12 +73,7 @@
       "type": "number"
     },
     "persistenceType": {
-      "type": "string",
-      "enum": [
-        "LAPSE",
-        "PERSIST",
-        "MARKET_ON_CLOSE"
-      ]
+      "type": "string"
     },
     "customerRef": {
       "type": "string"
@@ -143,43 +142,16 @@
       "type": "string"
     },
     "status": {
-      "type": "string",
-      "enum": [
-        "pending",
-        "execution_complete",
-        "executable",
-        "matched",
-        "partially_matched",
-        "unmatched",
-        "cancelled",
-        "lapsed",
-        "voided",
-        "settled",
-        "awaiting_result",
-        "rejected",
-        "error"
-      ]
+      "type": "string"
     },
     "settlementStatus": {
-      "type": "string",
-      "enum": [
-        "not_applicable",
-        "awaiting_result",
-        "result_unknown",
-        "settled",
-        "voided"
-      ]
+      "type": "string"
     },
     "resultSource": {
       "type": "string"
     },
     "resultConfidence": {
-      "type": "string",
-      "enum": [
-        "confirmed",
-        "probable",
-        "unknown"
-      ]
+      "type": "number"
     },
     "settledAt": {
       "type": "string"
@@ -187,11 +159,17 @@
     "marketStatusAtSettlement": {
       "type": "string"
     },
+    "marketStatusAtLastCheck": {
+      "type": "string"
+    },
     "winnerSelectionIds": {
       "type": "array",
       "items": {
         "type": "string"
       }
+    },
+    "winnerSelectionId": {
+      "type": "string"
     },
     "placedSelectionIds": {
       "type": "array",
@@ -260,6 +238,9 @@
     "commissionRateUsed": {
       "type": "number"
     },
+    "normalizedCommissionRate": {
+      "type": "number"
+    },
     "commissionSource": {
       "type": "string"
     },
@@ -287,6 +268,15 @@
     "netProfit": {
       "type": "number"
     },
+    "netPL": {
+      "type": "number"
+    },
+    "marketGrossProfit": {
+      "type": "number"
+    },
+    "marketCommission": {
+      "type": "number"
+    },
     "closingOdds": {
       "type": "number"
     },
@@ -309,21 +299,10 @@
       }
     },
     "paperSimulationQuality": {
-      "type": "string",
-      "enum": [
-        "Basic",
-        "Good",
-        "High"
-      ]
+      "type": "string"
     },
     "dataSource": {
-      "type": "string",
-      "enum": [
-        "MARKET_ONLY",
-        "BETFAIR_METADATA_PLUS_MARKET",
-        "EXTERNAL_FORM_PLUS_MARKET",
-        "MARKET_ONLY_PROOF"
-      ]
+      "type": "string"
     },
     "validationRan": {
       "type": "boolean",
@@ -340,6 +319,30 @@
       }
     },
     "hardBlockersChecked": {
+      "type": "boolean",
+      "default": false
+    },
+    "settlementLastCheckedAt": {
+      "type": "string"
+    },
+    "settlementAttempts": {
+      "type": "number",
+      "default": 0
+    },
+    "settlementError": {
+      "type": "string"
+    },
+    "settlementWorkerRunId": {
+      "type": "string"
+    },
+    "settlementKey": {
+      "type": "string"
+    },
+    "invalidTestRecord": {
+      "type": "boolean",
+      "default": false
+    },
+    "excludeFromPerformance": {
       "type": "boolean",
       "default": false
     }

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Download, AlertTriangle, Inbox } from 'lucide-react';
 import { exportToCSV } from '@/lib/csvExport';
 import EmptyState from '@/components/EmptyState';
+import SettlementWorkerPanel from '@/components/orders/SettlementWorkerPanel';
 
 export default function Orders() {
   const { paperOrders, dataLoading } = useApp();
@@ -53,6 +54,7 @@ export default function Orders() {
       { key: 'created_date', label: 'Time' },
       { key: 'strategyName', label: 'Strategy' },
       { key: 'marketName', label: 'Market' },
+      { key: 'betfairMarketId', label: 'Betfair Market ID' },
       { key: 'runnerName', label: 'Runner' },
       { key: 'marketStartTime', label: 'Race Start' },
       { key: 'selectionId', label: 'Selection ID' },
@@ -94,6 +96,7 @@ export default function Orders() {
 
   return (
     <div className="space-y-5">
+      <SettlementWorkerPanel />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Total Orders</span>
