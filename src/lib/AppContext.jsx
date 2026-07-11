@@ -936,6 +936,7 @@ export function AppProvider({ children }) {
           paperOrders: s.paperOrders,
           emergencyStop: s.emergencyStop,
           connectionState,
+          cycleNumber: cycleNum,
           callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners, racePack) => {
             const resp = await base44.functions.invoke('featherlessAI', {
               racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
@@ -1060,6 +1061,7 @@ export function AppProvider({ children }) {
             connectionDiagnostics: result.diagnostics.connectionDiagnostics ?? null,
             externalSearchDiagnostics: result.diagnostics.externalSearchDiagnostics ?? null,
             opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
+            ...result.diagnostics.raceMonitoring,
           },
           selectedMarketName: result.bestOpportunity?.marketName || null,
         };
@@ -1440,7 +1442,7 @@ export function AppProvider({ children }) {
         notes: noMarketsReason,
         runnersAssessed: 0,
         noBetReason: noMarketsReason,
-        scanSummary: { marketsScanned: 0, totalMarketsLoaded: 0, noBetReason: noMarketsReason },
+        scanSummary: { marketsScanned: 0, totalMarketsLoaded: 0, noBetReason: noMarketsReason, raceMonitoringStatus:'NO_VALID_RACE_SELECTED', cyclesScannedOnThisRace:0, raceLocked:false, activeOrderExistsForRace:false, reasonStillScanningRace:'No valid race is currently selected.', selectedRaceMarketDetails:[], selectedRaceUniqueMarketCount:0, selectedRaceWinMarketCount:0, selectedRacePlaceMarketCount:0, selectedRaceH2HMarketCount:0, selectedRaceDuplicateMarketCount:0, duplicateMarketRecordDetected:false },
         selectedMarketName: null,
       };
       const localBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
@@ -1509,6 +1511,7 @@ export function AppProvider({ children }) {
           paperOrders: s.paperOrders,
           emergencyStop: s.emergencyStop,
           connectionState,
+          cycleNumber: cycleNum,
           callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners, racePack) => {
             const resp = await base44.functions.invoke('featherlessAI', {
               racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
@@ -1801,6 +1804,7 @@ export function AppProvider({ children }) {
         connectionDiagnostics: exchangeDiag.connectionDiagnostics ?? null,
         externalSearchDiagnostics: exchangeDiag.externalSearchDiagnostics ?? null,
         opportunityFunnel: exchangeDiag.opportunityFunnel ?? null,
+        ...exchangeDiag.raceMonitoring,
       } : (diagnostics?.scanSummary || null),
       assessedRunners: useExchange ? (exchangeDiag.topOpportunities || []) : (diagnostics?.assessedRunners || []),
       selectedMarketName: useExchange
@@ -1926,6 +1930,7 @@ export function AppProvider({ children }) {
       };
 
       const aiEnabled = s.featherlessSettings?.enabled === true;
+      const cycleNum = s.botState.cycleNumber + 1;
       const result = await runExchangeCycle({
         markets: s.markets,
         runners: s.runners,
@@ -1936,6 +1941,7 @@ export function AppProvider({ children }) {
         paperOrders: s.paperOrders,
         emergencyStop: s.emergencyStop,
         connectionState,
+        cycleNumber: cycleNum,
         callAI: aiEnabled ? async (cluster, primaryMarket, marketRunners, racePack) => {
           const resp = await base44.functions.invoke('featherlessAI', {
             racePack, settings: s.settings, strategySettings: s.featherlessSettings, bankrollStats: s.bankrollStats,
@@ -2026,7 +2032,6 @@ export function AppProvider({ children }) {
       }
 
       // Build cycle record
-      const cycleNum = s.botState.cycleNumber + 1;
       const now = new Date().toISOString();
       const cycleRecord = {
         cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
@@ -2083,6 +2088,7 @@ export function AppProvider({ children }) {
           settlementStatus,
           paperProofMode: true,
           opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
+          ...result.diagnostics.raceMonitoring,
         },
         selectedMarketName: result.bestOpportunity?.marketName || null,
       };

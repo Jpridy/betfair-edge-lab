@@ -7,14 +7,40 @@ import { Download, Trash2, FileText, ListChecks, Globe, TableProperties } from '
 import { useApp } from '@/lib/AppContext';
 import { exportToCSV } from '@/lib/csvExport';
 
-const CYCLE_EXPORT_COLUMNS = [
+export const CYCLE_EXPORT_COLUMNS = [
   { key: 'cycleId', label: 'CycleId' },
   { key: 'cycleNumber', label: 'CycleNumber' },
   { key: 'timestamp', label: 'Timestamp' },
   { key: 'raceDayLoaded', label: 'RaceDayLoaded' },
   { key: 'raceDayLoadedAt', label: 'RaceDayLoadedAt' },
   { key: 'selectedRaceKey', label: 'SelectedRaceKey' },
+  { key: 'selectedRaceEventId', label: 'SelectedRaceEventId' },
+  { key: 'selectedRaceVenue', label: 'SelectedRaceVenue' },
+  { key: 'selectedRaceNumber', label: 'SelectedRaceNumber' },
+  { key: 'selectedRaceName', label: 'SelectedRaceName' },
   { key: 'selectedRaceStartTime', label: 'SelectedRaceStartTime' },
+  { key: 'secondsToStart', label: 'SecondsToStart' },
+  { key: 'raceMonitoringStatus', label: 'RaceMonitoringStatus' },
+  { key: 'cyclesScannedOnThisRace', label: 'CyclesScannedOnThisRace' },
+  { key: 'firstCycleSeenForRace', label: 'FirstCycleSeenForRace' },
+  { key: 'latestCycleSeenForRace', label: 'LatestCycleSeenForRace' },
+  { key: 'raceLocked', label: 'RaceLocked' },
+  { key: 'raceLockReason', label: 'RaceLockReason' },
+  { key: 'activeOrderExistsForRace', label: 'ActiveOrderExistsForRace' },
+  { key: 'activeOrderIdsForRace', label: 'ActiveOrderIdsForRace' },
+  { key: 'reasonStillScanningRace', label: 'ReasonStillScanningRace' },
+  { key: 'selectedRaceUniqueMarketCount', label: 'SelectedRaceUniqueMarketCount' },
+  { key: 'selectedRaceWinMarketCount', label: 'SelectedRaceWinMarketCount' },
+  { key: 'selectedRacePlaceMarketCount', label: 'SelectedRacePlaceMarketCount' },
+  { key: 'selectedRaceH2HMarketCount', label: 'SelectedRaceH2HMarketCount' },
+  { key: 'selectedRaceUnknownMarketCount', label: 'SelectedRaceUnknownMarketCount' },
+  { key: 'selectedRaceDuplicateMarketCount', label: 'SelectedRaceDuplicateMarketCount' },
+  { key: 'duplicateMarketRecordDetected', label: 'DuplicateMarketRecordDetected' },
+  { key: 'diagnosticError', label: 'DiagnosticError' },
+  { key: 'primaryWinMarketId', label: 'PrimaryWinMarketId' },
+  { key: 'secondaryWinMarketIds', label: 'SecondaryWinMarketIds' },
+  { key: 'primaryMarketSelectionReason', label: 'PrimaryMarketSelectionReason' },
+  { key: 'selectedRaceMarketDetailsJson', label: 'SelectedRaceMarketDetailsJson' },
   { key: 'racePackFromCache', label: 'RacePackFromCache' },
   { key: 'racePackHydratedAt', label: 'RacePackHydratedAt' },
   { key: 'priceFeedStatus', label: 'PriceFeedStatus' },
@@ -191,7 +217,7 @@ function num(v) {
   return v === null || v === undefined || v === '' ? '' : v;
 }
 
-function cycleToRow(c) {
+export function cycleToRow(c) {
   const ss = c.scanSummary || {};
   const bc = c.bestCandidate || {};
   const mfd = ss.marketFeedDiagnostics || {};
@@ -205,8 +231,34 @@ function cycleToRow(c) {
     timestamp: c.finishedAt || c.startedAt || '',
     raceDayLoaded: race.raceDayLoaded ? 'TRUE' : 'FALSE',
     raceDayLoadedAt: race.raceDayLoadedAt || '',
-    selectedRaceKey: race.selectedRaceKey || '',
-    selectedRaceStartTime: race.selectedRaceStartTime || '',
+    selectedRaceKey: ss.selectedRaceKey || race.selectedRaceKey || '',
+    selectedRaceEventId: ss.selectedRaceEventId || race.selectedRaceEventId || '',
+    selectedRaceVenue: ss.selectedRaceVenue || race.selectedRaceVenue || '',
+    selectedRaceNumber: ss.selectedRaceNumber ?? race.selectedRaceNumber ?? '',
+    selectedRaceName: ss.selectedRaceName || race.selectedRaceName || '',
+    selectedRaceStartTime: ss.selectedRaceStartTime || race.selectedRaceStartTime || '',
+    secondsToStart: ss.secondsToStart ?? race.secondsToStart ?? '',
+    raceMonitoringStatus: ss.raceMonitoringStatus || race.raceMonitoringStatus || 'NO_VALID_RACE_SELECTED',
+    cyclesScannedOnThisRace: ss.cyclesScannedOnThisRace ?? race.cyclesScannedOnThisRace ?? 0,
+    firstCycleSeenForRace: ss.firstCycleSeenForRace ?? race.firstCycleSeenForRace ?? '',
+    latestCycleSeenForRace: ss.latestCycleSeenForRace ?? race.latestCycleSeenForRace ?? '',
+    raceLocked: (ss.raceLocked ?? race.raceLocked) ? 'TRUE' : 'FALSE',
+    raceLockReason: ss.raceLockReason || race.raceLockReason || '',
+    activeOrderExistsForRace: (ss.activeOrderExistsForRace ?? race.activeOrderExistsForRace) ? 'TRUE' : 'FALSE',
+    activeOrderIdsForRace: (ss.activeOrderIdsForRace || race.activeOrderIdsForRace || []).join('; '),
+    reasonStillScanningRace: ss.reasonStillScanningRace || race.reasonStillScanningRace || '',
+    selectedRaceUniqueMarketCount: ss.selectedRaceUniqueMarketCount ?? race.selectedRaceUniqueMarketCount ?? 0,
+    selectedRaceWinMarketCount: ss.selectedRaceWinMarketCount ?? race.selectedRaceWinMarketCount ?? 0,
+    selectedRacePlaceMarketCount: ss.selectedRacePlaceMarketCount ?? race.selectedRacePlaceMarketCount ?? 0,
+    selectedRaceH2HMarketCount: ss.selectedRaceH2HMarketCount ?? race.selectedRaceH2HMarketCount ?? 0,
+    selectedRaceUnknownMarketCount: ss.selectedRaceUnknownMarketCount ?? race.selectedRaceUnknownMarketCount ?? 0,
+    selectedRaceDuplicateMarketCount: ss.selectedRaceDuplicateMarketCount ?? race.selectedRaceDuplicateMarketCount ?? 0,
+    duplicateMarketRecordDetected: (ss.duplicateMarketRecordDetected ?? race.duplicateMarketRecordDetected) ? 'TRUE' : 'FALSE',
+    diagnosticError: ss.diagnosticError || race.diagnosticError || '',
+    primaryWinMarketId: ss.primaryWinMarketId || race.primaryWinMarketId || '',
+    secondaryWinMarketIds: (ss.secondaryWinMarketIds || race.secondaryWinMarketIds || []).join('; '),
+    primaryMarketSelectionReason: ss.primaryMarketSelectionReason || race.primaryMarketSelectionReason || '',
+    selectedRaceMarketDetailsJson: JSON.stringify(ss.selectedRaceMarketDetails || race.selectedRaceMarketDetails || []),
     racePackFromCache: race.racePackFromCache ? 'TRUE' : 'FALSE',
     racePackHydratedAt: race.racePackHydratedAt || '',
     priceFeedStatus: cd.priceFeedStatus || 'UNAVAILABLE',
@@ -583,6 +635,7 @@ export default function DecisionLogPanel() {
           DEBUG SCAN MODE ACTIVE — Time window ignored, NO orders will be placed. Diagnostic opportunities only.
         </div>
       )}
+      {latestSS.selectedRaceKey && <div className="px-4 py-2 border-b border-border-subtle bg-muted/20 text-[10px] text-muted-foreground"><span className="font-semibold text-foreground">{latestSS.selectedRaceName || latestSS.selectedRaceKey}</span> · {latestSS.raceMonitoringStatus?.replaceAll('_', ' ')} · cycle {latestSS.cyclesScannedOnThisRace || 1} on this race. {latestSS.reasonStillScanningRace}</div>}
       {showDebugTable && loadedMarkets.length > 0 && (
         <div className="border-b border-border">
           <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/30">

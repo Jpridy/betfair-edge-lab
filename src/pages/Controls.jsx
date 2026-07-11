@@ -7,6 +7,7 @@ import ManualPaperOrder from '@/components/controls/ManualPaperOrder';
 import BetfairConnection from '@/components/settings/BetfairConnection';
 import RiskOrdersPanel from '@/components/controlroom/RiskOrdersPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
+import SelectedRaceMonitoring from '@/components/controlroom/SelectedRaceMonitoring';
 
 export default function Controls() {
   return <div className="space-y-6">
@@ -28,7 +29,7 @@ export default function Controls() {
           <FlaskConical className="h-4 w-4 shrink-0" /><span><span className="block">Paper Proof</span><span className="block text-[10px] font-normal text-muted-foreground">Test the full pipeline</span></span>
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="operations" className="space-y-5"><RaceDayPanel /><ControlActions /><ManualPaperOrder /><RiskOrdersPanel /></TabsContent>
+      <TabsContent value="operations" className="space-y-5"><RaceDayPanel /><SelectedRaceMonitoring /><ControlActions /><ManualPaperOrder /><RiskOrdersPanel /></TabsContent>
       <TabsContent value="connection"><BetfairConnection /></TabsContent>
       <TabsContent value="proof"><PaperProofPanel /></TabsContent>
     </Tabs>

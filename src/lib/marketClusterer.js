@@ -56,7 +56,19 @@ export function clusterMarketsByEvent(markets = []) {
   return [...clusters.values()];
 }
 
-export function getPrimaryMarket(cluster) { return cluster?.winMarkets?.[0] || cluster?.placeMarkets?.[0] || cluster?.h2hMarkets?.[0] || null; }
+export function getPrimaryMarket(cluster) {
+  const wins = (cluster?.winMarkets || []).map((market, catalogueIndex) => ({ market, catalogueIndex })).sort((a, b) => {
+    const exact = Number(String(b.market.marketTypeCode || b.market.marketType).toUpperCase() === 'WIN') - Number(String(a.market.marketTypeCode || a.market.marketType).toUpperCase() === 'WIN');
+    if (exact) return exact;
+    const single = Number(Number(b.market.numberOfWinners) === 1) - Number(Number(a.market.numberOfWinners) === 1);
+    if (single) return single;
+    const liquidity = Number(b.market.totalMatched || 0) - Number(a.market.totalMatched || 0);
+    if (liquidity) return liquidity;
+    if (a.catalogueIndex !== b.catalogueIndex) return a.catalogueIndex - b.catalogueIndex;
+    return normalizedMarketId(a.market).localeCompare(normalizedMarketId(b.market));
+  });
+  return wins[0]?.market || cluster?.placeMarkets?.[0] || cluster?.h2hMarkets?.[0] || null;
+}
 export function getAllMarketsInCluster(cluster) { return [...(cluster?.winMarkets || []), ...(cluster?.placeMarkets || []), ...(cluster?.h2hMarkets || []), ...(cluster?.otherMarkets || [])]; }
 
 export function rejectedRelatedMarkets(cluster, catalogueMarkets = []) {

@@ -38,6 +38,7 @@ import { buildSideSelectionDiagnostics } from './opportunityRanking';
 import { normalizedMarketId } from './raceExposure';
 import { marketCoverage, rejectedRelatedMarkets } from './marketClusterer';
 import { calculatePriceFeedStatus } from './marketFreshness';
+import { applyRaceOrderLock, buildRaceMonitoringDiagnostics } from './raceMonitoringDiagnostics';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -414,6 +415,7 @@ export async function runExchangeCycle(params) {
     callExternalSearch = null,
     connectionState = {},
     maxEventsToScan = null, // overridden by maxRacesPerCycle from settings
+    cycleNumber = null,
   } = params || {};
 
   // ── Safe argument defaults ──
@@ -485,10 +487,13 @@ export async function runExchangeCycle(params) {
     runners = [...ids].flatMap(id => raceCache.runnersByMarketId.get(id) || []);
     runnersByMarket = buildRunnerByMarketMap(runners);
     hydratedRacePack = hydrateCachedRacePack(raceCache.racePacksByRaceKey.get(selectedRace.raceKey), { markets, runners, settings, featherlessSettings, bankrollStats, paperOrders, opts: { paperMode: true, paperProofMode, dataFresh: selectedRace.freshnessStatus } });
+    const trackedRace = markRaceScanned(selectedRace.raceKey, Date.now(), '', cycleNumber);
+    if (trackedRace) Object.assign(selectedRace, { cyclesScannedOnThisRace:trackedRace.cyclesScannedOnThisRace, firstCycleSeenForRace:trackedRace.firstCycleSeenForRace, latestCycleSeenForRace:trackedRace.latestCycleSeenForRace });
   }
+  let raceMonitoring = buildRaceMonitoringDiagnostics({ selectedRace, runners, orders:paperOrders, acceptedMarketIds:[], windowStart:featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500, windowEnd:featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30 });
 
   if (!selectedRace && raceCache.loadedAt && !emergencyStop) {
-    return { bestOpportunity: null, allOpportunities: [], eventClusters: [], diagnostics: { noBetReason: 'No cached race currently inside scan window', noScanReason: schedule.selectionReason, marketsScanned: 0, eventsScanned: 0, totalMarketsLoaded: raceCache.summary.totalMarketsLoaded || 0, marketsSentToExchangeEngine: 0, raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt, opportunityFunnel: { raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, noScanReason: schedule.selectionReason, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt }, nextRace: schedule.nextRace ? { raceKey: schedule.nextRace.raceKey, eventName: schedule.nextRace.eventName, startTime: schedule.nextRace.startTime, secondsToJump: schedule.nextRace.secondsToJump } : null, marketFeedDiagnostics, marketFilterFunnel, timeWindowFunnel, loadedMarketsTable, connectionDiagnostics, debugScanMode } };
+    return { bestOpportunity: null, allOpportunities: [], eventClusters: [], diagnostics: { raceMonitoring, ...raceMonitoring, noBetReason: 'No cached race currently inside scan window', noScanReason: schedule.selectionReason, marketsScanned: 0, eventsScanned: 0, totalMarketsLoaded: raceCache.summary.totalMarketsLoaded || 0, marketsSentToExchangeEngine: 0, raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt, opportunityFunnel: { ...raceMonitoring, raceDayLoaded: true, raceDayLoadedAt: raceCache.loadedAt, totalDayRaces: raceCache.summary.totalRacesLoaded || 0, totalDayMarkets: raceCache.summary.totalMarketsLoaded || 0, cachedRacePacks: raceCache.racePacksByRaceKey.size, racesInsideWindow: schedule.racesInsideWindow, noScanReason: schedule.selectionReason, nextRaceWindowOpensAt: schedule.nextRaceWindowOpensAt }, nextRace: schedule.nextRace ? { raceKey: schedule.nextRace.raceKey, eventName: schedule.nextRace.eventName, startTime: schedule.nextRace.startTime, secondsToJump: schedule.nextRace.secondsToJump } : null, marketFeedDiagnostics, marketFilterFunnel, timeWindowFunnel, loadedMarketsTable, connectionDiagnostics, debugScanMode } };
   }
 
   if (emergencyStop) {
@@ -497,6 +502,8 @@ export async function runExchangeCycle(params) {
       allOpportunities: [],
       eventClusters: [],
       diagnostics: {
+        raceMonitoring,
+        ...raceMonitoring,
         noBetReason: 'Emergency stop active',
         marketsScanned: 0,
         eventsScanned: 0,
@@ -521,6 +528,7 @@ export async function runExchangeCycle(params) {
     const marketRunners = getRunnersForMarket(m, runnersByMarket);
     return marketRunners.some(r => (r.bestBackPrice && r.bestBackPrice > 0) || (r.bestLayPrice && r.bestLayPrice > 0));
   }).length;
+  raceMonitoring = buildRaceMonitoringDiagnostics({ selectedRace, runners, orders:paperOrders, acceptedMarketIds:eligibleMarkets.map(normalizedMarketId), windowStart:featherlessSettings?.timeWindowStart ?? settings.defaultTimeWindowStartSeconds ?? 500, windowEnd:featherlessSettings?.timeWindowEnd ?? settings.defaultTimeWindowEndSeconds ?? 30 });
 
   if (eligibleMarkets.length === 0) {
     let reason;
@@ -536,6 +544,8 @@ export async function runExchangeCycle(params) {
       allOpportunities: [],
       eventClusters: [],
       diagnostics: {
+        raceMonitoring,
+        ...raceMonitoring,
         noBetReason: reason,
         marketsScanned: 0,
         eventsScanned: 0,
@@ -894,7 +904,7 @@ export async function runExchangeCycle(params) {
     });
   }
 
-  if (selectedRace) markRaceScanned(selectedRace.raceKey);
+  applyRaceOrderLock(allOpportunities, raceMonitoring);
 
   // ── Collect favourite contexts from opportunities (for diagnostics) ──
   const favouriteContextsDetected = [];
@@ -1163,6 +1173,8 @@ export async function runExchangeCycle(params) {
   }
 
   const diagnostics = {
+    raceMonitoring,
+    ...raceMonitoring,
     marketsScanned: eligibleMarkets.length,
     eventsScanned,
     totalEventClusters,
@@ -1235,6 +1247,7 @@ export async function runExchangeCycle(params) {
       featherlessCalled,
       featherlessSucceeded,
       featherlessFailed,
+      ...raceMonitoring,
     },
     positiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
     mathematicallyPositiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
@@ -1245,8 +1258,10 @@ export async function runExchangeCycle(params) {
     topRejected: rejectedOpps,
     bestOpportunity: bestOpportunity,
     decision: bestOpportunity ? 'BET' : 'NO_BET',
-    failedGate: aiRequiredFailures > 0 && allOpportunities.length === 0 ? 'AI_REQUIRED_BUT_NOT_AVAILABLE' : bestOpportunity ? null : ranked[0]?.failedGate || null,
-    noBetReason: aiRequiredFailures > 0 && allOpportunities.length === 0
+    failedGate: raceMonitoring.raceLocked ? 'DUPLICATE_RACE_EXPOSURE' : aiRequiredFailures > 0 && allOpportunities.length === 0 ? 'AI_REQUIRED_BUT_NOT_AVAILABLE' : bestOpportunity ? null : ranked[0]?.failedGate || null,
+    noBetReason: raceMonitoring.raceLocked
+      ? 'DUPLICATE_RACE_EXPOSURE'
+      : aiRequiredFailures > 0 && allOpportunities.length === 0
       ? 'AI_REQUIRED_BUT_NOT_AVAILABLE'
       : debugScanMode
       ? (allOpportunities.length === 0
