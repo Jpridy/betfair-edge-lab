@@ -10,6 +10,7 @@ import { Download, Save, CheckCircle2 } from 'lucide-react';
 import InfoHint from '@/components/InfoHint';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
+import ResetAppData from '@/components/settings/ResetAppData';
 
 export default function Settings() {
   const {
@@ -200,6 +201,7 @@ export default function Settings() {
         </TabsContent>
 
       </Tabs>
+      <ResetAppData />
     </div>
   );
 }
