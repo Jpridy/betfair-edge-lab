@@ -1,0 +1,87 @@
+{
+  "name": "SettlementWorkerRun",
+  "type": "object",
+  "properties": {
+    "runId": {
+      "type": "string"
+    },
+    "triggerMode": {
+      "type": "string",
+      "enum": [
+        "internal",
+        "manual"
+      ]
+    },
+    "requestingUserId": {
+      "type": "string"
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "completedAt": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "failed"
+      ]
+    },
+    "errorCode": {
+      "type": "string"
+    },
+    "errorMessage": {
+      "type": "string"
+    },
+    "credentialSource": {
+      "type": "string"
+    },
+    "appKeyConfigured": {
+      "type": "boolean"
+    },
+    "usernameConfigured": {
+      "type": "boolean"
+    },
+    "passwordConfigured": {
+      "type": "boolean"
+    },
+    "lastLoginStatus": {
+      "type": "string"
+    },
+    "lastLoginError": {
+      "type": "string"
+    },
+    "currentSessionCreatedAt": {
+      "type": "string"
+    },
+    "currentSessionExpiresAt": {
+      "type": "string"
+    },
+    "ordersChecked": {
+      "type": "number"
+    },
+    "marketsChecked": {
+      "type": "number"
+    },
+    "ordersSettled": {
+      "type": "number"
+    },
+    "ordersVoided": {
+      "type": "number"
+    },
+    "ordersUnresolved": {
+      "type": "number"
+    },
+    "details": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "runId",
+    "triggerMode",
+    "startedAt",
+    "status"
+  ]
+}

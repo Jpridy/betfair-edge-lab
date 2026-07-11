@@ -22,7 +22,10 @@ const STRATEGY_SIGNAL_SCHEMA_FIELDS = [
   'dataSource', 'probabilitySource', 'finalProbabilityUsedInEV',
   'probabilityLabel', 'formDataStatus', 'formDataCompleteness',
   'marketScore', 'metadataScore', 'externalFormScore', 'finalScore',
-  'clvEstimate', 'orderId', 'blocker',
+  'clvEstimate', 'orderId', 'blocker', 'decisionSource', 'selectionDiagnostics',
+  'rawCommissionRate', 'normalizedCommissionRate', 'commissionNormalizationApplied',
+  'priceFeedStatus', 'priceAgeSeconds', 'invalidTestRecord', 'excludeFromPerformance',
+  'exclusionReason', 'settlementWorkerRunId',
 ];
 
 const APP_SETTINGS_SCHEMA_FIELDS = [
@@ -52,7 +55,11 @@ const BOT_CYCLE_SCHEMA_FIELDS = [
   'selectedMarketName', 'paperProofMode', 'proofDefaultsApplied',
   'proofFallbackUsed', 'proofReason', 'proofStake', 'proofMaxLiability',
   'proofOrderCreated', 'proofSettlementStatus', 'engineError',
-  'scanStage', 'failedStage', 'lastCompletedStage', 'cycleSteps',
+  'scanStage', 'failedStage', 'lastCompletedStage', 'cycleSteps', 'cycleId',
+  'cycleOutcome', 'settlementStatus', 'decisionSource', 'selectionDiagnostics',
+  'rawCommissionRate', 'normalizedCommissionRate', 'commissionNormalizationApplied',
+  'invalidTestRecord', 'excludeFromPerformance', 'exclusionReason', 'priceFeedStatus',
+  'priceAgeSeconds', 'settlementWorkerRunId', 'aiRunnerCountReturned',
 ];
 
 const PAPER_ORDER_SCHEMA_FIELDS = [
@@ -78,6 +85,12 @@ const PAPER_ORDER_SCHEMA_FIELDS = [
   'closingOdds', 'clv', 'slippage', 'entryReason', 'exitReason',
   'warningFlags', 'paperSimulationQuality', 'dataSource',
   'validationRan', 'riskCheckRan', 'softOverridesApplied', 'hardBlockersChecked',
+  'normalizedMarketId', 'normalizedSelectionId', 'raceStartTime', 'marketStatusAtLastCheck',
+  'winnerSelectionId', 'netPL', 'marketGrossProfit', 'marketCommission',
+  'normalizedCommissionRate', 'rawCommissionRate', 'commissionNormalizationApplied',
+  'settlementLastCheckedAt', 'settlementAttempts', 'settlementError',
+  'settlementWorkerRunId', 'settlementKey', 'invalidTestRecord', 'excludeFromPerformance',
+  'exclusionReason', 'decisionSource', 'selectionDiagnostics', 'priceFeedStatus', 'priceAgeSeconds',
 ];
 
 // ── Helpers ──

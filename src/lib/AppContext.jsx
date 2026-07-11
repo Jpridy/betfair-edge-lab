@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { createBetfairStream } from '@/lib/betfairApi';
 import { BOT_STEPS, getEnabledStrategies, settleOrder } from '@/lib/botEngine';
 import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
-import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
+import { authorizeAndCreatePaperOrder } from '@/lib/orderAuthority';
 import { countTicksBetween } from '@/lib/tickLadder';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { buildScanDiagnostics } from './scanDiagnostics';
@@ -58,6 +58,9 @@ export function AppProvider({ children }) {
     lastClearedOrderSyncTime: null,
     lastCatalogueRefreshAt: null,
     lastPriceFetchAt: null,
+    lastStreamHeartbeatAt: null,
+    lastMarketChangeMessageAt: null,
+    lastActualPriceUpdateAt: null,
     lastStreamUpdateAt: null,
     catalogueMarketsCount: 0,
     catalogueRunnersCount: 0,
@@ -211,7 +214,7 @@ export function AppProvider({ children }) {
     cycleNumber: 0,
     lastCycleTime: null,
     nextScanCountdown: 10,
-    stepStatuses: BOT_STEPS.map(name => ({ name, status: 'waiting' })),
+    stepStatuses: BOT_STEPS.map(name => ({ name, status: 'pending' })),
     signalsToday: 0,
     ordersToday: 0,
     ordersBlockedToday: 0,
@@ -687,6 +690,9 @@ export function AppProvider({ children }) {
       streamAvailable: false,
       lastMarketSyncTime: null,
       lastStreamUpdateAt: null,
+      lastStreamHeartbeatAt: null,
+      lastMarketChangeMessageAt: null,
+      lastActualPriceUpdateAt: null,
       lastOrderSyncTime: null,
       lastClearedOrderSyncTime: null,
       lastCatalogueRefreshAt: null,
@@ -912,7 +918,7 @@ export function AppProvider({ children }) {
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
           lastStreamUpdateAt: conn.lastStreamUpdateAt || null,
           lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || null,
-          lastPriceUpdateAt: conn.lastStreamUpdateAt || conn.lastPriceFetchAt || null,
+          lastActualPriceUpdateAt: conn.lastActualPriceUpdateAt || null,
           marketCatalogueError: conn.marketCatalogueError || null,
           streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
           priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
@@ -1036,6 +1042,7 @@ export function AppProvider({ children }) {
             aiDisabled: result.diagnostics.aiDisabled,
             aiStatusLog: result.diagnostics.aiStatusLog,
             aiObservability: result.diagnostics.aiObservability,
+            aiRunnerCountReturned: result.diagnostics.aiObservability?.at(-1)?.aiRunnerCountReturned ?? result.diagnostics.aiObservability?.at(-1)?.aiResponseRunnerCount ?? 0,
             aiStatus: result.diagnostics.aiStatus,
             candidateCountByMarketTypeAndSide: result.diagnostics.candidateCountByMarketTypeAndSide,
             sideSelectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
@@ -1091,6 +1098,10 @@ export function AppProvider({ children }) {
           featherlessCallsAttempted: result.diagnostics.aiCallsMade ?? 0,
           featherlessFailures: result.diagnostics.aiStatusLog?.filter(l => l.status === 'ai_error' || l.status === 'ai_timeout').length ?? 0,
           marketOnlyFallbacks: result.diagnostics.marketOnlyResultsCreated ?? 0,
+          bestDebugCandidate: result.bestDebugCandidate || result.bestOpportunity || null,
+          wouldCreateOrder: result.wouldCreateOrder ?? false,
+          wouldFailGate: result.wouldFailGate || null,
+          wouldUseDecisionSource: result.wouldUseDecisionSource || null,
           lastCompletedStage: result.diagnostics.scanStage || 'completed',
           engineError: null,
         };
@@ -1241,6 +1252,7 @@ export function AppProvider({ children }) {
           dataFresh: true,
           lastCatalogueRefreshAt: now,
           lastPriceFetchAt: now,
+          lastActualPriceUpdateAt: pricedRunners > 0 ? now : stateRef.current.betfairConnection.lastActualPriceUpdateAt,
           catalogueMarketsCount: catMarkets.length,
           catalogueRunnersCount: catRunners.length,
           marketsWithPriceData,
@@ -1332,7 +1344,6 @@ export function AppProvider({ children }) {
       placed_date: new Date().toISOString(),
     };
     setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
-    safeEntityWrite({ entityName: 'PaperOrder', operation: 'create', payload: order, idempotencyKey: generateIdempotencyKey('order', order.customerRef || newOrder.id), entityApi: base44.entities.PaperOrder });
     addAuditLog('Paper Order Created', 'order', 'info', `${order.side} ${order.runnerName} @ ${order.requestedOdds} × $${order.requestedStake} (${order.persistenceType})`, { objectName: order.runnerName });
     setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
   };
@@ -1446,7 +1457,7 @@ export function AppProvider({ children }) {
 
     const cycleNum = s.botState.cycleNumber + 1;
     const now = new Date().toISOString();
-    const steps = BOT_STEPS.map(name => ({ name, status: 'waiting' }));
+    const steps = BOT_STEPS.map(name => ({ name, status: 'pending' }));
 
     let marketsScanned = 0, marketsPassed = 0, signalsCreated = 0, ordersCreated = 0, ordersBlocked = 0, errors = 0;
     const notes = [];
@@ -1467,7 +1478,7 @@ export function AppProvider({ children }) {
     steps[0].status = 'passed';
     steps[1].status = 'passed';
     steps[2].status = 'passed';
-    steps[3].status = aiEnabled ? 'passed' : 'blocked';
+    steps[3].status = aiEnabled ? 'passed' : 'skipped';
     if (!aiEnabled) steps[3].reason = s.featherlessSettings?.allowDeterministicFallback ? 'AI not used — explicit deterministic fallback enabled' : 'AI_REQUIRED_BUT_NOT_AVAILABLE';
 
     // When debug scan mode is active, force diagnostic-only mode
@@ -1482,7 +1493,7 @@ export function AppProvider({ children }) {
           streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
           lastStreamUpdateAt: conn.lastStreamUpdateAt || null,
           lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || null,
-          lastPriceUpdateAt: conn.lastStreamUpdateAt || conn.lastPriceFetchAt || null,
+          lastActualPriceUpdateAt: conn.lastActualPriceUpdateAt || null,
           marketCatalogueError: conn.marketCatalogueError || null,
           streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
           priceFeedStale: conn.priceFeedStale || conn.dataFresh === false,
@@ -1556,48 +1567,24 @@ export function AppProvider({ children }) {
 
             const signalLocalId = 'ss' + Date.now() + Math.random().toString(36).slice(2, 6);
             setStrategySignals(prev => [{ ...signal, id: signalLocalId }, ...prev].slice(0, 100));
-            if (!forceDebugOnly) safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+            let persistedSignalId = null;
+            if (!forceDebugOnly) { const signalWrite = await safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal }); persistedSignalId = signalWrite.record?.id || null; }
 
             // ── Route through centralized validated order creation ──
             const canPlaceOrders = !s.botState.paused && s.botSettings.autoPaperTradingEnabled && !forceDebugOnly;
-            const { order: validatedOrder, rejected: wasRejected, reason: rejectionReason } = createValidatedPaperOrder({
-              market, runner,
-              side: signal.side,
-              stake: signal.stakeSuggestion,
-              odds: signal.odds,
-              strategyName,
-              source: 'bot',
-              settings: s.settings,
-              bankrollStats: s.bankrollStats,
-              existingOrders: s.paperOrders,
-              emergencyStop: s.emergencyStop,
-              apiConnected: s.apiConnected,
-              persistenceType: 'LAPSE',
-              expectedValue: signal.expectedValue,
-              entryReason: signal.reason,
-              dataSource: signal.dataSource,
-              botSettings: s.botSettings,
-              featherlessSettings: s.featherlessSettings,
-              marketType: opp.marketType,
-              marketTypeCode: opp.marketTypeCode,
-              eventId: opp.eventId,
-              eventName: opp.eventName,
-              numberOfWinners: opp.numberOfWinners,
-              placeTerms: opp.placeTerms,
-              proofMode: opp.proofMode || false,
-              proofReason: opp.proofReason || null,
-              decisionSource: opp.decisionSource,
-              selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
-              });
+            const authority = await authorizeAndCreatePaperOrder({ opportunity: opp, market, runner, marketRunners: s.runners.filter(item => matchRunnerToMarket(item, market)), settings: s.settings, botSettings: s.botSettings, featherlessSettings: s.featherlessSettings, bankrollStats: s.bankrollStats, existingOrders: s.paperOrders, emergencyStop: s.emergencyStop, apiConnected: s.apiConnected, connectionState, positiveEvOpportunityCount: result.diagnostics.positiveEVOpportunities, strategyRequiresAI: opp.decisionSource === 'FEATHERLESS_AI', aiResult: result.diagnostics.aiDecisions?.[0]?.aiResult || null, strategyName, source: 'bot', persistenceType: 'LAPSE', selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder });
+            const validatedOrder = authority.order || authority.rejectedOrder || null;
+            const wasRejected = !authority.authorized;
+            const rejectionReason = authority.reason;
 
             if (wasRejected || !canPlaceOrders) {
               // Signal is blocked — update status from proposed to blocked
               signal.signalStatus = wasRejected ? 'blocked' : 'proposed';
               signal.blocker = wasRejected ? rejectionReason : 'Bot paused or auto paper trading disabled';
               setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
-              if (!forceDebugOnly) safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+              if (!forceDebugOnly && persistedSignalId) safeEntityWrite({ entityName: 'StrategySignal', operation: 'update', payload: { ...signal, id: persistedSignalId }, entityApi: base44.entities.StrategySignal });
 
-              steps[5].status = wasRejected ? 'blocked' : 'passed';
+              steps[5].status = wasRejected ? 'failed' : 'passed';
               steps[5].reason = wasRejected ? rejectionReason : 'Pre-order validation passed (order not placed — bot paused)';
               if (wasRejected) {
                 ordersBlocked = 1;
@@ -1614,7 +1601,7 @@ export function AppProvider({ children }) {
               // Signal promoted to executed
               signal.signalStatus = 'executed';
               setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
-              if (!forceDebugOnly) safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+              if (!forceDebugOnly && persistedSignalId) safeEntityWrite({ entityName: 'StrategySignal', operation: 'update', payload: { ...signal, id: persistedSignalId }, entityApi: base44.entities.StrategySignal });
 
               steps[5].status = 'passed';
               steps[5].reason = 'Validation + risk checks passed (createValidatedPaperOrder)';
@@ -1626,12 +1613,11 @@ export function AppProvider({ children }) {
               steps[7].status = 'passed';
               steps[8].status = 'passed';
               setPaperOrders(prev => [{ ...validatedOrder, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: now, placed_date: now }, ...prev].slice(0, 200));
-              if (!forceDebugOnly) safeEntityWrite({ entityName: 'PaperOrder', operation: 'create', payload: validatedOrder, idempotencyKey: generateIdempotencyKey('order', validatedOrder.customerRef), entityApi: base44.entities.PaperOrder });
               setSyncState(prev2 => ({ ...prev2, ordersCreatedToday: prev2.ordersCreatedToday + 1 }));
             }
           }
         } else {
-          steps[4].status = 'blocked';
+          steps[4].status = 'failed';
           steps[4].reason = result.diagnostics.noBetReason || 'No positive-EV opportunities found across WIN/PLACE/H2H markets';
           notes.push(steps[4].reason);
           cycleNoBetReason = steps[4].reason;
@@ -1652,10 +1638,13 @@ export function AppProvider({ children }) {
     }
 
     setSyncState(prev => ({ ...prev, marketsScannedToday: prev.marketsScannedToday + marketsScanned, runnersScannedToday: prev.runnersScannedToday + s.runners.length }));
-    // Steps 10-12: Always pass
-    steps[9].status = 'passed';
-    steps[10].status = 'passed';
+    steps[9].status = orderCreated ? 'passed' : 'skipped';
+    steps[9].reason = orderCreated ? 'Bankroll derives from persisted order state' : 'No order created';
+    steps[10].status = orderCreated ? 'passed' : 'skipped';
+    steps[10].reason = orderCreated ? 'Strategy statistics will include the order lifecycle' : 'No order created';
     steps[11].status = 'passed';
+    steps[11].reason = 'Cycle audit record written';
+    for (const step of steps) if (step.status === 'pending') { step.status = 'skipped'; step.reason = 'Previous gate did not produce work for this step'; }
 
     addAuditLog(`Bot Cycle #${cycleNum}`, 'system', 'info',
       `Scanned ${marketsScanned} markets, ${marketsPassed} passed, ${signalsCreated} signals, ${ordersCreated} orders, ${ordersBlocked} blocked`);
@@ -1686,7 +1675,7 @@ export function AppProvider({ children }) {
       scanStage: exchangeDiag?.scanStage || 'completed',
       lastCompletedStage: exchangeDiag?.lastCompletedStage || 'completed',
       failedStage: exchangeDiag?.failedStage || null,
-      cycleSteps: steps.map(st => ({ step: st.name, status: st.status, reason: st.reason || null, itemsProcessed: 0, result: null })),
+      cycleSteps: steps.map(st => ({ step: st.name, status: st.status, startedAt: now, completedAt: new Date().toISOString(), reason: st.reason || null, error: st.status === 'failed' ? (st.reason || 'Step failed') : null, itemsProcessed: 0, result: null })),
       marketsScanned: useExchange ? (exchangeDiag.totalMarketsLoaded ?? exchangeDiag.marketsScanned ?? 0) : marketsScanned,
       marketsPassedFilters: useExchange ? (exchangeDiag.marketsSentToExchangeEngine ?? marketsPassed) : marketsPassed,
       signalsCreated,
@@ -1995,46 +1984,23 @@ export function AppProvider({ children }) {
 
           const signalLocalId = 'ss' + Date.now() + Math.random().toString(36).slice(2, 6);
           setStrategySignals(prev => [{ ...signal, id: signalLocalId }, ...prev].slice(0, 100));
+          const proofSignalWrite = await safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+          const proofSignalId = proofSignalWrite.record?.id || null;
 
           // Route through centralized validated order creation (proof mode relaxes thresholds)
-          const { order: validatedOrder, rejected: wasRejected, reason: rejectionReason } = createValidatedPaperOrder({
-            market, runner,
-            side: signal.side,
-            stake: signal.stakeSuggestion,
-            odds: signal.odds,
-            strategyName: 'Paper Proof Mode',
-            source: 'bot_proof',
-            settings: s.settings,
-            bankrollStats: s.bankrollStats,
-            existingOrders: s.paperOrders,
-            emergencyStop: s.emergencyStop,
-            apiConnected: s.apiConnected,
-            persistenceType: 'LAPSE',
-            expectedValue: signal.expectedValue,
-            entryReason: signal.reason,
-            dataSource: 'MARKET_ONLY_PROOF',
-            paperProofMode: true,
-            marketType: opp.marketType,
-            marketTypeCode: opp.marketTypeCode,
-            eventId: opp.eventId,
-            eventName: opp.eventName,
-            numberOfWinners: opp.numberOfWinners,
-            placeTerms: opp.placeTerms,
-            proofMode: true,
-            proofReason: opp.proofReason || null,
-            decisionSource: opp.decisionSource,
-            selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics,
-          });
+          const authority = await authorizeAndCreatePaperOrder({ opportunity: opp, market, runner, marketRunners: s.runners.filter(item => matchRunnerToMarket(item, market)), settings: s.settings, botSettings: s.botSettings, featherlessSettings: s.featherlessSettings, bankrollStats: s.bankrollStats, existingOrders: s.paperOrders, emergencyStop: s.emergencyStop, apiConnected: s.apiConnected, connectionState, positiveEvOpportunityCount: result.diagnostics.positiveEVOpportunities, strategyRequiresAI: opp.decisionSource === 'FEATHERLESS_AI', aiResult: result.diagnostics.aiDecisions?.[0]?.aiResult || null, strategyName: 'Paper Proof Mode', source: 'bot_proof', persistenceType: 'LAPSE', selectionDiagnostics: result.diagnostics.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder });
+          const validatedOrder = authority.order || authority.rejectedOrder || null;
+          const wasRejected = !authority.authorized;
+          const rejectionReason = authority.reason;
 
           if (!wasRejected) {
             // Signal promoted to executed
             signal.signalStatus = 'executed';
             setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
-            safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+            if (proofSignalId) safeEntityWrite({ entityName: 'StrategySignal', operation: 'update', payload: { ...signal, id: proofSignalId }, entityApi: base44.entities.StrategySignal });
 
             const newOrder = { ...validatedOrder, id: 'po' + Date.now() + Math.random().toString(36).slice(2, 6), created_date: new Date().toISOString(), placed_date: new Date().toISOString() };
             setPaperOrders(prev => [newOrder, ...prev].slice(0, 200));
-            safeEntityWrite({ entityName: 'PaperOrder', operation: 'create', payload: validatedOrder, idempotencyKey: generateIdempotencyKey('order', validatedOrder.customerRef), entityApi: base44.entities.PaperOrder });
             setSyncState(prev => ({ ...prev, ordersCreatedToday: prev.ordersCreatedToday + 1 }));
 
             paperOrderCreated = true;
@@ -2049,7 +2015,7 @@ export function AppProvider({ children }) {
             signal.signalStatus = 'blocked';
             signal.blocker = rejectionReason;
             setStrategySignals(prev => prev.map(sig => sig.id === signalLocalId ? { ...signal } : sig));
-            safeEntityWrite({ entityName: 'StrategySignal', operation: 'create', payload: signal, idempotencyKey: generateIdempotencyKey('signal', signalLocalId), entityApi: base44.entities.StrategySignal });
+            if (proofSignalId) safeEntityWrite({ entityName: 'StrategySignal', operation: 'update', payload: { ...signal, id: proofSignalId }, entityApi: base44.entities.StrategySignal });
             addAuditLog('Proof Order Rejected', 'order', 'warning',
               `${signal.side} ${signal.runnerName || opp.runnerName}: ${rejectionReason}`);
           }
@@ -2294,6 +2260,7 @@ export function AppProvider({ children }) {
           ...prev,
           lastCatalogueRefreshAt: now,
           lastPriceFetchAt: now,
+          lastActualPriceUpdateAt: pricedRunners > 0 ? now : stateRef.current.betfairConnection.lastActualPriceUpdateAt,
           catalogueMarketsCount: catMarkets.length,
           catalogueRunnersCount: catRunners.length,
           marketsWithPriceData,
@@ -2344,6 +2311,8 @@ export function AppProvider({ children }) {
           ...prev,
           lastMarketSyncTime: new Date().toISOString(),
           lastStreamUpdateAt: new Date().toISOString(),
+          lastMarketChangeMessageAt: new Date().toISOString(),
+          lastActualPriceUpdateAt: new Date().toISOString(),
           dataFresh: true,
           streamConnectionStatus: 'connected',
           streamError: null,
@@ -2356,7 +2325,7 @@ export function AppProvider({ children }) {
       },
       onHeartbeat: () => {
         if (cancelled) return;
-        setBetfairConnection(prev => ({ ...prev, lastMarketSyncTime: new Date().toISOString(), lastStreamUpdateAt: new Date().toISOString(), dataFresh: true }));
+        setBetfairConnection(prev => ({ ...prev, lastStreamHeartbeatAt: new Date().toISOString() }));
       },
       onStatusChange: (status) => {
         if (cancelled) return;

@@ -5,6 +5,12 @@
     "strategyName": {
       "type": "string"
     },
+    "decisionSource": {
+      "type": "string"
+    },
+    "selectionDiagnostics": {
+      "type": "object"
+    },
     "marketId": {
       "type": "string"
     },
@@ -63,6 +69,15 @@
     "commissionRate": {
       "type": "number"
     },
+    "rawCommissionRate": {
+      "type": "number"
+    },
+    "normalizedCommissionRate": {
+      "type": "number"
+    },
+    "commissionNormalizationApplied": {
+      "type": "boolean"
+    },
     "spreadTicks": {
       "type": "number"
     },
@@ -115,7 +130,7 @@
         "expired",
         "cancelled"
       ],
-      "default": "active"
+      "default": "proposed"
     },
     "reason": {
       "type": "string"
@@ -166,6 +181,26 @@
       "type": "string"
     },
     "blocker": {
+      "type": "string"
+    },
+    "priceFeedStatus": {
+      "type": "string"
+    },
+    "priceAgeSeconds": {
+      "type": "number"
+    },
+    "invalidTestRecord": {
+      "type": "boolean",
+      "default": false
+    },
+    "excludeFromPerformance": {
+      "type": "boolean",
+      "default": false
+    },
+    "exclusionReason": {
+      "type": "string"
+    },
+    "settlementWorkerRunId": {
       "type": "string"
     }
   },

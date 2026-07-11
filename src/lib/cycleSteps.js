@@ -35,10 +35,11 @@ export function initCycleSteps() {
     label: s.label,
     status: 'pending',
     startedAt: null,
-    finishedAt: null,
+    completedAt: null,
     itemsProcessed: 0,
     result: null,
     reason: null,
+    error: null,
   }));
 }
 
@@ -53,10 +54,11 @@ export function markStep(steps, stepKey, status, details = {}) {
       ...s,
       status,
       startedAt: s.startedAt || (status !== 'pending' ? now : null),
-      finishedAt: status === 'passed' || status === 'failed' || status === 'skipped' || status === 'blocked' || status === 'warning' ? now : s.finishedAt,
+      completedAt: ['passed', 'failed', 'skipped'].includes(status) ? now : s.completedAt,
       itemsProcessed: details.itemsProcessed ?? s.itemsProcessed,
       result: details.result ?? s.result,
       reason: details.reason ?? s.reason,
+      error: details.error ?? s.error,
     };
   });
 }

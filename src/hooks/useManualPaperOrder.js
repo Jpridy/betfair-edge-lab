@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { base44 } from '@/api/base44Client';
 import { useApp } from '@/lib/AppContext';
-import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
+import { authorizeAndCreatePaperOrder } from '@/lib/orderAuthority';
 
 export default function useManualPaperOrder() {
   const app = useApp();
@@ -10,13 +11,14 @@ export default function useManualPaperOrder() {
   const market = app.markets.find(m => m.id === form.marketId);
   const marketRunners = useMemo(() => app.runners.filter(r => r.marketId === form.marketId || r.marketId === market?.betfairMarketId), [app.runners, form.marketId, market?.betfairMarketId]);
   const runner = marketRunners.find(r => r.id === form.runnerId);
-  const submit = () => {
+  const submit = async () => {
     if (!market || !runner) return;
-    const odds = form.side === 'BACK' ? runner.bestBackPrice : runner.bestLayPrice;
-    const result = createValidatedPaperOrder({ market, runner, side: form.side, stake: form.stake, odds, strategyName: 'Featherless AI Value Decision Engine', source: 'manual', settings: app.settings, bankrollStats: app.bankrollStats, existingOrders: app.paperOrders, emergencyStop: app.emergencyStop, apiConnected: app.apiConnected, persistenceType: form.persistenceType, entryReason: 'Manual paper order from Controls' });
-    app.addPaperOrder(result.order);
-    app.addAuditLog(result.rejected ? 'Paper Order Rejected' : 'Paper Order Created', 'order', result.rejected ? 'warning' : 'info', result.rejected ? result.reason : `${form.side} ${runner.runnerName} @ ${odds}`);
-    setMessage({ ok: !result.rejected, text: result.rejected ? result.reason : `Paper order created for ${runner.runnerName}` });
+    const opportunity = app.exchangeOpportunities.find(item => item.decision === 'BET' && item.side === form.side && String(item.selectionId) === String(runner.betfairSelectionId || runner.selectionId) && String(item.betfairMarketId || item.marketId) === String(market.betfairMarketId || market.id));
+    if (!opportunity) { setMessage({ ok: false, text: 'No currently authorized BET opportunity exists for this runner and side.' }); return; }
+    const result = await authorizeAndCreatePaperOrder({ opportunity: { ...opportunity, stake: form.stake }, market, runner, marketRunners, settings: app.settings, featherlessSettings: app.featherlessSettings, bankrollStats: app.bankrollStats, existingOrders: app.paperOrders, emergencyStop: app.emergencyStop, apiConnected: app.apiConnected, connectionState: { apiConnected: app.apiConnected, lastActualPriceUpdateAt: app.betfairConnection.lastActualPriceUpdateAt, streamError: app.betfairConnection.streamError }, positiveEvOpportunityCount: app.exchangeOpportunities.filter(item => item.ev > 0).length, strategyRequiresAI: opportunity.decisionSource === 'FEATHERLESS_AI', aiResult: opportunity.decisionSource === 'FEATHERLESS_AI' ? {} : null, strategyName: 'Featherless AI Value Decision Engine', source: 'manual', persistenceType: form.persistenceType, selectionDiagnostics: app.lastExchangeDiagnostics?.sideSelectionDiagnostics, entityApi: base44.entities.PaperOrder });
+    if (result.authorized) app.addPaperOrder(result.order);
+    app.addAuditLog(result.authorized ? 'Paper Order Created' : 'Paper Order Rejected', 'order', result.authorized ? 'info' : 'warning', result.authorized ? `${form.side} ${runner.runnerName} @ ${opportunity.odds}` : result.reason);
+    setMessage({ ok: result.authorized, text: result.authorized ? `Paper order created for ${runner.runnerName}` : result.reason });
   };
   return { form, setForm, marketRunners, runner, submit, message, disabled: !runner || form.stake <= 0 || app.emergencyStop };
 }

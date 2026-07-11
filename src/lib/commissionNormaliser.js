@@ -32,15 +32,9 @@ export function normaliseCommissionRate(value) {
     value = parsed;
   }
 
-  if (typeof value !== 'number' || !isFinite(value)) return null;
-  if (value < 0) return 0;
-  if (value === 0) return 0;
-
-  // If value > 1, it was a percentage (5 means 5%)
-  if (value > 1) return value / 100;
-
-  // Value is already decimal (0.05 = 5%)
-  return value;
+  if (typeof value !== 'number' || !isFinite(value) || value < 0) return null;
+  const normalized = value > 1 ? value / 100 : value;
+  return normalized <= 0.2 ? normalized : null;
 }
 
 /**

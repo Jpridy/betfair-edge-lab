@@ -460,7 +460,7 @@ export async function runExchangeCycle(params) {
   // ── Build loaded markets debug table (first 50) ──
   const loadedMarketsTable = buildLoadedMarketsTable(markets, runnersByMarket);
 
-  const authoritativePrice = calculatePriceFeedStatus(connectionState?.lastPriceUpdateAt || connectionState?.lastStreamUpdateAt || connectionState?.lastCatalogueRefreshAt, Date.now(), settings?.dataFreshnessLimit || 30, !!connectionState?.streamError);
+  const authoritativePrice = calculatePriceFeedStatus(connectionState?.lastActualPriceUpdateAt, Date.now(), settings?.dataFreshnessLimit || 30, !!connectionState?.streamError);
   const connectionDiagnostics = {
     betfairApiConnected: connectionState?.apiConnected ?? false,
     streamConnected: connectionState?.streamConnected ?? false,
@@ -915,11 +915,22 @@ export async function runExchangeCycle(params) {
     }
   }
 
+  // Stale or unavailable prices are an absolute rejection gate, never a score penalty.
+  if (connectionDiagnostics.priceFeedStatus !== 'LIVE') {
+    const failedGate = connectionDiagnostics.priceFeedStatus === 'STALE' ? 'STALE_PRICE_DATA' : 'PRICE_DATA_UNAVAILABLE';
+    for (const opportunity of allOpportunities) {
+      opportunity.decision = 'REJECT';
+      opportunity.gatesPassed = false;
+      opportunity.failedGate = failedGate;
+      opportunity.blockers = [failedGate, ...(opportunity.blockers || []).filter(item => item !== failedGate)];
+    }
+  }
+
   // 8. Rank all opportunities by EV
   let ranked = rankOpportunities(allOpportunities);
 
   // 9. Choose best positive-EV opportunity
-  let bestNormalOpportunity = debugScanMode ? null : (ranked.find(o => o.decision === 'BET') || null);
+  let bestNormalOpportunity = ranked.find(o => o.decision === 'BET') || null;
   let bestOpportunity = bestNormalOpportunity;
   let proofFallbackOpportunity = null;
   const normalOpportunities = [...ranked];
@@ -1337,6 +1348,10 @@ export async function runExchangeCycle(params) {
 
   return {
     bestOpportunity,
+    bestDebugCandidate: debugScanMode ? (ranked[0] || null) : null,
+    wouldCreateOrder: debugScanMode ? !!bestOpportunity : null,
+    wouldFailGate: debugScanMode ? (bestOpportunity?.failedGate || ranked[0]?.failedGate || null) : null,
+    wouldUseDecisionSource: debugScanMode ? (bestOpportunity?.decisionSource || ranked[0]?.decisionSource || null) : null,
     allOpportunities: ranked,
     normalOpportunities,
     proofFallbackOpportunity,

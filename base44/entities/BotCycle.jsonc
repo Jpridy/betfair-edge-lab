@@ -142,6 +142,44 @@
       "items": {
         "type": "object"
       }
+    },
+    "decisionSource": {
+      "type": "string"
+    },
+    "selectionDiagnostics": {
+      "type": "object"
+    },
+    "rawCommissionRate": {
+      "type": "number"
+    },
+    "normalizedCommissionRate": {
+      "type": "number"
+    },
+    "commissionNormalizationApplied": {
+      "type": "boolean"
+    },
+    "invalidTestRecord": {
+      "type": "boolean",
+      "default": false
+    },
+    "excludeFromPerformance": {
+      "type": "boolean",
+      "default": false
+    },
+    "exclusionReason": {
+      "type": "string"
+    },
+    "priceFeedStatus": {
+      "type": "string"
+    },
+    "priceAgeSeconds": {
+      "type": "number"
+    },
+    "settlementWorkerRunId": {
+      "type": "string"
+    },
+    "aiRunnerCountReturned": {
+      "type": "number"
     }
   },
   "required": [

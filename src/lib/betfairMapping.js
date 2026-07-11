@@ -7,6 +7,7 @@
 // ============================================================================
 
 import { roundToNearestTick, isValidTickPrice } from './tickLadder';
+import { normalizeCommissionStrict } from './strictCommission';
 
 function parseRaceNumberFromName(marketName, eventName) {
   const text = `${marketName || ''} ${eventName || ''}`;
@@ -147,9 +148,12 @@ export function calculateCommission(netMarketWinnings, market, settings) {
     warnings.push('Commission rate missing — cannot calculate accurate commission');
   }
 
+  const normalized = normalizeCommissionStrict(rate);
+  if (!normalized.valid) return { commission: null, rate: null, source, status: 'invalid', warnings: [...warnings, normalized.error] };
+  rate = normalized.rate;
   const commission = netMarketWinnings * rate;
 
-  return { commission, rate, source, status, warnings };
+  return { commission, rate, source, status, warnings, rawRate: normalized.raw, normalizationApplied: normalized.normalized };
 }
 
 /**
@@ -187,7 +191,7 @@ export function getCommissionWarnings(market, settings) {
  */
 export function isCommissionValidForLive(market, settings) {
   const result = calculateCommission(100, market, settings); // Test with dummy winnings
-  return result.status !== 'missing';
+  return result.status !== 'missing' && result.status !== 'invalid';
 }
 
 // ─── Market Catalogue → App Market Mapping ─────────────────────────────────

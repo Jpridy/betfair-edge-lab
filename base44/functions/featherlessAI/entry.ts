@@ -401,7 +401,7 @@ Deno.serve(async (req) => {
       responseTimeMs,
       aiProvider: 'featherless',
       aiModel: modelName,
-      aiResponseRunnerCount: aiResult.runnerProbabilities.length,
+      aiRunnerCountReturned: aiResult.runnerProbabilities.length,
       aiTelemetry: { aiRequested: true, aiProvider: 'featherless', aiModel: modelName, aiRequestId: apiData.id || null, aiStartedAt, aiCompletedAt: new Date().toISOString(), aiLatencyMs: responseTimeMs, aiHttpStatus: apiResp.status, aiCallStatus: 'success', aiErrorCode: null, aiErrorMessage: null, aiTimedOut: false, aiRawResponseReceived: !!rawContent, aiResponseParseStatus: 'success', aiSchemaValidationStatus: 'valid', aiRunnerCountRequested: validation.requestedIds.length, aiRunnerCountReturned: validation.returnedIds.length, aiSelectionIdsRequested: validation.requestedIds, aiSelectionIdsReturned: validation.returnedIds, aiUsableProbabilityCount: validation.usable.length },
     });
   } catch (error) {

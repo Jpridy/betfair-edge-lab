@@ -22,6 +22,7 @@ import { calculateFavouriteContext, calculateRunnerContextScores, applyFavourite
 import { compareOpportunities, scoreOpportunity } from './opportunityRanking';
 import { DECISION_SOURCES, dataSourceForDecisionSource } from './decisionProvenance';
 import { ACTIVE_ORDER_STATUSES, exposureBlock, normalizedMarketId } from './raceExposure';
+import { normalizeCommissionStrict } from './strictCommission';
 
 const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
@@ -105,7 +106,9 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
     if (marketType === 'UNKNOWN') continue;
 
     const thresholds = resolveMarketTypeThresholds(marketType, featherlessSettings);
-    const commissionRate = market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
+    const commissionResult = normalizeCommissionStrict(market.marketBaseRate ?? settings.defaultCommissionRate);
+    if (!commissionResult.valid) continue;
+    const commissionRate = commissionResult.rate;
     const marketRunners = allRunners.filter(r =>
       matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
     );
@@ -596,6 +599,7 @@ function buildOpportunity({
     overround,
     timeBeforeJump,
     decision,
+    gatesPassed: decision === 'BET' && blockers.length === 0,
     failedGate: blockers[0] || null,
     reasons,
     blockers,

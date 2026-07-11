@@ -5,6 +5,12 @@
     "strategyName": {
       "type": "string"
     },
+    "decisionSource": {
+      "type": "string"
+    },
+    "selectionDiagnostics": {
+      "type": "object"
+    },
     "marketId": {
       "type": "string"
     },
@@ -238,8 +244,14 @@
     "commissionRateUsed": {
       "type": "number"
     },
+    "rawCommissionRate": {
+      "type": "number"
+    },
     "normalizedCommissionRate": {
       "type": "number"
+    },
+    "commissionNormalizationApplied": {
+      "type": "boolean"
     },
     "commissionSource": {
       "type": "string"
@@ -345,6 +357,15 @@
     "excludeFromPerformance": {
       "type": "boolean",
       "default": false
+    },
+    "exclusionReason": {
+      "type": "string"
+    },
+    "priceFeedStatus": {
+      "type": "string"
+    },
+    "priceAgeSeconds": {
+      "type": "number"
     }
   },
   "required": [
