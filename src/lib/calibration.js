@@ -35,7 +35,9 @@ export function computeCalibration(settledOrders) {
 
   // Overall calibration
   const predictedWinRate = settled.reduce((s, o) => {
-    return s + (o.modelProbability || (1 / (o.matchedOdds || 3)));
+    const selectionWinProbability = Number(o.modelProbability ?? o.finalProbabilityUsedInEV);
+    const predictedBetWinProbability = o.side === 'LAY' ? 1 - selectionWinProbability : selectionWinProbability;
+    return s + predictedBetWinProbability;
   }, 0) / sampleSize;
   const actualWins = settled.filter(o => o.result === 'won').length;
   const actualWinRate = actualWins / sampleSize;
@@ -77,7 +79,9 @@ export function computeCalibration(settledOrders) {
   ];
   const roiByEdgeBand = edgeBands.map(band => {
     const inBand = settled.filter(o => {
-      const edge = o.edgePercent ? o.edgePercent / 100 : (o.modelProbability || 0) - (1 / (o.matchedOdds || 3));
+      const implied = 1 / (o.matchedOdds || 3);
+      const model = Number(o.modelProbability ?? o.finalProbabilityUsedInEV ?? 0);
+      const edge = o.side === 'LAY' ? implied - model : model - implied;
       return edge >= band.min && edge < band.max;
     });
     return computeBandStats(inBand, band.label);
@@ -100,9 +104,9 @@ function computeBandStats(orders, label) {
   const count = orders.length;
   if (count === 0) return { label, count: 0, roi: 0, winRate: 0 };
   const wins = orders.filter(o => o.result === 'won').length;
-  const totalStake = orders.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
+  const capitalAtRisk = orders.reduce((s, o) => s + (o.side === 'LAY' ? Number(o.liability || 0) : Number(o.matchedStake || o.matched_size || 0)), 0);
   const netProfit = orders.reduce((s, o) => s + (o.netProfit || 0), 0);
-  const roi = totalStake > 0 ? (netProfit / totalStake) : 0;
+  const roi = capitalAtRisk > 0 ? (netProfit / capitalAtRisk) : 0;
   const winRate = wins / count;
   return { label, count, roi, winRate };
 }

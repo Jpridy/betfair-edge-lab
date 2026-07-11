@@ -181,8 +181,9 @@ function validateAIResponse(parsed, racePack) {
   const missingSelectionIds = requestedIds.filter((id) => !seen.has(id));
   if (missingSelectionIds.length) errors.push(`Missing runners: ${missingSelectionIds.join(', ')}`);
   const total = usable.reduce((sum, result) => sum + result.probability, 0);
-  if (usable.length && (total < 0.85 || total > 1.15)) errors.push(`Probabilities sum to ${total.toFixed(3)}; expected approximately 1`);
-  return { valid: errors.length === 0 && usable.length === requestedIds.length, errors, usable, requestedIds, returnedIds: results.map((result) => String(result?.selectionId || '')).filter(Boolean), missingSelectionIds };
+  if (!(total > 0)) errors.push('WIN probability total must be positive');
+  const normalizedUsable = total > 0 ? usable.map(result => ({ ...result, probability: result.probability / total })) : [];
+  return { valid: errors.length === 0 && normalizedUsable.length === requestedIds.length, errors, usable:normalizedUsable, rawProbabilityTotal:total, normalizedProbabilityTotal:normalizedUsable.reduce((sum,result)=>sum+result.probability,0), requestedIds, returnedIds: results.map((result) => String(result?.selectionId || '')).filter(Boolean), missingSelectionIds };
 }
 
 Deno.serve(async (req) => {
@@ -340,7 +341,7 @@ Deno.serve(async (req) => {
       decisionSource: 'FEATHERLESS_AI', raceId: racePack.raceId, eventId: racePack.eventId, eventName: racePack.eventName,
       raceSummary: parsed.raceSummary || '', dataQuality: Math.round((validation.usable.reduce((sum, item) => sum + item.confidence, 0) / validation.usable.length) * 100),
       confidence: Math.round((validation.usable.reduce((sum, item) => sum + item.confidence, 0) / validation.usable.length) * 100), marketRead: '', keyRisks: [],
-      runnerProbabilities: validation.usable.map((item) => { const runner = runnerById.get(item.selectionId); const pPlace = Math.min(0.95, Math.max(item.probability, item.probability * 1.5)); return { selectionId: item.selectionId, runnerName: runner?.runnerName || '', pWin: item.probability, pPlace, confidence: item.confidence * 100, fairWinOdds: 1 / item.probability, fairPlaceOdds: 1 / pPlace, positiveSignals: [], negativeSignals: [], reasoning: item.reasoningSummary, dataQuality: item.confidence * 100 }; }),
+      runnerProbabilities: validation.usable.map((item) => { const runner = runnerById.get(item.selectionId); return { selectionId: item.selectionId, runnerName: runner?.runnerName || '', pWin: item.probability, pPlace: null, confidence: item.confidence * 100, fairWinOdds: 1 / item.probability, fairPlaceOdds: null, positiveSignals: [], negativeSignals: [], reasoning: item.reasoningSummary, dataQuality: item.confidence * 100 }; }),
       h2hProbabilities: [], recommendedOpportunities: [], noBetReasons: [],
       finalRaceView: { bestRunner: null, mostOverpricedRunner: null, mostUnderpricedRunner: null, bestBackCandidate: null, bestLayCandidate: null, shouldBetThisRace: false, summaryReason: parsed.raceSummary || '' },
     };

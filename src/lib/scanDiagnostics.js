@@ -9,6 +9,7 @@
 import { scoreRunnerCandidate, resolveThresholds, REJECTION_REASONS, fmtPct } from './candidateScoring';
 import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { checkMarketEligibility } from './marketEligibility';
+import { resolveCommissionRate } from './commission';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
 const STRATEGY_NAME = 'Featherless AI Value Decision Engine';
@@ -83,7 +84,7 @@ export function buildScanDiagnostics(markets, runners, settings, aiSettings, pap
     if (hasOpenStrategyOrder) continue;
 
     selectedMarket = market;
-    const commissionRate = market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05;
+    const commissionRate = resolveCommissionRate(market, settings).normalizedRate;
     const dataSource = determineDataSource(marketRunners);
 
     for (const runner of marketRunners) {

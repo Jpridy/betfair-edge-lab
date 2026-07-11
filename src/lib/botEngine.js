@@ -3,6 +3,8 @@ import { isValidTickPrice, roundToNearestTick, calculateSpreadTicks, calculateSt
 import { runPreOrderChecks } from './orderValidation';
 import { ENRICHED_STRATEGY_LIBRARY } from './strategyLibrary';
 import { classifyFormData, getProbabilityLabel, getNoFormDisclaimer } from './raceFormProfile';
+import { resolveCommissionRate } from './commission';
+import { buildCalculationResult } from './exchangeMath';
 
 export const BOT_STEPS = [
   'Scan Markets',
@@ -40,23 +42,21 @@ export function impliedProb(odds) {
 
 // EV_back = modelProbability * (odds - 1) * (1 - commissionRate) - (1 - modelProbability)
 export function calcEVBack(modelProb, odds, commissionRate) {
-  return modelProb * (odds - 1) * (1 - commissionRate) - (1 - modelProb);
+  return buildCalculationResult({ side:'BACK', probability:modelProb, odds, normalizedCommissionRate:commissionRate, stake:1 }).ev;
 }
 
 export function calcEdge(modelProb, odds) {
-  const implied = impliedProb(odds);
-  return ((modelProb - implied) / implied) * 100;
+  return buildCalculationResult({ side:'BACK', probability:modelProb, odds, normalizedCommissionRate:0, stake:1 }).edge * 100;
 }
 
 // Edge for LAY bets: positive when model thinks horse is LESS likely to win than market implies
 export function calcEdgeLay(modelProb, odds) {
-  const implied = impliedProb(odds);
-  return ((implied - modelProb) / implied) * 100;
+  return buildCalculationResult({ side:'LAY', probability:modelProb, odds, normalizedCommissionRate:0, stake:1 }).edge * 100;
 }
 
 // EV for LAY bets: (1 - modelProb) * (1 - comm) - modelProb * (odds - 1)
 export function calcEVLay(modelProb, odds, commissionRate) {
-  return (1 - modelProb) * (1 - commissionRate) - modelProb * (odds - 1);
+  return buildCalculationResult({ side:'LAY', probability:modelProb, odds, normalizedCommissionRate:commissionRate, stake:1 }).ev;
 }
 
 export function createSignal(strategyName, market, runner, settings, formData = null, raceFormProfile = null) {
@@ -100,10 +100,11 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     ? Math.min(0.95, Math.max(0.05, formData.estimated_probability))
     : Math.min(0.95, Math.max(0.05, baseProb));
   
-  // Use market base rate or default commission for EV calculation
-  const commRate = market?.marketBaseRate || settings.defaultCommissionRate || settings.commissionRate || 0.05;
-  const ev = side === 'BACK' ? calcEVBack(modelProb, odds, commRate) : calcEVLay(modelProb, odds, commRate);
-  const edge = side === 'BACK' ? calcEdge(modelProb, odds) : calcEdgeLay(modelProb, odds);
+  const commission = resolveCommissionRate(market, settings);
+  if (!commission.valid) return null;
+  const calculationResult = buildCalculationResult({ side, probability:modelProb, odds, normalizedCommissionRate:commission.normalizedRate, stake:settings.baseStake || 100 });
+  const ev = calculationResult.ev;
+  const edge = calculationResult.edge * 100;
 
   // EV already accounts for commission. Edge is the margin-of-safety filter.
   // Require positive EV AND edge >= strategy threshold.
@@ -133,6 +134,8 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     fairOdds: 1 / modelProb,
     edgePercent: edge,
     expectedValue: ev,
+    calculationResult,
+    mathematicalInvariantsPassed: calculationResult.mathematicalInvariantsPassed,
     confidence: formData?.confidence != null ? formData.confidence / 100 : 50,
     signalStatus: 'active',
     persistenceType: PERSISTENCE_TYPES.LAPSE,
@@ -168,7 +171,7 @@ export function runRiskCheck(signal, settings, bankrollStats, paperOrders) {
   if (bankrollStats.todayPL < -(settings.dailyLossLimit || 500)) reasons.push('Daily loss limit reached');
   if (bankrollStats.weeklyPL !== undefined && bankrollStats.weeklyPL < -(settings.weeklyLossLimit || 2500)) reasons.push('Weekly loss limit reached');
 
-  const openOrders = paperOrders.filter(o => ['pending', 'executable', 'matched', 'partially_matched', 'unmatched'].includes(o.status));
+  const openOrders = paperOrders.filter(o => ['pending', 'executable', 'matched', 'partially_matched', 'unmatched', 'awaiting_result', 'result_unknown'].includes(o.status) || ['awaiting_result', 'result_unknown'].includes(o.settlementStatus));
   if (openOrders.length >= (settings.maxOpenOrders || 10)) reasons.push('Max open orders reached');
 
   const unmatchedOrders = paperOrders.filter(o => o.status === 'unmatched' || o.status === 'partially_matched');

@@ -10,6 +10,8 @@
 // ============================================================================
 
 import { calculateSpreadTicks } from './tickLadder';
+import { resolveCommissionRate } from './commission';
+import { buildCalculationResult } from './exchangeMath';
 
 // ── Discovery Mode Presets ──
 export const DISCOVERY_PRESETS = {
@@ -147,7 +149,8 @@ export function scoreRunnerCandidate({
 
   // ── Thresholds ──
   const thresholds = resolveThresholds(aiSettings);
-  const commissionRate = marketContext?.commissionRate ?? market?.marketBaseRate ?? settings?.defaultCommissionRate ?? 0.05;
+  const commission = resolveCommissionRate(market, settings);
+  const commissionRate = commission.valid ? commission.normalizedRate : 0;
   const minOdds = aiSettings?.minOdds ?? settings?.minOdds ?? 1.5;
   const maxOdds = aiSettings?.maxOdds ?? settings?.maxOdds ?? 20;
 
@@ -166,13 +169,10 @@ export function scoreRunnerCandidate({
   // ── Fair Odds ──
   const fairOdds = estimatedProbability > 0 ? 1 / estimatedProbability : 0;
 
-  // ── Value Edge (decimal: 0.05 = 5%) ──
-  const valueEdge = estimatedProbability - impliedProbability;
-
-  // ── Expected ROI (decimal, after commission: 0.03 = 3%) ──
-  const expectedROI = bestBack > 0
-    ? estimatedProbability * (bestBack - 1) * (1 - commissionRate) - (1 - estimatedProbability)
-    : 0;
+  // ── Canonical BACK calculation (unit stake keeps EV equal to ROI) ──
+  const calculationResult = buildCalculationResult({ side:'BACK', probability:estimatedProbability, odds:bestBack, normalizedCommissionRate:commissionRate, stake:1 });
+  const valueEdge = calculationResult.edge || 0;
+  const expectedROI = calculationResult.roi || 0;
 
   // ── Confidence (decimal: 0.75 = 75%) ──
   const confidence = deriveConfidence(runner, marketContext, bestBack, spread, tradedVolume, bestBackSize);
@@ -273,6 +273,7 @@ export function scoreRunnerCandidate({
     fairOdds,
     valueEdge,           // decimal
     expectedROI,         // decimal
+    calculationResult,
     confidence,          // decimal
     liquidityScore,
     priceStabilityScore,

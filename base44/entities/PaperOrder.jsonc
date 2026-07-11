@@ -262,6 +262,24 @@
     "expectedValue": {
       "type": "number"
     },
+    "modelProbability": {
+      "type": "number"
+    },
+    "impliedProbability": {
+      "type": "number"
+    },
+    "expectedROI": {
+      "type": "number"
+    },
+    "edge": {
+      "type": "number"
+    },
+    "calculationResult": {
+      "type": "object"
+    },
+    "mathematicalInvariantsPassed": {
+      "type": "boolean"
+    },
     "result": {
       "type": "string",
       "enum": [

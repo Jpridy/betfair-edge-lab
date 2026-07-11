@@ -1,7 +1,8 @@
 import { createValidatedPaperOrder } from './createValidatedPaperOrder';
 import { calculatePriceFeedStatus } from './marketFreshness';
 import { validateCompleteMarketBook } from './marketBookValidation';
-import { normalizeCommissionStrict } from './strictCommission';
+import { resolveCommissionRate } from './commission';
+import { buildCalculationResult } from './exchangeMath';
 
 const fail = (failedGate, reason, details = {}) => ({ authorized: false, persisted: false, order: null, failedGate, reason, ...details });
 const close = (a, b, epsilon = 1e-8) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= epsilon;
@@ -34,7 +35,7 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
   if (secondsToStart > windowStart) return fail('TOO_EARLY_FOR_ORDER', 'Order window has not opened', { secondsToStart });
   if (secondsToStart < windowEnd) return fail('TOO_LATE_FOR_ORDER', 'Order window has closed', { secondsToStart });
 
-  const commission = normalizeCommissionStrict(opportunity.commissionRate ?? market.marketBaseRate ?? settings.manualCommissionRate ?? settings.defaultCommissionRate);
+  const commission = resolveCommissionRate(market, settings);
   if (!commission.valid) return fail('INVALID_COMMISSION', commission.error, { commission });
   const book = validateCompleteMarketBook(marketRunners, settings.maxBackBookPercentage || 150);
   if (!book.valid) return fail('INVALID_MARKET_BOOK', book.errors.join('; '), { marketBookDiagnostics: book });
@@ -45,17 +46,22 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
   const maxLoss = Number(opportunity.maxLoss);
   const ev = Number(opportunity.ev);
   const roi = Number(opportunity.roi);
-  const mathInputs = { side: opportunity.side, stake, odds, liability, maxLoss, ev, roi, probability: opportunity.modelProbability, commissionRate: commission.rate };
-  const mathValid = opportunity.side === 'BACK'
-    ? close(maxLoss, stake) && ev >= -stake && roi >= -1
-    : close(liability, stake * (odds - 1)) && close(maxLoss, liability) && ev >= -liability;
-  if (!mathValid) return fail('MATH_INVARIANT_VIOLATION', 'Exchange mathematical invariant failed', { rawCalculationInputs: mathInputs });
-  if (context.strategyRequiresAI === true && !aiResult) return fail('AI_RESULT_REQUIRED', 'Selected strategy requires an AI result');
+  const rankedCalculation = opportunity.calculationResult || {};
+  const recomputedCalculation = buildCalculationResult({ side:opportunity.side, probability:opportunity.finalProbabilityUsedInEV ?? opportunity.modelProbability, odds, normalizedCommissionRate:commission.normalizedRate, stake });
+  const comparable = ['probability','impliedProbability','odds','normalizedCommissionRate','stake','liability','profitIfWin','lossIfLose','ev','roi','edge','breakevenProbability'];
+  const mathMatches = comparable.every(key => close(Number(rankedCalculation[key]), Number(recomputedCalculation[key]), 1e-6));
+  const mathValid = recomputedCalculation.mathematicalInvariantsPassed === true && opportunity.mathematicalInvariantsPassed === true && mathMatches && close(maxLoss, recomputedCalculation.lossIfLose, 1e-6) && close(liability, recomputedCalculation.liability, 1e-6);
+  if (!mathValid) return fail('MATH_INVARIANT_VIOLATION', 'Ranked opportunity maths did not match final recomputation', { rankedCalculation, recomputedCalculation });
+  if (context.strategyRequiresAI === true) {
+    const aiProbability = aiResult?.runnerProbabilities?.find(item => String(item.selectionId) === String(opportunity.selectionId))?.pWin;
+    if (!Number.isFinite(Number(aiProbability))) return fail('AI_RESULT_REQUIRED', 'Selected strategy requires an explicit AI probability for this selection');
+    if (!close(Number(aiProbability), Number(opportunity.modelProbability), 1e-6)) return fail('AI_PROBABILITY_MISMATCH', 'Authorized probability differs from the AI probability');
+  }
 
-  const validated = createValidatedPaperOrder({ market, runner, side: opportunity.side, stake, odds, strategyName: context.strategyName, source: context.source || 'bot', settings, bankrollStats, existingOrders, emergencyStop, apiConnected: true, persistenceType: context.persistenceType || 'LAPSE', expectedValue: ev, entryReason: (opportunity.reasons || []).join('; '), dataSource: opportunity.dataSource, botSettings: context.botSettings, featherlessSettings, marketType: opportunity.marketType, marketTypeCode: opportunity.marketTypeCode, eventId: opportunity.eventId, eventName: opportunity.eventName, numberOfWinners: opportunity.numberOfWinners, placeTerms: opportunity.placeTerms, proofMode: opportunity.proofMode || false, proofReason: opportunity.proofReason || null, decisionSource: opportunity.decisionSource, selectionDiagnostics: context.selectionDiagnostics });
+  const validated = createValidatedPaperOrder({ market, runner, side: opportunity.side, stake, odds, strategyName: context.strategyName, source: context.source || 'bot', settings, bankrollStats, existingOrders, emergencyStop, apiConnected: true, persistenceType: context.persistenceType || 'LAPSE', expectedValue: ev, entryReason: (opportunity.reasons || []).join('; '), dataSource: opportunity.dataSource, botSettings: context.botSettings, featherlessSettings, marketType: opportunity.marketType, marketTypeCode: opportunity.marketTypeCode, eventId: opportunity.eventId, eventName: opportunity.eventName, numberOfWinners: opportunity.numberOfWinners, placeTerms: opportunity.placeTerms, proofMode: opportunity.proofMode || false, proofReason: opportunity.proofReason || null, decisionSource: opportunity.decisionSource, selectionDiagnostics: context.selectionDiagnostics, commissionResolution:commission, calculationResult:recomputedCalculation });
   if (validated.rejected) return fail(validated.order.failed_validation_field || 'RISK_CHECK_FAILED', validated.reason, { rejectedOrder: validated.order });
   if (!entityApi?.create) return fail('DATABASE_UPDATE_FAILED', 'PaperOrder entity API is unavailable');
-  const order = { ...validated.order, rawCommissionRate: commission.raw, normalizedCommissionRate: commission.rate, commissionNormalizationApplied: commission.normalized, priceFeedStatus: freshness.priceFeedStatus, priceAgeSeconds: freshness.priceAgeSeconds, paperSimulationQuality: freshness.priceFeedStatus === 'LIVE' ? validated.order.paperSimulationQuality : 'Basic' };
+  const order = { ...validated.order, rawCommissionRate: commission.rawRate, normalizedCommissionRate: commission.normalizedRate, commissionSource: commission.source, commissionNormalizationApplied: commission.normalizationApplied, priceFeedStatus: freshness.priceFeedStatus, priceAgeSeconds: freshness.priceAgeSeconds, paperSimulationQuality: freshness.priceFeedStatus === 'LIVE' ? validated.order.paperSimulationQuality : 'Basic' };
   try { const saved = await entityApi.create(order); return { authorized: true, persisted: true, order: saved || order, failedGate: null, reason: null, secondsToStart, marketBookDiagnostics: book, priceFreshness: freshness }; }
   catch (error) { return fail('DATABASE_UPDATE_FAILED', error.message, { attemptedOrder: order }); }
 }

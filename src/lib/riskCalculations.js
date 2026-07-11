@@ -1,7 +1,7 @@
 // Unified risk and exposure calculations — single source of truth.
 // Used by AppContext, RiskManager, RiskOverview, Orders, PerformanceAnalytics, Dashboard, Sidebar, Bot.
 
-const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
+const OPEN_ORDER_STATUSES = ['pending', 'executable', 'unmatched', 'partially_matched', 'matched', 'awaiting_result', 'result_unknown'];
 const UNMATCHED_STATUSES = ['unmatched', 'partially_matched'];
 
 /**
@@ -33,7 +33,7 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
   const layLiability = layOrders.reduce((s, o) => {
     const stake = o.matchedStake || o.matched_size || o.requestedStake || 0;
     const odds = o.matchedOdds || o.average_price_matched || o.requestedOdds || 0;
-    return s + (odds > 1 ? stake * (odds - 1) : 0);
+    return s + (Number(o.liability) > 0 ? Number(o.liability) : (odds > 1 ? stake * (odds - 1) : 0));
   }, 0);
 
   // ── Paper vs Live exposure ──

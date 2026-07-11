@@ -1,4 +1,4 @@
-export const ACTIVE_ORDER_STATUSES = Object.freeze(['pending', 'executable', 'unmatched', 'partially_matched', 'matched', 'awaiting_result']);
+export const ACTIVE_ORDER_STATUSES = Object.freeze(['pending', 'executable', 'unmatched', 'partially_matched', 'matched', 'awaiting_result', 'result_unknown']);
 
 const clean = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const roundedStart = value => { const ms = new Date(value || 0).getTime(); return Number.isFinite(ms) && ms > 0 ? Math.round(ms / 300000) : 0; };

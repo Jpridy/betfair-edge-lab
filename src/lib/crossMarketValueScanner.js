@@ -11,8 +11,8 @@
 // ============================================================================
 
 import { detectMarketType, extractPlaceTerms } from './marketClusterer';
-import { calcBackEV, calcLayEV, calcBackEdge, calcLayEdge, calcOverround, calcKellyStake, calcLayKellyStake, calcDelayRiskScore, calcFillProbability } from './exchangeMath';
-import { buildProbabilityMap, buildH2HMap } from './probabilityNormalizer';
+import { calcOverround, calcKellyStake, calcLayKellyStake, applyStakeCaps, buildCalculationResult, calcDelayRiskScore, calcFillProbability } from './exchangeMath';
+import { buildProbabilityMap, buildH2HMap, estimatePlaceProbabilities, normalizeWinProbabilities } from './probabilityNormalizer';
 import { calculateSpreadTicks } from './tickLadder';
 import { countTicksBetween } from './tickLadder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact, getMarketOnlyFallbackReason } from './externalSearchIntegration';
@@ -22,7 +22,8 @@ import { calculateFavouriteContext, calculateRunnerContextScores, applyFavourite
 import { compareOpportunities, scoreOpportunity } from './opportunityRanking';
 import { DECISION_SOURCES, dataSourceForDecisionSource } from './decisionProvenance';
 import { ACTIVE_ORDER_STATUSES, exposureBlock, normalizedMarketId } from './raceExposure';
-import { normalizeCommissionStrict } from './strictCommission';
+import { resolveCommissionRate } from './commission';
+import { validateCompleteMarketBook } from './marketBookValidation';
 
 const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
@@ -87,12 +88,21 @@ export function resolveMarketTypeThresholds(marketType, featherlessSettings) {
  */
 export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, settings, botSettings, featherlessSettings, bankrollStats, paperOrders, externalSearchResult) {
   const opportunities = [];
-  const probMap = buildProbabilityMap(aiResult?.runnerProbabilities);
+  const normalizedWinField = normalizeWinProbabilities(aiResult?.runnerProbabilities || []);
+  const placeField = estimatePlaceProbabilities(normalizedWinField, Math.max(1, Number(cluster.placeMarkets?.[0]?.numberOfWinners || extractPlaceTerms(cluster.placeMarkets?.[0] || {}) || 2)));
+  const probMap = buildProbabilityMap(placeField);
   const h2hMap = buildH2HMap(aiResult?.h2hProbabilities);
   const dataQuality = aiResult?.dataQuality ?? 50;
   const raceSummary = aiResult?.raceSummary || '';
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extSearchSuccess = externalSearchResult?.searchStatus === 'success';
+  const externalQualityOk = (externalSearchResult?.dataQuality || 0) >= (featherlessSettings?.minExternalDataQuality ?? 50) && (externalSearchResult?.sourceCount || 0) >= (featherlessSettings?.minExternalSourceCount ?? 2);
+  const externallyAdjustedWinField = normalizeWinProbabilities(normalizedWinField.map(item => {
+    const research = extSearchSuccess && externalQualityOk ? findRunnerResearch(externalSearchResult, item.selectionId) : null;
+    const adjusted = research ? applyExternalAdjustment(item.pWin, research, featherlessSettings, externalSearchResult.dataQuality) : { postSearchProbability:item.pWin };
+    return { ...item, pWin:adjusted.postSearchProbability };
+  }));
+  const canonicalWinProbabilityMap = new Map(externallyAdjustedWinField.map(item => [String(item.selectionId), item.pWin]));
   const baseDecisionSource = aiResult?.decisionSource || DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY;
 
   const allMarkets = [
@@ -106,12 +116,12 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
     if (marketType === 'UNKNOWN') continue;
 
     const thresholds = resolveMarketTypeThresholds(marketType, featherlessSettings);
-    const commissionResult = normalizeCommissionStrict(market.marketBaseRate ?? settings.defaultCommissionRate);
+    const marketRunners = allRunners.filter(r => matchRunnerToMarket(r, market) && r.status === 'ACTIVE');
+    const marketBookValidation = validateCompleteMarketBook(marketRunners, settings.maxBackBookPercentage || 150);
+    if (!marketBookValidation.valid) continue;
+    const commissionResult = resolveCommissionRate(market, settings);
     if (!commissionResult.valid) continue;
-    const commissionRate = commissionResult.rate;
-    const marketRunners = allRunners.filter(r =>
-      matchRunnerToMarket(r, market) && r.status === 'ACTIVE'
-    );
+    const commissionRate = commissionResult.normalizedRate;
 
     // Calculate market overround for diagnostics
     const allBackOdds = marketRunners.map(r => r.bestBackPrice).filter(o => o > 0);
@@ -133,13 +143,6 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
         modelProbability = probData?.pWin || 0;
       } else if (marketType === 'PLACE') {
         modelProbability = probData?.pPlace || 0;
-        if (!modelProbability) {
-          // If no pPlace from AI, estimate from pWin using place terms
-          const placeTerms = extractPlaceTerms(market);
-          const pWin = probData?.pWin || 0;
-          // Rough: pPlace ≈ min(0.95, pWin * (placeTerms + 1) * 0.6)
-          modelProbability = Math.min(0.95, pWin * (placeTerms + 1) * 0.6);
-        }
       } else if (marketType === 'H2H') {
         // Look up H2H probability
         const h2hKey = `${market.id}:${selectionId}`;
@@ -148,18 +151,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
           modelProbability = h2hData.pBeatsOpponent;
           opponentSelectionId = h2hData.opponentSelectionId;
         } else {
-          // Fallback: if only 2 runners, derive from win probability
-          if (marketRunners.length === 2) {
-            const other = marketRunners.find(r => String(r.betfairSelectionId || r.selectionId) !== selectionId);
-            opponentSelectionId = other ? String(other.betfairSelectionId || other.selectionId) : null;
-            const myPWin = probData?.pWin || 0;
-            const otherProb = probMap.get(String(other?.betfairSelectionId || other?.selectionId));
-            const otherPWin = otherProb?.pWin || 0;
-            const total = myPWin + otherPWin;
-            modelProbability = total > 0 ? myPWin / total : 0.5;
-          } else {
-            continue;
-          }
+          continue;
         }
       }
 
@@ -243,7 +235,9 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 
       // Use post-search probability for all EV calculations
       // Clamp to valid range
-      const adjustedProbability = Math.max(0.01, Math.min(0.99, postSearchProbability));
+      const adjustedProbability = marketType === 'WIN'
+        ? (canonicalWinProbabilityMap.get(selectionId) || 0)
+        : Math.max(0.000001, Math.min(0.999999, postSearchProbability));
 
       // ── BACK opportunity ──
       if (runner.bestBackPrice > 0 && (runner.bestBackSize || 0) >= 2) {
@@ -295,7 +289,8 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
     for (let i = 0; i < opportunities.length; i++) {
       const original = opportunities[i];
       const runnerScore = runnerContextScores.find(s => s.selectionId === original.selectionId);
-      const adjusted = applyFavouriteContextToOpportunity(original, favouriteContext, runnerScore, featherlessSettings);
+      const contextAdjusted = applyFavouriteContextToOpportunity(original, favouriteContext, runnerScore, featherlessSettings);
+      const adjusted = original.marketType === 'WIN' ? { ...contextAdjusted, favouriteContextAdjustment:0, finalProbabilityUsedInEV:original.modelProbability } : contextAdjusted;
       let finalOpportunity = adjusted;
 
       if (Math.abs((adjusted.finalProbabilityUsedInEV ?? original.modelProbability) - original.modelProbability) > 0.000001) {
@@ -338,37 +333,18 @@ function buildOpportunity({
 
   // Calculate stake using Kelly (or flat proof stake in proof mode)
   const bankroll = bankrollStats?.bankroll || settings.paperBankroll || settings.bankroll || 10000;
-  let stake, liability, ev, roi, edge, breakevenProbability;
+  let stake, calculationResult;
 
   if (paperProofMode) {
-    // Flat proof stake: $2, capped at $5. No Kelly.
     stake = calcProofStake(side, odds, settings);
-    if (side === 'BACK') {
-      const backMath = calcBackEV(modelProbability, odds, commissionRate, stake);
-      ev = backMath.ev; roi = backMath.roi; liability = backMath.liability;
-      breakevenProbability = backMath.breakevenProbability;
-      edge = calcBackEdge(modelProbability, odds);
-    } else {
-      const layMath = calcLayEV(modelProbability, odds, commissionRate, stake);
-      ev = layMath.ev; roi = layMath.roi; liability = layMath.liability;
-      breakevenProbability = layMath.breakevenProbability;
-      edge = calcLayEdge(modelProbability, odds);
-    }
-  } else if (side === 'BACK') {
-    const kelly = calcKellyStake(modelProbability, odds, bankroll, confidence / 100);
-    stake = Math.max(settings.baseStake || 50, Math.min(kelly.stake, settings.maxStake || 500));
-    const backMath = calcBackEV(modelProbability, odds, commissionRate, stake);
-    ev = backMath.ev; roi = backMath.roi; liability = backMath.liability;
-    breakevenProbability = backMath.breakevenProbability;
-    edge = calcBackEdge(modelProbability, odds);
   } else {
-    const kelly = calcLayKellyStake(modelProbability, odds, bankroll, confidence / 100);
-    stake = Math.max(settings.baseStake || 50, Math.min(kelly.stake, settings.maxStake || 500));
-    const layMath = calcLayEV(modelProbability, odds, commissionRate, stake);
-    ev = layMath.ev; roi = layMath.roi; liability = layMath.liability;
-    breakevenProbability = layMath.breakevenProbability;
-    edge = calcLayEdge(modelProbability, odds);
+    const kelly = side === 'BACK'
+      ? calcKellyStake(modelProbability, odds, bankroll, confidence / 100, .25, commissionRate)
+      : calcLayKellyStake(modelProbability, odds, bankroll, confidence / 100, .25, commissionRate);
+    stake = applyStakeCaps(kelly.stake, bankroll, settings);
   }
+  calculationResult = buildCalculationResult({ side, probability:modelProbability, odds, normalizedCommissionRate:commissionRate, stake });
+  const { liability = 0, ev = 0, roi = 0, edge = 0, breakevenProbability = 0, profitIfWin: maxProfit = 0, lossIfLose: maxLoss = 0 } = calculationResult;
 
   const fillProbability = calcFillProbability(availableSize, stake, spreadTicks, timeBeforeJump);
 
@@ -452,15 +428,10 @@ function buildOpportunity({
     if (!paperProofMode) blockers.push(msg);
   }
 
-  // Kelly check — soft in proof mode
-  if (side === 'BACK' && modelProbability <= breakevenProbability) {
-    const msg = 'Kelly fraction ≤ 0 — no positive stake';
-    if (!paperProofMode) blockers.push(msg);
-  }
-  if (side === 'LAY' && modelProbability >= breakevenProbability) {
-    const msg = 'Lay Kelly fraction ≤ 0 — selection too likely to win';
-    if (!paperProofMode) blockers.push(msg);
-  }
+  // Kelly and minimum Betfair stake are hard calculation gates.
+  if (!paperProofMode && stake < 2) blockers.push('KELLY_BELOW_BETFAIR_MINIMUM');
+  if (!calculationResult.mathematicalInvariantsPassed) blockers.push('MATH_INVARIANT_VIOLATION');
+  if (marketType === 'PLACE') blockers.push('PLACE_MODEL_NOT_VALIDATED');
 
   // Confidence check — soft in proof mode
   const minConfidence = featherlessSettings?.minConfidence ?? 50;
@@ -536,10 +507,6 @@ function buildOpportunity({
   const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
 
   const decision = duplicateExposure ? 'REJECT' : blockers.length === 0 ? 'BET' : 'NO_BET';
-  const maxProfit = side === 'BACK'
-    ? (odds - 1) * stake * (1 - commissionRate)
-    : stake * (1 - commissionRate);
-  const maxLoss = side === 'BACK' ? stake : liability;
   const marketNameParts = [];
   if (market.venue) marketNameParts.push(market.venue);
   if (market.raceNumber) marketNameParts.push(`R${market.raceNumber}`);
@@ -584,6 +551,9 @@ function buildOpportunity({
     breakevenProbability,
     fairOdds,
     commissionRate,
+    normalizedCommissionRate: commissionRate,
+    calculationResult,
+    mathematicalInvariantsPassed: calculationResult.mathematicalInvariantsPassed === true,
     ev,
     roi,
     edge,

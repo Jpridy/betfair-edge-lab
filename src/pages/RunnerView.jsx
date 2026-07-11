@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { calculateSpreadTicks, getSpreadQuality } from '@/lib/tickLadder';
-import { createValidatedPaperOrder } from '@/lib/createValidatedPaperOrder';
+import { buildCalculationResult } from '@/lib/exchangeMath';
+import { resolveCommissionRate } from '@/lib/commission';
 
 // Build price history from real traded volume data if available
 function buildPriceHistory(runner) {
@@ -136,9 +137,12 @@ export default function RunnerView() {
   if (market && market.totalMatched < (settings.minimumLiquidity || 5000)) runnerWarnings.push({ level: 'warning', msg: 'Liquidity below strategy minimum' });
 
   // Model probability — use AI model probability if available, otherwise implied probability (no random)
-  const modelProbability = runner.modelProbability || runner.impliedProbability;
-  const edge = ((modelProbability / runner.impliedProbability) - 1) * 100;
-  const fairOdds = 100 / modelProbability;
+  const modelProbability = runner.modelProbability != null ? Number(runner.modelProbability) : Number(runner.impliedProbability || 0) / 100;
+  const displayOdds = paperForm.side === 'LAY' ? runner.bestLayPrice : runner.bestBackPrice;
+  const commission = resolveCommissionRate(market, settings);
+  const runnerCalculation = buildCalculationResult({ side:paperForm.side, probability:modelProbability, odds:displayOdds, normalizedCommissionRate:commission.normalizedRate, stake:Number(paperForm.stake) });
+  const edge = (runnerCalculation.edge || 0) * 100;
+  const fairOdds = modelProbability > 0 ? 1 / modelProbability : 0;
   const clvEstimate = ((runner.lastTradedPrice - runner.bestBackPrice) / runner.bestBackPrice) * 100;
 
   // Strategy suitability — uses enriched strategy library with Betfair fields
@@ -157,35 +161,8 @@ export default function RunnerView() {
   const volatility = Math.sqrt(priceHistory.reduce((sum, p, i, arr) => i > 0 ? sum + Math.pow(p.price - arr[i-1].price, 2) : 0, 0) / priceHistory.length);
 
   const handleCreatePaperOrder = () => {
-    if (emergencyStop) return;
-
-    const { order, rejected, reason } = createValidatedPaperOrder({
-      market,
-      runner,
-      side: paperForm.side,
-      stake: paperForm.stake,
-      odds: null,
-      strategyName: paperForm.strategy,
-      source: 'runner_view',
-      settings,
-      bankrollStats,
-      existingOrders: [], // RunnerView doesn't have direct access; validation handles critical checks
-      emergencyStop,
-      apiConnected: false,
-      persistenceType: paperForm.persistenceType || 'LAPSE',
-      expectedValue: edge * paperForm.stake / 100,
-      entryReason: `${paperForm.strategy} signal — edge ${edge.toFixed(2)}%`,
-      dataSource: 'MARKET_ONLY',
-    });
-
-    addPaperOrder(order);
-    if (rejected) {
-      addAuditLog('Paper Order Rejected', 'order', 'warning', `${paperForm.side} ${runner.runnerName} — rejected: ${reason}`);
-    } else {
-      addAuditLog('Paper Order from Runner View', 'order', 'info', `${paperForm.side} ${runner.runnerName} @ ${order.requestedOdds} × $${paperForm.stake} (${paperForm.persistenceType || 'LAPSE'}) — ${order.status}`, { objectName: runner.runnerName });
-    }
+    addAuditLog('Runner Order Blocked', 'order', 'warning', 'RunnerView cannot persist orders directly; use an authorized BET opportunity from Controls.');
     setShowPaperForm(false);
-    navigate('/orders');
   };
 
   return (

@@ -1,11 +1,12 @@
 export const normalizeMarketId = value => String(value ?? '').trim();
 export const normalizeSelectionId = value => String(value ?? '').trim();
 
+import { normalizeCommissionStrict } from './strictCommission';
+import { calculateMarketCommission } from './commission';
+
 export function normalizeCommissionRate(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 0) return 0.05;
-  const rate = number > 1 ? number / 100 : number;
-  return rate >= 0 && rate <= 0.2 ? rate : 0.05;
+  const normalized = normalizeCommissionStrict(value);
+  return normalized.valid ? normalized.rate : null;
 }
 
 export function calculateOrderGross(order, winnerSelectionIds) {
@@ -21,7 +22,11 @@ export function calculateOrderGross(order, winnerSelectionIds) {
 
 export function allocateMarketCommission(calculations, rate) {
   const totalGross = calculations.reduce((sum, item) => sum + item.grossProfit, 0);
-  const marketCommission = totalGross > 0 ? totalGross * normalizeCommissionRate(rate) : 0;
+  const normalizedRate = normalizeCommissionRate(rate);
+  if (normalizedRate == null) throw new Error('INVALID_COMMISSION');
+  const commissionResult = calculateMarketCommission(totalGross, normalizedRate);
+  if (!commissionResult.valid) throw new Error(commissionResult.error);
+  const marketCommission = commissionResult.commission;
   const positiveIndexes = calculations.map((item, index) => item.grossProfit > 0 ? index : -1).filter(index => index >= 0);
   const positiveGross = positiveIndexes.reduce((sum, index) => sum + calculations[index].grossProfit, 0);
   let allocated = 0;

@@ -10,7 +10,7 @@
 // paper order with correct stake tracking.
 // ============================================================================
 
-import { calculateCommission } from './betfairMapping';
+import { resolveCommissionRate } from './commission';
 import { isPaperProofModeActive } from './paperProofDefaults';
 import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { ACTIVE_ORDER_STATUSES, exposureBlock } from './raceExposure';
@@ -81,6 +81,8 @@ export function createValidatedPaperOrder({
   proofReason = null,
   decisionSource = null,
   selectionDiagnostics = null,
+  commissionResolution = null,
+  calculationResult = null,
 }) {
   const failures = [];
   if (decisionSource) {
@@ -273,7 +275,11 @@ export function createValidatedPaperOrder({
       riskCheckRan: false,
       softOverridesApplied: [],
       hardBlockersChecked: true,
-      commissionRateUsed: null,
+      commissionRateUsed: commissionResolution?.normalizedRate ?? null,
+      rawCommissionRate: commissionResolution?.rawRate ?? null,
+      normalizedCommissionRate: commissionResolution?.normalizedRate ?? null,
+      commissionSource: commissionResolution?.source ?? null,
+      commissionNormalizationApplied: commissionResolution?.normalizationApplied ?? false,
     };
     return { order: rejectedOrder, rejected: true, reason };
   }
@@ -295,9 +301,10 @@ export function createValidatedPaperOrder({
     orderStatus = 'matched';
   }
 
-  // ── Commission ──
-  const commResult = calculateCommission(0, market, settings);
-  const commissionRateUsed = commResult.rate;
+  // ── Commission rate is resolved independently of current profit ──
+  const commResult = commissionResolution || resolveCommissionRate(market, settings);
+  if (!commResult.valid) return { order:null, rejected:true, reason:commResult.error || 'INVALID_COMMISSION' };
+  const commissionRateUsed = commResult.normalizedRate;
   const commissionSource = commResult.source;
 
   const order = {
@@ -350,15 +357,24 @@ export function createValidatedPaperOrder({
     status: orderStatus,
     settlementStatus: (orderStatus === 'matched' || orderStatus === 'partially_matched') ? 'awaiting_result' : 'not_applicable',
     liability: side === 'LAY' ? stake * (price - 1) : stake,
-    expectedValue: expectedValue,
+    expectedValue: calculationResult?.ev ?? expectedValue,
+    modelProbability: calculationResult?.probability ?? null,
+    impliedProbability: calculationResult?.impliedProbability ?? null,
+    expectedROI: calculationResult?.roi ?? null,
+    edge: calculationResult?.edge ?? null,
+    calculationResult,
+    mathematicalInvariantsPassed: calculationResult?.mathematicalInvariantsPassed === true,
+    liability: calculationResult?.liability ?? (side === 'LAY' ? stake * (price - 1) : stake),
     result: 'pending',
     grossProfit: 0,
     commission: 0,
     netProfit: 0,
     commissionRateUsed,
+    rawCommissionRate: commResult.rawRate,
     normalizedCommissionRate: commissionRateUsed,
     commissionSource,
-    commission_calculation_status: commResult.status,
+    commissionNormalizationApplied: commResult.normalizationApplied,
+    commission_calculation_status: commResult.validationStatus,
     entryReason: entryReason || `${strategyName} paper order (${source})`,
     warningFlags: [],
     paperSimulationQuality: 'High',

@@ -7,7 +7,7 @@
 // ============================================================================
 
 import { roundToNearestTick, isValidTickPrice } from './tickLadder';
-import { normalizeCommissionStrict } from './strictCommission';
+import { resolveCommissionRate, calculateMarketCommission, COMMISSION_SOURCES } from './commission';
 
 function parseRaceNumberFromName(marketName, eventName) {
   const text = `${marketName || ''} ${eventName || ''}`;
@@ -92,73 +92,15 @@ export function generateCustomerRef() {
 
 // ─── Commission Model ──────────────────────────────────────────────────────
 
-export const COMMISSION_SOURCES = {
-  MARKET_BASE_RATE: 'market_base_rate',
-  DEFAULT_FALLBACK: 'default_fallback',
-  MANUAL_OVERRIDE: 'manual_override',
-  MISSING: 'missing',
-};
+export { COMMISSION_SOURCES };
 
-/**
- * Calculate commission for a market.
- * Commission is ONLY on net market winnings (not on losing markets).
- * 
- * @param {number} netMarketWinnings - The net profit from winning bets in a market
- * @param {object} market - The market object with commission fields
- * @param {object} settings - App settings with commission config
- * @returns {object} { commission, rate, source, status, warnings }
- */
 export function calculateCommission(netMarketWinnings, market, settings) {
-  const warnings = [];
-
-  // No commission on losses or zero winnings
-  if (netMarketWinnings <= 0) {
-    return { commission: 0, rate: 0, source: 'none', status: 'ok', warnings: [] };
-  }
-
-  // Determine commission source and rate
-  let rate = null;
-  let source = COMMISSION_SOURCES.MISSING;
-  let status = 'missing';
-
-  // Priority 1: Manual override if set
-  if (settings.manualCommissionRate != null && settings.manualCommissionRate > 0) {
-    rate = settings.manualCommissionRate;
-    source = COMMISSION_SOURCES.MANUAL_OVERRIDE;
-    status = 'ok';
-  }
-  // Priority 2: Market-specific Market Base Rate
-  else if (settings.useMarketBaseRate !== false && market?.marketBaseRate != null && market.marketBaseRate > 0) {
-    rate = market.marketBaseRate;
-    source = COMMISSION_SOURCES.MARKET_BASE_RATE;
-    status = 'ok';
-  }
-  // Priority 3: Default fallback rate
-  else if (settings.defaultCommissionRate != null && settings.defaultCommissionRate > 0) {
-    rate = settings.defaultCommissionRate;
-    source = COMMISSION_SOURCES.DEFAULT_FALLBACK;
-    status = 'using_default';
-    warnings.push('Using default commission rate — Market Base Rate not available for this market');
-  }
-  // No rate available
-  else {
-    rate = 0;
-    source = COMMISSION_SOURCES.MISSING;
-    status = 'missing';
-    warnings.push('Commission rate missing — cannot calculate accurate commission');
-  }
-
-  const normalized = normalizeCommissionStrict(rate);
-  if (!normalized.valid) return { commission: null, rate: null, source, status: 'invalid', warnings: [...warnings, normalized.error] };
-  rate = normalized.rate;
-  const commission = netMarketWinnings * rate;
-
-  return { commission, rate, source, status, warnings, rawRate: normalized.raw, normalizationApplied: normalized.normalized };
+  const resolved = resolveCommissionRate(market, settings);
+  if (!resolved.valid) return { commission:null, rate:null, source:resolved.source, status:'invalid', warnings:[resolved.error], rawRate:resolved.rawRate, normalizationApplied:resolved.normalizationApplied };
+  const calculated = calculateMarketCommission(netMarketWinnings, resolved.normalizedRate);
+  return { commission:calculated.commission, rate:resolved.normalizedRate, source:resolved.source, status:resolved.validationStatus, warnings:[], rawRate:resolved.rawRate, normalizationApplied:resolved.normalizationApplied };
 }
 
-/**
- * Get commission warnings for a market.
- */
 export function getCommissionWarnings(market, settings) {
   const warnings = [];
 
@@ -190,8 +132,7 @@ export function getCommissionWarnings(market, settings) {
  * Check if commission calculation is valid for live mode.
  */
 export function isCommissionValidForLive(market, settings) {
-  const result = calculateCommission(100, market, settings); // Test with dummy winnings
-  return result.status !== 'missing' && result.status !== 'invalid';
+  return resolveCommissionRate(market, settings).valid;
 }
 
 // ─── Market Catalogue → App Market Mapping ─────────────────────────────────
@@ -224,7 +165,10 @@ export function mapBetfairMarket(catalogue, book) {
     betDelay: description.bettingDelay || 0,
     bspMarket: description.bspMarket || false,
     turnInPlayEnabled: description.turnInPlayEnabled || false,
-    marketBaseRate: description.marketBaseRate || null,
+    marketBaseRate: description.marketBaseRate ?? null,
+    rawCommissionRate: description.marketBaseRate ?? null,
+    normalizedCommissionRate: resolveCommissionRate({ marketBaseRate: description.marketBaseRate }, { defaultCommissionRate: 0.05 }).normalizedRate,
+    commissionSource: description.marketBaseRate != null ? COMMISSION_SOURCES.MARKET_BASE_RATE : COMMISSION_SOURCES.DEFAULT_FALLBACK,
     numberOfWinners: description.numberOfWinners || 1,
     numberOfRunners: (catalogue.runners || []).length,
     numberOfActiveRunners: book?.numberOfActiveRunners || (catalogue.runners || []).filter(r => r.status === 'ACTIVE').length,

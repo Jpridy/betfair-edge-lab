@@ -17,6 +17,8 @@ import { matchRunnerToMarket } from './marketIdMatcher';
 import { activeRaceOrders } from './raceExposure';
 import { compareOpportunities } from './opportunityRanking';
 import { DECISION_SOURCES } from './decisionProvenance';
+import { resolveCommissionRate } from './commission';
+import { buildCalculationResult } from './exchangeMath';
 
 /**
  * Build a proof fallback opportunity from the best available market.
@@ -94,11 +96,12 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
   const { market, runner, marketType, selectionId, side, odds, availableSize, cluster } = best;
 
   const stake = calcProofStake(side, odds, settings);
-  const liability = side === 'BACK' ? stake : stake * (odds - 1);
-  const maxLoss = side === 'BACK' ? stake : liability;
-  const maxProfit = side === 'BACK'
-    ? (odds - 1) * stake * (1 - (market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05))
-    : stake * (1 - (market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05));
+  const commission = resolveCommissionRate(market, settings);
+  if (!commission.valid) return null;
+  const calculationResult = buildCalculationResult({ side, probability:1/odds, odds, normalizedCommissionRate:commission.normalizedRate, stake });
+  const liability = calculationResult.liability;
+  const maxLoss = calculationResult.lossIfLose;
+  const maxProfit = calculationResult.profitIfWin;
 
   const startTime = market.startTime || market.marketStartTime;
   const marketNameParts = [];
@@ -136,10 +139,13 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
     impliedProbability: 1 / odds,
     breakevenProbability: 1 / odds,
     fairOdds: odds,
-    commissionRate: market.marketBaseRate ?? settings.defaultCommissionRate ?? 0.05,
-    ev: 0,
-    roi: 0,
-    edge: 0,
+    commissionRate: commission.normalizedRate,
+    normalizedCommissionRate: commission.normalizedRate,
+    calculationResult,
+    mathematicalInvariantsPassed: calculationResult.mathematicalInvariantsPassed,
+    ev: calculationResult.ev,
+    roi: calculationResult.roi,
+    edge: calculationResult.edge,
     confidence: 25,
     dataQuality: 30,
     decisionSource: DECISION_SOURCES.PROOF_OVERRIDE,

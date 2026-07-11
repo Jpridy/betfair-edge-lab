@@ -106,7 +106,7 @@ export function buildCLVByStrategy(settledOrders) {
     byStrategy[name].push(o);
   }
   return Object.entries(byStrategy).map(([name, orders]) => {
-    const sorted = orders.slice().sort((a, b) => (getOrderDate(a) || '').localeCompare(getOrderDate(b) || ''));
+    const sorted = orders.filter(o => Number.isFinite(Number(o.closingOdds)) && Number(o.closingOdds) > 1).slice().sort((a, b) => (getOrderDate(a) || '').localeCompare(getOrderDate(b) || ''));
     const data = sorted.map((o, i) => ({
       trade: `T${i + 1}`,
       clv: Math.round((o.clv || 0) * 100) / 100,

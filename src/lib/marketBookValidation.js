@@ -15,14 +15,21 @@ export function validateCompleteMarketBook(runners = [], maxBackBookPercentage =
     const selectionId = selectionIdOf(runner);
     if (!selectionId || ids.has(selectionId)) errors.push('DUPLICATE_SELECTION_ID');
     ids.add(selectionId);
-    for (const priceObject of [...(runner.availableToBack || []), ...(runner.availableToLay || []), ...(runner.availableToBackLadder || []), ...(runner.availableToLayLadder || [])]) {
-      if (priceObject && typeof priceObject === 'object') {
-        if (objectRefs.has(priceObject)) errors.push('DUPLICATED_PRICE_OBJECT');
-        objectRefs.add(priceObject);
+    const priceSignatures = new Set();
+    for (const [side, ladder] of [['BACK', runner.availableToBack || runner.availableToBackLadder || []], ['LAY', runner.availableToLay || runner.availableToLayLadder || []]]) {
+      for (const priceObject of ladder) {
+        if (priceObject && typeof priceObject === 'object') {
+          if (objectRefs.has(priceObject)) errors.push('DUPLICATED_PRICE_OBJECT');
+          objectRefs.add(priceObject);
+          const signature = `${side}:${Number(priceObject.price)}:${Number(priceObject.size)}`;
+          if (priceSignatures.has(signature)) errors.push('DUPLICATED_PRICE_OBJECT');
+          priceSignatures.add(signature);
+        }
       }
     }
     const back = Number(runner.bestBackPrice || 0);
     const lay = Number(runner.bestLayPrice || 0);
+    if (!(back > 0) || !(lay > 0)) errors.push(`MISSING_RUNNER_PRICES:${selectionId}`);
     if (back > 0 && !isValidTickPrice(back)) errors.push(`INVALID_BACK_TICK:${selectionId}`);
     if (lay > 0 && !isValidTickPrice(lay)) errors.push(`INVALID_LAY_TICK:${selectionId}`);
     if (back > 0) backBookPercentage += 100 / back;
