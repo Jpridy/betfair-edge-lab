@@ -1,5 +1,5 @@
 import { detectMarketType } from './marketClusterer';
-import { normalizedMarketId, raceKeyOf } from './raceExposure';
+import { normalizedMarketId, raceKeyOf, raceNumberOf } from './raceExposure';
 
 export function getRaceKey(market, index = 0) {
   const key = raceKeyOf(market);
@@ -17,7 +17,7 @@ export function groupRaceDayData(markets = [], runners = []) {
     const hasPriceData = market.hasPriceData || runners.some(r => String(r.marketId || r.betfairMarketId) === marketId && (r.bestBackPrice > 0 || r.bestLayPrice > 0));
     const prepared = { ...market, raceKey, hasPriceData };
     marketsById.set(marketId, prepared);
-    if (!racesByRaceKey.has(raceKey)) racesByRaceKey.set(raceKey, { raceKey, eventId: market.eventId || market.betfairEventId || null, eventName: market.eventName || market.venue || market.marketName || marketId, venue: market.venue || '', raceNumber: market.raceNumber || 0, startTime: market.marketStartTime || market.startTime || null, markets: [], winMarkets: [], placeMarkets: [], h2hMarkets: [], otherMarkets: [] });
+    if (!racesByRaceKey.has(raceKey)) racesByRaceKey.set(raceKey, { raceKey, eventId: market.eventId || market.betfairEventId || null, eventName: market.eventName || market.venue || market.marketName || marketId, venue: market.venue || '', raceNumber: raceNumberOf(market), startTime: market.marketStartTime || market.startTime || null, markets: [], winMarkets: [], placeMarkets: [], h2hMarkets: [], otherMarkets: [] });
     const race = racesByRaceKey.get(raceKey);
     race.markets.push(prepared);
     if (type === 'WIN') race.winMarkets.push(prepared); else if (type === 'PLACE') race.placeMarkets.push(prepared); else if (type === 'H2H') race.h2hMarkets.push(prepared); else race.otherMarkets.push(prepared);

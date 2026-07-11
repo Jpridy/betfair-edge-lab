@@ -12,7 +12,7 @@ export function clearOpenAIWebSearchBackoff() { backoff=null; }
 
 export function recordOpenAIWebSearchError(error, now = Date.now()) {
   if (!isQuotaOrBillingError(error)) return null;
-  backoff={openAIWebSearchStatus:'error_backoff',nextRetryAt:new Date(now+BACKOFF_MS).toISOString(),openAIWebSearchErrorType:'quota_or_billing',errorMessage:String(error || '')};
+  backoff={openAIWebSearchStatus:'error_backoff',nextRetryAt:new Date(now+BACKOFF_MS).toISOString(),backoffSeconds:BACKOFF_MS/1000,openAIWebSearchErrorType:'quota_or_billing',errorMessage:String(error || '')};
   return {...backoff};
 }
 
@@ -33,4 +33,4 @@ export async function invokeOpenAIWebSearchWithBackoff(invoke, payload) {
   }
 }
 
-function failure(details) { return {searchStatus:details.openAIWebSearchStatus || 'error',sourceCount:0,sources:[],runnerResearch:[],raceLevelNotes:'',dataQuality:0,errorMessage:details.errorMessage || null,errorType:details.openAIWebSearchErrorType || null,nextRetryAt:details.nextRetryAt || null,searchQuery:'',searchedAt:new Date().toISOString(),searchProvider:'openai_web_search'}; }
+function failure(details) { const status=details.openAIWebSearchStatus || 'error'; const errorType=details.openAIWebSearchErrorType || null; return {searchStatus:status,openAIWebSearchStatus:status,sourceCount:0,sources:[],runnerResearch:[],raceLevelNotes:'',dataQuality:0,errorMessage:details.errorMessage || null,errorType,openAIWebSearchErrorType:errorType,nextRetryAt:details.nextRetryAt || null,backoffSeconds:details.backoffSeconds || null,searchQuery:'',searchedAt:new Date().toISOString(),searchProvider:'openai_web_search'}; }

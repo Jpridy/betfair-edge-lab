@@ -617,6 +617,7 @@ export async function runExchangeCycle(params) {
   let extLatestStatus = 'not_requested';
   let extNextRetryAt = null;
   let extErrorType = null;
+  let extBackoffSeconds = null;
   const extSearchEnabled = featherlessSettings?.externalSearchEnabled === true;
   const extCacheTtlMs = (featherlessSettings?.externalSearchCacheTtlMinutes || 5) * 60 * 1000;
 
@@ -696,6 +697,7 @@ export async function runExchangeCycle(params) {
             extLatestStatus = externalSearchResult.searchStatus || extLatestStatus;
             extNextRetryAt = externalSearchResult.nextRetryAt || extNextRetryAt;
             extErrorType = externalSearchResult.errorType || extErrorType;
+            extBackoffSeconds = externalSearchResult.backoffSeconds || extBackoffSeconds;
             if (externalSearchResult.searchStatus === 'error_backoff') extSearchCalls=Math.max(0,extSearchCalls-1);
             if (externalSearchResult.searchStatus === 'success' && externalSearchResult.raceLevelNotes) extLatestSummary = externalSearchResult.raceLevelNotes.slice(0, 200);
             if (externalSearchResult.searchStatus === 'timeout') extSearchTimeouts++;
@@ -1324,6 +1326,7 @@ export async function runExchangeCycle(params) {
       latestSearchStatus: extLatestStatus,
       nextRetryAt: extNextRetryAt,
       openAIWebSearchErrorType: extErrorType,
+      backoffSeconds: extBackoffSeconds,
       perEventResults: externalSearchPerEvent,
       cacheStats: getExternalSearchCacheStats(),
     },
@@ -1352,6 +1355,7 @@ export async function runExchangeCycle(params) {
     openAIWebSearchError: externalSearchPerEvent.find(item => item.errorMessage)?.errorMessage || null,
     openAIWebSearchNextRetryAt: extNextRetryAt,
     openAIWebSearchErrorType: extErrorType,
+    openAIWebSearchBackoffSeconds: extBackoffSeconds,
     raceAssessmentDiagnostics: {
       racePacksBuilt,
       featherlessCalled,

@@ -30,7 +30,7 @@ function legacyFields(cycle) {
   const summary=cycle.scanSummary || {};
   const expected=Number(summary.totalOpportunities ?? summary.opportunitiesGenerated ?? 0);
   const snapshot=Array.isArray(summary.allOpportunitiesSnapshot) ? summary.allOpportunitiesSnapshot : [];
-  const missingCandidateSnapshot=expected > 0 && (snapshot.length < expected || summary.opportunityLogCompleteness !== 'complete_cycle_snapshot');
+  const missingCandidateSnapshot=expected > 0 && snapshot.length < expected;
   const candidate=summary.bestRejectedCandidate || summary.bestGatePassedOpportunity || summary.finalSelectedOpportunity;
   const candidateIncomplete=expected > 0 && (!candidate?.opportunityId || !candidate?.decision || candidate?.gatesPassed == null);
   return {legacyIncomplete:missingCandidateSnapshot || candidateIncomplete,missingCandidateSnapshot};

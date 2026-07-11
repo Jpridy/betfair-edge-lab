@@ -71,7 +71,7 @@ export function buildDecisionLogging({ opportunities = [], runners = [], cycleId
     topRankedOpportunity:rows[0] || null, bestGatePassedOpportunity:bestGatePassed, bestRejectedCandidate:bestRejected, finalSelectedOpportunity:finalSelected,
     topRankedOpportunityId:rows[0]?.opportunityId || null, bestBetCandidateId:bestGatePassed?.opportunityId || null,
     bestRejectedCandidateId:bestRejected?.opportunityId || null, finalSelectedOpportunityId:finalSelected?.opportunityId || null,
-    gatePassedOpportunities:rows.filter(row => row.gatesPassed).length, rejectedOpportunities:rows.length-rows.filter(row => row.gatesPassed).length, rejectionCountsByGate:byFailedGate, candidateSummary, candidateSummaryJson:JSON.stringify(candidateSummary), opportunityLog:rows, allOpportunitiesSnapshot:rows, opportunityLogCompleteness:'complete_cycle_snapshot',
+    gatePassedOpportunities:rows.filter(row => row.gatesPassed).length, rejectedOpportunities:rows.length-rows.filter(row => row.gatesPassed).length, rejectionCountsByGate:byFailedGate, candidateSummary, candidateSummaryJson:JSON.stringify(candidateSummary), opportunityLog:rows, allOpportunitiesSnapshot:rows, opportunityLogCompleteness:'full_canonical_snapshot',
     candidateChangedSincePreviousCycle, bestRejectedChangedSincePreviousCycle:comparable ? (bestRejected?.opportunityId || null) !== (previous.bestRejectedCandidateId || null) : false,
     priceChangedSincePreviousCycle, probabilityChangedSincePreviousCycle,
   };

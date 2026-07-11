@@ -7,11 +7,18 @@ export function normalizedMarketId(value) {
   return String(value?.normalizedMarketId || value?.betfairMarketId || value?.marketId || value?.id || '').trim();
 }
 
+export function raceNumberOf(value) {
+  const supplied=Number(value?.raceNumber || 0);
+  if (supplied > 0) return supplied;
+  for (const text of [value?.marketName,value?.eventName,value?.raceName]) { const match=String(text || '').match(/(?:^|\s)R(?:ACE)?\s*(\d+)\b/i); if (match) return Number(match[1]); }
+  return 0;
+}
+
 export function raceKeyOf(value) {
   const eventId = String(value?.eventId || value?.betfairEventId || '').trim();
   if (eventId) return eventId;
   const venue = clean(value?.venue || value?.eventName);
-  const race = Number(value?.raceNumber || 0);
+  const race = raceNumberOf(value);
   const start = roundedStart(value?.raceStartTime || value?.marketStartTime || value?.startTime);
   return `race:${venue}:${race}:${start}`;
 }
