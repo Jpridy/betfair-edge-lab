@@ -1,22 +1,29 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AnalyticsOverview from '@/components/analytics/AnalyticsOverview';
 import PerformanceAnalytics from '@/pages/PerformanceAnalytics';
-import Orders from '@/pages/Orders';
-import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
-import AccountingSummary from '@/components/accounting/AccountingSummary';
-import ValidationStatus from '@/components/validation/ValidationStatus';
-import ValidationResearchPanel from '@/components/validation/ValidationResearchPanel';
+import CalibrationTab from '@/components/analytics/CalibrationTab';
 import SelfCalibrationPanel from '@/components/calibration/SelfCalibrationPanel';
+import ValidationResearchPanel from '@/components/validation/ValidationResearchPanel';
+import Orders from '@/pages/Orders';
 
 export default function Analytics() {
-  return <Tabs defaultValue="performance" className="space-y-5">
-    <AccountingSummary />
-    <ValidationStatus />
-    <ValidationResearchPanel />
-    <TabsList><TabsTrigger value="performance">Performance</TabsTrigger><TabsTrigger value="orders">Orders</TabsTrigger><TabsTrigger value="decisions">Decisions</TabsTrigger><TabsTrigger value="calibration">Self-Calibration</TabsTrigger></TabsList>
-    <TabsContent value="performance"><PerformanceAnalytics /></TabsContent>
-    <TabsContent value="orders"><Orders /></TabsContent>
-    <TabsContent value="decisions"><DecisionLogPanel /></TabsContent>
-    <TabsContent value="calibration"><SelfCalibrationPanel /></TabsContent>
-  </Tabs>;
+  return (
+    <Tabs defaultValue="overview" className="space-y-4">
+      <TabsList className="flex-wrap h-auto">
+        <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="performance">Performance</TabsTrigger>
+        <TabsTrigger value="calibration">Calibration</TabsTrigger>
+        <TabsTrigger value="self-calibration">Self-Calibration</TabsTrigger>
+        <TabsTrigger value="replay">Replay & Research</TabsTrigger>
+        <TabsTrigger value="orders">Orders</TabsTrigger>
+      </TabsList>
+      <TabsContent value="overview"><AnalyticsOverview /></TabsContent>
+      <TabsContent value="performance"><PerformanceAnalytics /></TabsContent>
+      <TabsContent value="calibration"><CalibrationTab /></TabsContent>
+      <TabsContent value="self-calibration"><SelfCalibrationPanel /></TabsContent>
+      <TabsContent value="replay"><ValidationResearchPanel /></TabsContent>
+      <TabsContent value="orders"><Orders /></TabsContent>
+    </Tabs>
+  );
 }

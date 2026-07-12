@@ -1,27 +1,53 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import SetupWizard from '@/pages/SetupWizard';
-import WiringAudit from '@/pages/WiringAudit';
-import LogsAudit from '@/pages/LogsAudit';
-import RunnerView from '@/pages/RunnerView';
-import MockFeatherlessRun from '@/pages/MockFeatherlessRun';
-import BetfairDataDiagnostics from '@/components/bot/BetfairDataDiagnostics';
-import DebugPackageExport from '@/components/debug/DebugPackageExport';
-import AccountingSummary from '@/components/accounting/AccountingSummary';
+import DebugSystem from '@/components/debug/DebugSystem';
+import DebugLiveData from '@/components/debug/DebugLiveData';
+import DebugCalculations from '@/components/debug/DebugCalculations';
+import DebugAccounting from '@/components/debug/DebugAccounting';
+import DebugSettlement from '@/components/debug/DebugSettlement';
 import EffectiveSettingsTable from '@/components/settings/EffectiveSettingsTable';
-import ValidationStatus from '@/components/validation/ValidationStatus';
+import SelectedRaceMonitoring from '@/components/controlroom/SelectedRaceMonitoring';
+import DebugPackageExport from '@/components/debug/DebugPackageExport';
+import CalibrationDiagnostics from '@/components/calibration/CalibrationDiagnostics';
+import useCalibrationManager from '@/hooks/useCalibrationManager';
+import { Panel } from '@/components/ui/workstation';
+
+function DebugRaceIdentity() {
+  return <SelectedRaceMonitoring />;
+}
+
+function DebugSettingsLinkage() {
+  return <Panel title="Settings Linkage" subtitle="Stored vs effective values and engine consumers"><EffectiveSettingsTable /></Panel>;
+}
+
+function DebugCalibration() {
+  const manager = useCalibrationManager();
+  return <CalibrationDiagnostics manager={manager} />;
+}
 
 export default function Debug() {
-  return <Tabs defaultValue="health" className="space-y-5">
-    <AccountingSummary />
-    <ValidationStatus />
-    <EffectiveSettingsTable />
-    <DebugPackageExport />
-    <TabsList className="flex-wrap h-auto"><TabsTrigger value="health">System Tests</TabsTrigger><TabsTrigger value="wiring">Wiring</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="market">Market Data</TabsTrigger><TabsTrigger value="ai">AI Test</TabsTrigger></TabsList>
-    <TabsContent value="health"><SetupWizard /></TabsContent>
-    <TabsContent value="wiring"><WiringAudit /></TabsContent>
-    <TabsContent value="logs"><LogsAudit /></TabsContent>
-    <TabsContent value="market"><div className="space-y-5"><BetfairDataDiagnostics /><RunnerView /></div></TabsContent>
-    <TabsContent value="ai"><MockFeatherlessRun /></TabsContent>
-  </Tabs>;
+  return (
+    <Tabs defaultValue="system" className="space-y-4">
+      <TabsList className="flex-wrap h-auto">
+        <TabsTrigger value="system">System</TabsTrigger>
+        <TabsTrigger value="linkage">Settings Linkage</TabsTrigger>
+        <TabsTrigger value="race">Race Identity</TabsTrigger>
+        <TabsTrigger value="data">Live Data</TabsTrigger>
+        <TabsTrigger value="calculations">Calculations</TabsTrigger>
+        <TabsTrigger value="accounting">Accounting</TabsTrigger>
+        <TabsTrigger value="settlement">Settlement</TabsTrigger>
+        <TabsTrigger value="calibration">Calibration</TabsTrigger>
+        <TabsTrigger value="export">Export</TabsTrigger>
+      </TabsList>
+      <TabsContent value="system"><DebugSystem /></TabsContent>
+      <TabsContent value="linkage"><DebugSettingsLinkage /></TabsContent>
+      <TabsContent value="race"><DebugRaceIdentity /></TabsContent>
+      <TabsContent value="data"><DebugLiveData /></TabsContent>
+      <TabsContent value="calculations"><DebugCalculations /></TabsContent>
+      <TabsContent value="accounting"><DebugAccounting /></TabsContent>
+      <TabsContent value="settlement"><DebugSettlement /></TabsContent>
+      <TabsContent value="calibration"><DebugCalibration /></TabsContent>
+      <TabsContent value="export"><DebugPackageExport /></TabsContent>
+    </Tabs>
+  );
 }
