@@ -382,7 +382,7 @@ export function AppProvider({ children }) {
   // ── Derive bankroll stats from settled paper orders (unified calculation) ──
   useEffect(() => {
     const rm = calculateRiskMetrics(paperOrders, settings);
-    const settled = paperOrders.filter(o => o.status === 'settled');
+    const settled = paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
     const wins = settled.filter(o => o.result === 'won').length;
     const losses = settled.filter(o => o.result === 'lost').length;
     const commissionPaid = settled.reduce((s, o) => s + (o.commission || 0), 0);
@@ -414,7 +414,7 @@ export function AppProvider({ children }) {
 
   // ── Derive P/L chart data from settled orders ──
   const plData = useMemo(() => {
-    const settled = paperOrders.filter(o => o.status === 'settled').slice().sort((a, b) => (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || ''));
+    const settled = paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord).slice().sort((a, b) => (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || ''));
     const starting = settings.paperBankroll || settings.bankroll;
     let running = starting;
     return settled.map((o, i) => {
@@ -810,7 +810,7 @@ export function AppProvider({ children }) {
   const recalculateSettledStats = () => {
     const now = new Date().toISOString();
     setSyncState(prev => ({ ...prev, clearedOrderSync: now, lastMetricRecalculation: now }));
-    addAuditLog('Settled Stats Recalculated', 'api', 'info', `Recalculated settled stats: ${paperOrders.filter(o => o.status === 'settled').length} settled orders`);
+    addAuditLog('Settled Stats Recalculated', 'api', 'info', `Recalculated settled stats: ${paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord).length} settled orders`);
     setBetfairConnection(prev => ({ ...prev, lastClearedOrderSyncTime: now }));
   };
 
@@ -819,7 +819,7 @@ export function AppProvider({ children }) {
     setSyncState(prev => ({ ...prev, lastMetricRecalculation: now }));
     
     // Recalculate strategy stats from settled orders only
-    const settled = paperOrders.filter(o => o.status === 'settled');
+    const settled = paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
     const newStats = strategyStats.map(stat => {
       const strategySettled = settled.filter(o => o.strategyName === stat.strategyName);
       const wins = strategySettled.filter(o => o.result === 'won').length;

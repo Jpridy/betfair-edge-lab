@@ -9,6 +9,8 @@
 // Live betting is ALWAYS disabled. No real Betfair orders. No live handoff.
 // ============================================================================
 
+export const PAPER_PROOF_MAX_STAKE=5;
+export const PAPER_PROOF_MAX_LAY_LIABILITY=25;
 export const PAPER_PROOF_BOT_SETTINGS = {
   botEnabled: true,
   botMode: 'paper_proof',
@@ -128,16 +130,8 @@ export function isPaperProofModeActive(settings, botSettings, featherlessSetting
 /**
  * Flat proof stake: $2, capped at $5. No Kelly.
  */
-export function calcProofStake(side, odds, settings) {
-  const baseProof = 2;
-  const maxProof = settings?.maxStake || 5;
-  const maxLiability = settings?.maxLayLiability || 25;
-  if (side === 'LAY') {
-    const stake = Math.min(baseProof, maxLiability / Math.max(odds - 1, 1));
-    return Math.min(stake, maxProof);
-  }
-  return Math.min(baseProof, maxProof);
-}
+export function calcProofStake(side,odds,settings={}){const baseProof=2,maxProof=Math.min(Number(settings.maxStake??PAPER_PROOF_MAX_STAKE),PAPER_PROOF_MAX_STAKE),maxLiability=Math.min(Number(settings.maxLayLiability??PAPER_PROOF_MAX_LAY_LIABILITY),PAPER_PROOF_MAX_LAY_LIABILITY);if(side==='LAY'){const capStake=maxLiability/Math.max(Number(odds)-1,1);if(capStake<baseProof)return 0;return Math.min(baseProof,maxProof,capStake);}return Math.min(baseProof,maxProof);}
+export function proofLiabilityLimit(settings={}){return Math.min(Number(settings.maxLayLiability??PAPER_PROOF_MAX_LAY_LIABILITY),PAPER_PROOF_MAX_LAY_LIABILITY);}
 
 /**
  * Hard blockers that CANNOT be relaxed even in Paper Proof Mode.

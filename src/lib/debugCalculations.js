@@ -13,7 +13,7 @@ export function buildCalculationSnapshots(opportunities = [], timestamp) {
     const ranked=Object.keys(opportunity.calculationResult || {}).length ? opportunity.calculationResult : (rebuilt || calculationProjection(opportunity));
     const finalAuthority=opportunity.finalAuthorityRecalculation && typeof opportunity.finalAuthorityRecalculation === 'object' ? opportunity.finalAuthorityRecalculation : null;
     const comparison=finalAuthority || ranked;
-    const fields=['ev','roi','edge','liability','breakevenProbability'];
+    const fields=['ev','roi','commissionAdjustedEdge','liability','breakevenProbability'];
     const hasComparableValues=Number.isFinite(Number(opportunity.ev)) && Number.isFinite(Number(opportunity.roi));
     const valuesMatched=hasComparableValues && fields.every(field => comparison?.[field] == null || opportunity[field] == null || close(comparison[field],opportunity[field]));
     const mathematicalInvariantsPassed=(opportunity.mathematicalInvariantsPassed ?? ranked?.mathematicalInvariantsPassed ?? rebuilt?.mathematicalInvariantsPassed) === true;
@@ -22,7 +22,7 @@ export function buildCalculationSnapshots(opportunities = [], timestamp) {
       opportunityId:opportunity.opportunityId ?? null, runnerName:opportunity.runnerName ?? null, selectionId:opportunity.selectionId ?? null, side:opportunity.side ?? null, odds:opportunity.odds ?? null, probability:probability ?? null,
       impliedProbability:opportunity.impliedProbability ?? null, normalizedCommissionRate:commission ?? null,
       stake:opportunity.stake ?? null, liability:opportunity.liability ?? null, profitIfWin:opportunity.maxProfit ?? ranked?.profitIfWin ?? null, lossIfLose:opportunity.maxLoss ?? ranked?.lossIfLose ?? null,
-      ev:opportunity.ev ?? null, roi:opportunity.roi ?? null, edge:opportunity.edge ?? null, breakevenProbability:opportunity.breakevenProbability ?? null,
+      ev:opportunity.ev??null,roi:opportunity.roi??null,edge:opportunity.commissionAdjustedEdge??opportunity.edge??null,rawProbabilityEdge:opportunity.rawProbabilityEdge??null,commissionAdjustedEdge:opportunity.commissionAdjustedEdge??opportunity.edge??null,breakevenProbability:opportunity.breakevenProbability??null,
       mathematicalInvariantsPassed, sourceFunction:ranked?.sourceFunction || 'exchangeMath', calculationTimestamp:opportunity.calculationTimestamp || timestamp || null,
       rankedCalculation:ranked, finalAuthorityRecalculation:finalAuthority || 'not_reached', finalAuthorityNotReachedReason:finalAuthority ? null : failedGate,
       valuesMatched, mismatchReason:valuesMatched ? null : 'Ranked and final values do not match',

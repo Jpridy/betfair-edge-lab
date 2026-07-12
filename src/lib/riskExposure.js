@@ -1,33 +1,8 @@
 import { canonicalRaceIdentity } from './raceIdentity';
 import { normalizedMarketId } from './raceExposure';
-
-export const ACTIVE_EXPOSURE_STATUSES = Object.freeze(['pending','executable','unmatched','partially_matched','matched','awaiting_result','result_unknown']);
-export const TERMINAL_ORDER_STATUSES = Object.freeze(['settled','voided','lapsed','cancelled','rejected']);
-
-export function isActiveExposureOrder(order) {
-  if (TERMINAL_ORDER_STATUSES.includes(order?.status) || TERMINAL_ORDER_STATUSES.includes(order?.settlementStatus)) return false;
-  return ACTIVE_EXPOSURE_STATUSES.includes(order?.status) || ACTIVE_EXPOSURE_STATUSES.includes(order?.settlementStatus);
-}
-
-export function orderExposure(order) {
-  const side=String(order?.side || '').toUpperCase();
-  const stake=Number(order?.matchedStake ?? order?.matched_size ?? order?.requestedStake ?? order?.requested_size) || 0;
-  const odds=Number(order?.matchedOdds ?? order?.matched_price ?? order?.requestedOdds ?? order?.requested_price) || 0;
-  if (side === 'LAY') return { backExposure:0, layLiability:Number(order?.liability) > 0 ? Number(order.liability) : stake*Math.max(0,odds-1) };
-  return { backExposure:stake, layLiability:0 };
-}
-
-export function reconcileRiskExposure(orders = []) {
-  const active=orders.filter(isActiveExposureOrder);
-  const exposureByRace={}, exposureByMarket={};
-  let totalBackExposure=0,totalLayLiability=0,unresolvedMatchedOrderCount=0;
-  for (const order of active) {
-    const exposure=orderExposure(order); totalBackExposure+=exposure.backExposure; totalLayLiability+=exposure.layLiability;
-    if (Number(order.matchedStake ?? order.matched_size) > 0 || ['matched','awaiting_result','result_unknown'].includes(order.status)) unresolvedMatchedOrderCount++;
-    const raceKey=order.canonicalRaceKey || canonicalRaceIdentity(order).canonicalRaceKey;
-    const marketId=normalizedMarketId(order) || 'unknown';
-    exposureByRace[raceKey]=(exposureByRace[raceKey] || 0)+exposure.backExposure+exposure.layLiability;
-    exposureByMarket[marketId]=(exposureByMarket[marketId] || 0)+exposure.backExposure+exposure.layLiability;
-  }
-  return { activeOrderCount:active.length, unresolvedMatchedOrderCount, totalBackExposure, totalLayLiability, totalExposure:totalBackExposure+totalLayLiability, exposureByRace, exposureByMarket, orders:active };
-}
+export const ACTIVE_EXPOSURE_STATUSES=Object.freeze(['pending','executable','unmatched','partially_matched','matched','awaiting_result','result_unknown']);
+export const TERMINAL_ORDER_STATUSES=Object.freeze(['settled','voided','lapsed','cancelled','rejected']);
+export function isActiveExposureOrder(order){if(TERMINAL_ORDER_STATUSES.includes(order?.status)||TERMINAL_ORDER_STATUSES.includes(order?.settlementStatus))return false;return ACTIVE_EXPOSURE_STATUSES.includes(order?.status)||ACTIVE_EXPOSURE_STATUSES.includes(order?.settlementStatus);}
+const amount=(...values)=>{for(const value of values)if(Number.isFinite(Number(value))&&Number(value)>=0)return Number(value);return 0;};
+export function orderExposure(order){const side=String(order?.side||'').toUpperCase(),odds=amount(order?.matchedOdds,order?.matched_price,order?.requestedOdds,order?.requested_price),matchedStake=amount(order?.matchedStake,order?.matched_size),requestedStake=amount(order?.requestedStake,order?.requested_size,order?.size),remainingStake=amount(order?.remaining_size,Math.max(0,requestedStake-matchedStake));const matchedLiability=amount(order?.matchedCalculation?.liability,side==='LAY'?matchedStake*Math.max(0,odds-1):matchedStake),unmatchedLiability=amount(order?.remainingUnmatchedCalculation?.liability,side==='LAY'?remainingStake*Math.max(0,odds-1):remainingStake);return side==='LAY'?{backExposure:0,layLiability:matchedLiability+unmatchedLiability,matchedExposure:matchedLiability,unmatchedReservedExposure:unmatchedLiability}:{backExposure:matchedStake+remainingStake,layLiability:0,matchedExposure:matchedStake,unmatchedReservedExposure:remainingStake};}
+export function reconcileRiskExposure(orders=[]){const active=orders.filter(isActiveExposureOrder),exposureByRace={},exposureByMarket={};let totalBackExposure=0,totalLayLiability=0,unresolvedMatchedOrderCount=0;for(const order of active){const exposure=orderExposure(order);totalBackExposure+=exposure.backExposure;totalLayLiability+=exposure.layLiability;if(amount(order.matchedStake,order.matched_size)>0||['matched','awaiting_result','result_unknown'].includes(order.status))unresolvedMatchedOrderCount++;const raceKey=order.canonicalRaceKey||canonicalRaceIdentity(order).canonicalRaceKey,marketId=normalizedMarketId(order)||'unknown',total=exposure.backExposure+exposure.layLiability;exposureByRace[raceKey]=(exposureByRace[raceKey]||0)+total;exposureByMarket[marketId]=(exposureByMarket[marketId]||0)+total;}const totalExposure=totalBackExposure+totalLayLiability;return{activeOrderCount:active.length,unresolvedMatchedOrderCount,totalBackExposure,totalLayLiability,totalExposure,backExposure:totalBackExposure,layLiability:totalLayLiability,riskExposureReconciliationPassed:Number.isFinite(totalExposure)&&Math.abs(totalExposure-(totalBackExposure+totalLayLiability))<1e-9,exposureByRace,exposureByMarket,orders:active};}

@@ -79,10 +79,12 @@
       "type": "string"
     },
     "size": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "price": {
-      "type": "number"
+      "type": "number",
+      "exclusiveMinimum": 1
     },
     "persistenceType": {
       "type": "string"
@@ -115,13 +117,16 @@
       "type": "string"
     },
     "requested_size": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "matched_size": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "remaining_size": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "average_price_matched": {
       "type": "number"
@@ -218,7 +223,17 @@
       "type": "number"
     },
     "liability": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
+    },
+    "requestedCalculation": {
+      "type": "object"
+    },
+    "matchedCalculation": {
+      "type": "object"
+    },
+    "remainingUnmatchedCalculation": {
+      "type": "object"
     },
     "simulatedMatchedSize": {
       "type": "number"
@@ -242,25 +257,32 @@
       "type": "number"
     },
     "requestedOdds": {
-      "type": "number"
+      "type": "number",
+      "exclusiveMinimum": 1
     },
     "matchedOdds": {
       "type": "number"
     },
     "requestedStake": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "matchedStake": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "commissionRateUsed": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.2
     },
     "rawCommissionRate": {
       "type": "number"
     },
     "normalizedCommissionRate": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.2
     },
     "commissionNormalizationApplied": {
       "type": "boolean"
@@ -275,15 +297,40 @@
       "type": "number"
     },
     "modelProbability": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "probabilityDecimal": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
     },
     "impliedProbability": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "impliedProbabilityDecimal": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidencePercent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
     },
     "expectedROI": {
       "type": "number"
     },
     "edge": {
+      "type": "number"
+    },
+    "rawProbabilityEdge": {
+      "type": "number"
+    },
+    "commissionAdjustedEdge": {
       "type": "number"
     },
     "calculationResult": {

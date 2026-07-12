@@ -1,62 +1,31 @@
-const finite = value => Number.isFinite(Number(value));
+const finite=value=>Number.isFinite(Number(value));
+const invalid=(error,details={})=>({mathematicalInvariantsPassed:false,error,...details});
 
-export function calcBackEV(p, odds, commissionRate, stake) {
-  const profitIfWin = stake * (odds - 1) * (1 - commissionRate);
-  const lossIfLose = stake;
-  const ev = p * profitIfWin - (1 - p) * lossIfLose;
-  return { ev, roi: stake > 0 ? ev / stake : 0, profitIfWin, lossIfLose, breakevenProbability: 1 / (1 + (odds - 1) * (1 - commissionRate)), liability: stake };
+export function assertCalculationUnits({probabilityDecimal,impliedProbabilityDecimal,confidencePercent,commissionRateDecimal,odds,stake,liability}={}){
+  const checks=[['PROBABILITY_OUT_OF_RANGE',probabilityDecimal,0,1],['IMPLIED_PROBABILITY_OUT_OF_RANGE',impliedProbabilityDecimal,0,1],['CONFIDENCE_OUT_OF_RANGE',confidencePercent,0,100],['COMMISSION_OUT_OF_RANGE',commissionRateDecimal,0,.2],['STAKE_OUT_OF_RANGE',stake,0,Infinity],['LIABILITY_OUT_OF_RANGE',liability,0,Infinity]];
+  for(const [error,value,min,max] of checks)if(value!=null&&(!finite(value)||Number(value)<min||Number(value)>max))return{valid:false,error};
+  if(odds!=null&&(!finite(odds)||Number(odds)<=1))return{valid:false,error:'ODDS_OUT_OF_RANGE'};
+  return{valid:true,error:null};
 }
+export function calcBackEV(p,odds,commissionRate,stake){const profitIfWin=stake*(odds-1)*(1-commissionRate),lossIfLose=stake,ev=p*profitIfWin-(1-p)*lossIfLose;return{ev,roi:stake>0?ev/stake:0,profitIfWin,lossIfLose,breakevenProbability:1/(1+(odds-1)*(1-commissionRate)),liability:stake};}
+export function calcLayEV(p,odds,commissionRate,stake){const liability=stake*(odds-1),profitIfSelectionLoses=stake*(1-commissionRate),ev=(1-p)*profitIfSelectionLoses-p*liability;return{ev,roi:liability>0?ev/liability:0,liability,profitIfSelectionLoses,lossIfSelectionWins:liability,breakevenProbability:(1-commissionRate)/(odds-commissionRate)};}
+export const calcBackEdge=(p,odds)=>odds>1?p-1/odds:0;
+export const calcLayEdge=(p,odds)=>odds>1?1/odds-p:0;
+export const calcOverround=(odds=[])=>odds.reduce((sum,value)=>sum+(value>1?1/value:0),0)-1;
 
-export function calcLayEV(p, odds, commissionRate, stake) {
-  const liability = stake * (odds - 1);
-  const profitIfSelectionLoses = stake * (1 - commissionRate);
-  const ev = (1 - p) * profitIfSelectionLoses - p * liability;
-  return { ev, roi: liability > 0 ? ev / liability : 0, liability, profitIfSelectionLoses, lossIfSelectionWins: liability, breakevenProbability: (1 - commissionRate) / (odds - commissionRate) };
+export function buildCalculationResult({side,probability,probabilityDecimal,odds,normalizedCommissionRate,commissionRateDecimal,stake}){
+  if(!['BACK','LAY'].includes(side))return invalid('INVALID_SIDE');
+  const p=Number(probabilityDecimal??probability),price=Number(odds),rate=Number(commissionRateDecimal??normalizedCommissionRate),amount=Number(stake);
+  const units=assertCalculationUnits({probabilityDecimal:p,commissionRateDecimal:rate,odds:price,stake:amount});if(!units.valid)return invalid(units.error);
+  const impliedProbabilityDecimal=1/price,math=side==='LAY'?calcLayEV(p,price,rate,amount):calcBackEV(p,price,rate,amount),liability=side==='LAY'?math.liability:amount;
+  const profitIfWin=side==='LAY'?math.profitIfSelectionLoses:math.profitIfWin,lossIfLose=side==='LAY'?math.lossIfSelectionWins:math.lossIfLose;
+  const rawProbabilityEdge=side==='LAY'?calcLayEdge(p,price):calcBackEdge(p,price),commissionAwareBreakevenProbability=math.breakevenProbability,commissionAdjustedEdge=side==='LAY'?commissionAwareBreakevenProbability-p:p-commissionAwareBreakevenProbability;
+  const passed=side==='LAY'?Math.abs(liability-amount*(price-1))<=1e-8&&math.ev>=-liability-1e-8&&math.roi>=-1-1e-8:liability===amount&&math.ev>=-amount-1e-8&&math.roi>=-1-1e-8;
+  return{probabilityDecimal:p,impliedProbabilityDecimal,commissionRateDecimal:rate,edgeDecimal:commissionAdjustedEdge,rawProbabilityEdge,commissionAdjustedEdge,commissionAwareBreakevenProbability,odds:price,stake:amount,liability,profitIfWin,lossIfLose,ev:math.ev,roi:math.roi,mathematicalInvariantsPassed:passed,probability:p,impliedProbability:impliedProbabilityDecimal,normalizedCommissionRate:rate,edge:commissionAdjustedEdge,breakevenProbability:commissionAwareBreakevenProbability};
 }
-
-export function calcBackEdge(p, odds) { return odds > 0 ? p - 1 / odds : 0; }
-export function calcLayEdge(p, odds) { return odds > 0 ? 1 / odds - p : 0; }
-export function calcOverround(odds = []) { return odds.reduce((sum, value) => sum + (value > 0 ? 1 / value : 0), 0) - 1; }
-
-export function buildCalculationResult({ side, probability, odds, normalizedCommissionRate, stake }) {
-  if (side !== 'BACK' && side !== 'LAY') return { mathematicalInvariantsPassed: false, error: 'INVALID_SIDE' };
-  const p = Number(probability), price = Number(odds), rate = Number(normalizedCommissionRate), amount = Number(stake);
-  if (![p, price, rate, amount].every(finite) || p <= 0 || p >= 1 || price <= 1 || rate < 0 || rate > .2 || amount < 0) return { mathematicalInvariantsPassed: false, error: 'INVALID_CALCULATION_INPUT' };
-  const impliedProbability = 1 / price;
-  const math = side === 'LAY' ? calcLayEV(p, price, rate, amount) : calcBackEV(p, price, rate, amount);
-  const liability = side === 'LAY' ? math.liability : amount;
-  const profitIfWin = side === 'LAY' ? math.profitIfSelectionLoses : math.profitIfWin;
-  const lossIfLose = side === 'LAY' ? math.lossIfSelectionWins : math.lossIfLose;
-  const edge = side === 'LAY' ? calcLayEdge(p, price) : calcBackEdge(p, price);
-  const mathematicalInvariantsPassed = side === 'LAY'
-    ? Math.abs(liability - amount * (price - 1)) <= 1e-8 && lossIfLose === liability && math.ev >= -liability - 1e-8
-    : liability === amount && lossIfLose === amount && math.ev >= -amount - 1e-8 && math.roi >= -1 - 1e-8;
-  return { probability:p, impliedProbability, odds:price, normalizedCommissionRate:rate, stake:amount, liability, profitIfWin, lossIfLose, ev:math.ev, roi:math.roi, edge, breakevenProbability:math.breakevenProbability, mathematicalInvariantsPassed };
-}
-
-export function calcKellyStake(p, odds, bankroll, confidence = .75, kellyMultiplier = .25, commissionRate = 0) {
-  if (odds <= 1 || bankroll <= 0) return { kellyFraction:0, stake:0 };
-  const netWinPayoff = (odds - 1) * (1 - commissionRate);
-  const fraction = (p * netWinPayoff - (1 - p)) / netWinPayoff;
-  return { kellyFraction:Math.max(0, fraction), stake:Math.max(0, bankroll * fraction * kellyMultiplier * confidence) };
-}
-
-export function calcLayKellyStake(p, odds, bankroll, confidence = .75, kellyMultiplier = .25, commissionRate = 0) {
-  if (odds <= 1 || bankroll <= 0 || p <= 0 || p >= 1 || commissionRate < 0 || commissionRate > .2) return { kellyFraction:0, stake:0, liability:0 };
-  const liabilityPerStake = odds - 1;
-  const netLayWinPerStake = 1 - commissionRate;
-  const edge = (1 - p) * netLayWinPerStake - p * liabilityPerStake;
-  const stakeFraction = Math.max(0, edge / (netLayWinPerStake * liabilityPerStake));
-  const stake = bankroll * stakeFraction * kellyMultiplier * confidence;
-  return { kellyFraction:stakeFraction, stake, liability:stake * liabilityPerStake };
-}
-
-export function applyStakeCaps(stake, bankroll, settings = {}) {
-  if (!(stake > 0)) return 0;
-  const absolute = Number(settings.maxStake ?? Infinity);
-  const percent = Number(settings.maxStakePercent ?? 100) / 100;
-  return Math.min(stake, absolute, bankroll * percent);
-}
-
-export function calcDelayRiskScore(timeBeforeJump, spreadTicks, isLiveMode) { if (isLiveMode) return 0; let score=.3; if (timeBeforeJump != null) { if (timeBeforeJump < 60) score+=.3; if (timeBeforeJump > 500) score+=.1; } if (spreadTicks > 5) score+=.15; return Math.min(1,score); }
-export function calcFillProbability(availableSize, stake, spreadTicks, timeBeforeJump) { if (availableSize <= 0 || stake <= 0) return 0; let p=Math.min(1,availableSize/stake); if (spreadTicks>3)p*=.8;if(spreadTicks>5)p*=.7;if(timeBeforeJump!=null&&timeBeforeJump<60)p*=.9;return Math.max(0,Math.min(1,p)); }
+export function buildPartialMatchCalculations({side,probabilityDecimal,odds,commissionRateDecimal,requestedStake,matchedStake,remainingStake}){const requestedCalculation=buildCalculationResult({side,probabilityDecimal,odds,commissionRateDecimal,stake:requestedStake});const matchedCalculation=buildCalculationResult({side,probabilityDecimal,odds,commissionRateDecimal,stake:matchedStake});const remainingUnmatchedCalculation=buildCalculationResult({side,probabilityDecimal,odds,commissionRateDecimal,stake:remainingStake});return{requestedCalculation,matchedCalculation,remainingUnmatchedCalculation,mathematicalInvariantsPassed:[requestedCalculation,matchedCalculation,remainingUnmatchedCalculation].every(item=>item.mathematicalInvariantsPassed)};}
+export function calcKellyStake(p,odds,bankroll,confidence=1,kellyMultiplier=.25,commissionRate=0){const units=assertCalculationUnits({probabilityDecimal:p,confidencePercent:Number(confidence)*100,commissionRateDecimal:commissionRate,odds,stake:bankroll});if(!units.valid||bankroll<=0)return{kellyFraction:0,stake:0};const payoff=(odds-1)*(1-commissionRate),fraction=(p*payoff-(1-p))/payoff;return{kellyFraction:Math.max(0,fraction),stake:Math.max(0,bankroll*fraction*kellyMultiplier*confidence)};}
+export function calcLayKellyStake(p,odds,bankroll,confidence=1,kellyMultiplier=.25,commissionRate=0){const units=assertCalculationUnits({probabilityDecimal:p,confidencePercent:Number(confidence)*100,commissionRateDecimal:commissionRate,odds,stake:bankroll});if(!units.valid||bankroll<=0)return{kellyFraction:0,stake:0,liability:0};const b=odds-1,a=1-commissionRate,edge=(1-p)*a-p*b,fraction=Math.max(0,edge/(a*b)),stake=bankroll*fraction*kellyMultiplier*confidence;return{kellyFraction:fraction,stake,liability:stake*b};}
+export function applyStakeCaps(stake,bankroll,settings={}){if(!(stake>0))return 0;return Math.min(stake,Number(settings.maxStake??Infinity),bankroll*Number(settings.maxStakePercent??100)/100);}
+export function calcDelayRiskScore(timeBeforeJump,spreadTicks,isLiveMode){if(isLiveMode)return 0;let score=.3;if(timeBeforeJump!=null){if(timeBeforeJump<60)score+=.3;if(timeBeforeJump>500)score+=.1;}if(spreadTicks>5)score+=.15;return Math.min(1,score);}
+export function calcFillProbability(availableSize,stake,spreadTicks,timeBeforeJump){if(availableSize<=0||stake<=0)return 0;let p=Math.min(1,availableSize/stake);if(spreadTicks>3)p*=.8;if(spreadTicks>5)p*=.7;if(timeBeforeJump!=null&&timeBeforeJump<60)p*=.9;return Math.max(0,Math.min(1,p));}

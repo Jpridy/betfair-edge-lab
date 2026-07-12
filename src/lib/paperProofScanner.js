@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { detectMarketType } from './marketClusterer';
-import { calcProofStake } from './paperProofDefaults';
+import { calcProofStake, proofLiabilityLimit } from './paperProofDefaults';
 import { matchRunnerToMarket } from './marketIdMatcher';
 import { activeRaceOrders, exposureBlock } from './raceExposure';
 import { compareOpportunities } from './opportunityRanking';
@@ -64,7 +64,7 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
       const commission = resolveCommissionRate(market, settings);
       if (!commission.valid) continue;
       const marketRunners = allRunners.filter(r => matchRunnerToMarket(r, market) && r.status === 'ACTIVE');
-      if (!validateCompleteMarketBook(marketRunners, settings.maxBackBookPercentage || 150).valid) continue;
+      if (!validateCompleteMarketBook(marketRunners,market,settings.maxBackBookPercentage||150).valid) continue;
 
       for (const runner of marketRunners) {
         const selectionId = String(runner.betfairSelectionId || runner.selectionId || '');
@@ -107,12 +107,14 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
   const best = candidates[0];
   const { market, runner, marketType, selectionId, side, odds, availableSize, cluster } = best;
 
-  const stake = calcProofStake(side, odds, settings);
+  const stake=calcProofStake(side,odds,settings);
+  if(!(stake>=2))return null;
   const commission = resolveCommissionRate(market, settings);
   if (!commission.valid) return null;
   const calculationResult = buildCalculationResult({ side, probability:1/odds, odds, normalizedCommissionRate:commission.normalizedRate, stake });
   if (!calculationResult.mathematicalInvariantsPassed) return null;
-  const liability = calculationResult.liability;
+  const liability=calculationResult.liability;
+  if(side==='LAY'&&liability>proofLiabilityLimit(settings))return null;
   const maxLoss = calculationResult.lossIfLose;
   const maxProfit = calculationResult.profitIfWin;
 
@@ -150,7 +152,10 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
     maxLoss,
     modelProbability: 1 / odds,
     impliedProbability: 1 / odds,
-    breakevenProbability: 1 / odds,
+    breakevenProbability:calculationResult.breakevenProbability,
+    commissionAwareBreakevenProbability:calculationResult.commissionAwareBreakevenProbability,
+    rawProbabilityEdge:calculationResult.rawProbabilityEdge,
+    commissionAdjustedEdge:calculationResult.commissionAdjustedEdge,
     fairOdds: odds,
     commissionRate: commission.normalizedRate,
     normalizedCommissionRate: commission.normalizedRate,
@@ -170,8 +175,10 @@ export function buildProofOpportunity(eventClusters, allRunners, paperOrders, se
     exposureAfterBet: liability,
     overround: 0,
     timeBeforeJump: startTime ? Math.round((new Date(startTime).getTime() - nowMs) / 1000) : null,
-    decision: 'BET',
-    proofMode: true,
+    decision:'PROOF_OVERRIDE',
+    gatesPassed:true,
+    proofMode:true,
+    excludeFromPerformance:true,
     proofReason: 'Paper proof mode: forced paper opportunity to test order creation and settlement',
     failedGate: null,
     blocker: null,

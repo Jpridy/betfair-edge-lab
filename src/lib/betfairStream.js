@@ -395,7 +395,8 @@ export class BetfairStreamClient {
           }
 
           if (runner.bestBackPrice > 0) {
-            runner.impliedProbability = (1 / runner.bestBackPrice) * 100;
+            runner.impliedProbability=1/runner.bestBackPrice;
+            runner.impliedProbabilityDecimal=runner.impliedProbability;
           }
 
           // Store full ladders from EX_ALL_OFFERS (atb/atl) or EX_BEST_OFFERS (batb/batl)

@@ -150,34 +150,14 @@ export function calculateSpreadTicks(bestBackPrice, bestLayPrice) {
  * For a BACK bet, stop loss is below entry (price goes down = loss).
  * For a LAY bet, stop loss is above entry (price goes up = loss).
  */
-export function calculateStopLossPrice(entryPrice, ticks, side) {
-  if (side === 'BACK') {
-    let price = entryPrice;
-    for (let i = 0; i < ticks; i++) price = getNextTickDown(price);
-    return price;
-  } else {
-    let price = entryPrice;
-    for (let i = 0; i < ticks; i++) price = getNextTickUp(price);
-    return price;
-  }
-}
+export function calculateStopLossPrice(entryPrice,ticks,side){let price=entryPrice;for(let i=0;i<ticks;i++)price=side==='BACK'?getNextTickUp(price):getNextTickDown(price);return price;}
 
 /**
  * Calculate a scalp profit target price N ticks away from entry.
  * For a BACK bet, target is above entry (price goes up = profit).
  * For a LAY bet, target is below entry (price goes down = profit).
  */
-export function calculateScalpTargetPrice(entryPrice, ticks, side) {
-  if (side === 'BACK') {
-    let price = entryPrice;
-    for (let i = 0; i < ticks; i++) price = getNextTickUp(price);
-    return price;
-  } else {
-    let price = entryPrice;
-    for (let i = 0; i < ticks; i++) price = getNextTickDown(price);
-    return price;
-  }
-}
+export function calculateScalpTargetPrice(entryPrice,ticks,side){let price=entryPrice;for(let i=0;i<ticks;i++)price=side==='BACK'?getNextTickDown(price):getNextTickUp(price);return price;}
 
 /**
  * Calculate the profit from a scalp trade (back then lay, or lay then back).
@@ -185,23 +165,7 @@ export function calculateScalpTargetPrice(entryPrice, ticks, side) {
  * Simplified: if you back at price P1 with stake S, then lay at P2 (< P1) 
  * with stake S*P1/P2, profit = S*(P1-P2)/P2 per tick movement.
  */
-export function calculateScalpProfit(entryPrice, exitPrice, stake, side) {
-  if (side === 'BACK') {
-    // Back at entryPrice, lay at exitPrice (lower) to close.
-    // Equalizing stake: layStake = stake * entryPrice / exitPrice
-    // Profit (either outcome) = layStake - stake = stake * (entryPrice - exitPrice) / exitPrice
-    const layStake = (stake * entryPrice) / exitPrice;
-    const profit = layStake - stake;
-    return Math.round(profit * 100) / 100;
-  } else {
-    // Lay at entryPrice, back at exitPrice (higher) to close.
-    // Equalizing stake: backStake = stake * entryPrice / exitPrice
-    // Profit (either outcome) = stake - backStake = stake * (exitPrice - entryPrice) / exitPrice
-    const backStake = (stake * entryPrice) / exitPrice;
-    const profit = stake - backStake;
-    return Math.round(profit * 100) / 100;
-  }
-}
+export function calculateScalpProfit(entryPrice,exitPrice,stake,side,commissionRate=0){if(![entryPrice,exitPrice,stake,commissionRate].every(Number.isFinite)||entryPrice<=1||exitPrice<=1||stake<0||commissionRate<0||commissionRate>.2)return NaN;const gross=side==='BACK'?stake*(entryPrice-exitPrice)/exitPrice:stake*(exitPrice-entryPrice)/exitPrice;const commission=gross>0?gross*commissionRate:0;return Math.round((gross-commission)*100)/100;}
 
 /**
  * Get a human-readable description of the spread quality.

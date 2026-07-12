@@ -1,4 +1,12 @@
-import { calcEdge, calcEdgeLay, calcEVBack, calcEVLay, impliedProb } from './botEngine';
+import { buildCalculationResult } from './exchangeMath';
+import { settleMarketOrders } from './paperSettlementCore';
+import { normalizeCommissionValue } from './commission';
+const impliedProb=odds=>1/odds;
+const result=(side,p,odds,c,stake=1)=>buildCalculationResult({side,probabilityDecimal:p,odds,commissionRateDecimal:c,stake});
+const calcEdge=(p,odds)=>result('BACK',p,odds,0).commissionAdjustedEdge*100;
+const calcEdgeLay=(p,odds)=>result('LAY',p,odds,0).commissionAdjustedEdge*100;
+const calcEVBack=(p,odds,c)=>result('BACK',p,odds,c).ev;
+const calcEVLay=(p,odds,c)=>result('LAY',p,odds,c).ev;
 
 // ─── Synthetic race data generation ───────────────────────────────
 // Generates synthetic horse racing markets with runners,
@@ -54,7 +62,8 @@ function generateSyntheticRace(raceNum, dateOffset) {
       bestLaySize: Math.floor(randFloat(100, 2000)),
       lastTradedPrice,
       tradedVolume,
-      impliedProbability: (1 / backPrice) * 100,
+      impliedProbability: 1 / backPrice,
+      impliedProbabilityDecimal: 1 / backPrice,
       favouriteRank: rank,
       isFavourite: rank === 1,
       isOutsider: rank >= numRunners - 1,
@@ -305,35 +314,13 @@ function backtestRiskCheck(signal, settings, bankroll, openExposure, tradesToday
 
 // ─── Settlement ───────────────────────────────────────────────────
 
-function settleBacktestOrder(signal, market, settings) {
-  const isWinner = signal.runnerId === market.winnerId;
-  const commissionRate = settings.commissionRate || 0.05;
-  const stake = signal.stakeSuggestion;
-  const odds = signal.odds;
-
-  if (signal.side === 'BACK') {
-    if (isWinner) {
-      const gross = (odds - 1) * stake;
-      return { result: 'won', grossProfit: gross, commission: gross * commissionRate, netProfit: gross * (1 - commissionRate) };
-    } else {
-      return { result: 'lost', grossProfit: -stake, commission: 0, netProfit: -stake };
-    }
-  } else { // LAY
-    if (!isWinner) {
-      const gross = stake;
-      return { result: 'won', grossProfit: gross, commission: gross * commissionRate, netProfit: gross * (1 - commissionRate) };
-    } else {
-      const liability = (odds - 1) * stake;
-      return { result: 'lost', grossProfit: -liability, commission: 0, netProfit: -liability };
-    }
-  }
-}
+function settleBacktestOrder(signal,market,settings){const selected=market.runners.find(runner=>runner.id===signal.runnerId),winner=market.runners.find(runner=>runner.id===market.winnerId);const order={side:signal.side,selectionId:String(selected?.betfairSelectionId||signal.runnerId),matchedStake:signal.stakeSuggestion,matchedOdds:signal.odds,normalizedCommissionRate:settings.commissionRate||.05,result:'pending',betfairMarketId:market.betfairMarketId,customerRef:`backtest-${signal.runnerId}`};return settleMarketOrders([order],{status:'CLOSED',winnerSelectionIds:[String(winner?.betfairSelectionId||market.winnerId)]})[0];}
 
 // ─── Main engine ──────────────────────────────────────────────────
 
 export function runBacktest({ strategies, numRaces, startingBankroll, settings, daysBack = 90, commissionRate: customCommission, stakeType = 'flat', minOddsRange, maxOddsRange, marketType = 'all', minLiquidity, timeWindow }) {
   const races = generateSyntheticData(numRaces, daysBack);
-  const commissionRate = customCommission ? customCommission / 100 : (settings.commissionRate || 0.05);
+  const commissionRate=normalizeCommissionValue(customCommission??settings.commissionRate??.05).normalizedRate;
   const effectiveMinOdds = minOddsRange || settings.minOdds || 1.5;
   const effectiveMaxOdds = maxOddsRange || settings.maxOdds || 20;
   const effectiveMinLiquidity = minLiquidity || settings.minimumLiquidity || 500;

@@ -1,53 +1,9 @@
-const idOf = item => String(item?.selectionId || '');
-
-export function normalizeWinProbabilities(probabilities = []) {
-  const usable = probabilities.filter(item => idOf(item) && Number.isFinite(Number(item.pWin)) && Number(item.pWin) >= 0);
-  const total = usable.reduce((sum,item)=>sum+Number(item.pWin),0);
-  if (!(total > 0)) return [];
-  return usable.map(item=>({...item,pWin:Number(item.pWin)/total}));
-}
-
-export function validateWinProbabilityField(probabilities = [], tolerance = 1e-9) {
-  const normalized = normalizeWinProbabilities(probabilities);
-  const total = normalized.reduce((sum,item)=>sum+item.pWin,0);
-  return { valid:normalized.length===probabilities.length && Math.abs(total-1)<=tolerance, probabilities:normalized, total };
-}
-
-export function estimatePlaceProbabilities(winProbabilities = [], numberOfWinners = 2) {
-  const field = normalizeWinProbabilities(winProbabilities);
-  const places = Math.max(1,Math.min(Math.floor(numberOfWinners),field.length));
-  const totals = new Map(field.map(item=>[idOf(item),0]));
-  const walk = (remaining, depth, mass) => {
-    if (depth >= places || !remaining.length) return;
-    const denominator = remaining.reduce((sum,item)=>sum+item.pWin,0);
-    if (!(denominator > 0)) return;
-    for (let i=0;i<remaining.length;i++) {
-      const item=remaining[i];
-      const branch=mass*(item.pWin/denominator);
-      totals.set(idOf(item),totals.get(idOf(item))+branch);
-      walk([...remaining.slice(0,i),...remaining.slice(i+1)],depth+1,branch);
-    }
-  };
-  walk(field,0,1);
-  return field.map(item=>({...item,pPlace:totals.get(idOf(item))}));
-}
-
-export function normalizeH2HProbabilities(entries = []) {
-  const pairs=new Map();
-  for (const entry of entries) {
-    const a=idOf(entry), b=String(entry?.opponentSelectionId||'');
-    const p=Number(entry?.pBeatsOpponent);
-    if (!a||!b||a===b||!Number.isFinite(p)||p<0||p>1) return [];
-    const key=[a,b].sort().join(':');
-    const canonical=a<b?p:1-p;
-    if (pairs.has(key)&&Math.abs(pairs.get(key).probability-canonical)>1e-9) return [];
-    pairs.set(key,{marketId:String(entry.marketId||''),a:[a,b].sort()[0],b:[a,b].sort()[1],probability:canonical});
-  }
-  return [...pairs.values()].flatMap(pair=>[
-    {marketId:pair.marketId,selectionId:pair.a,opponentSelectionId:pair.b,pBeatsOpponent:pair.probability},
-    {marketId:pair.marketId,selectionId:pair.b,opponentSelectionId:pair.a,pBeatsOpponent:1-pair.probability},
-  ]);
-}
-
-export function buildProbabilityMap(probabilities = []) { return new Map(normalizeWinProbabilities(probabilities).map(item=>[idOf(item),{...item,pWin:item.pWin}])); }
-export function buildH2HMap(probabilities = []) { return new Map(normalizeH2HProbabilities(probabilities).map(item=>[`${item.marketId}:${item.selectionId}`,item])); }
+const idOf=item=>String(item?.selectionId||'').trim();
+export function validateAndNormalizeWinProbabilities(probabilities=[],knownSelectionIds=[],tolerance={min:.9,max:1.1}){const known=new Set((knownSelectionIds||[]).map(String)),seen=new Set();for(const item of probabilities){const id=idOf(item),p=Number(item?.pWin);if(!id)return{valid:false,error:'MISSING_SELECTION_ID',probabilities:[]};if(seen.has(id))return{valid:false,error:'DUPLICATE_SELECTION_ID',probabilities:[]};seen.add(id);if(known.size&&!known.has(id))return{valid:false,error:'UNKNOWN_SELECTION_ID',probabilities:[]};if(!Number.isFinite(p)||p<0||p>1)return{valid:false,error:'PROBABILITY_OUT_OF_RANGE',probabilities:[]};}const rawProbabilityTotal=probabilities.reduce((sum,item)=>sum+Number(item.pWin),0),min=Number(tolerance?.min??.9),max=Number(tolerance?.max??1.1);if(!probabilities.length||rawProbabilityTotal<min||rawProbabilityTotal>max)return{valid:false,error:'RAW_PROBABILITY_TOTAL_OUT_OF_TOLERANCE',rawProbabilityTotal,probabilities:[]};const normalizationFactor=1/rawProbabilityTotal;return{valid:true,error:null,rawProbabilityTotal,normalizationFactor,probabilities:probabilities.map(item=>({...item,rawPWin:Number(item.pWin),pWin:Number(item.pWin)*normalizationFactor}))};}
+export function normalizeWinProbabilities(probabilities=[],options={}){return validateAndNormalizeWinProbabilities(probabilities,options.knownSelectionIds||[],options.tolerance||{min:.9,max:1.1}).probabilities;}
+export function validateWinProbabilityField(probabilities=[],tolerance={min:.9,max:1.1},knownSelectionIds=[]){return validateAndNormalizeWinProbabilities(probabilities,knownSelectionIds,tolerance);}
+export function estimatePlaceProbabilities(winProbabilities=[],numberOfWinners=2){const field=normalizeWinProbabilities(winProbabilities),places=Math.max(1,Math.min(Math.floor(numberOfWinners),field.length)),totals=new Map(field.map(item=>[idOf(item),0]));const walk=(remaining,depth,mass)=>{if(depth>=places||!remaining.length)return;const denominator=remaining.reduce((sum,item)=>sum+item.pWin,0);if(!(denominator>0))return;for(let i=0;i<remaining.length;i++){const item=remaining[i],branch=mass*item.pWin/denominator;totals.set(idOf(item),totals.get(idOf(item))+branch);walk([...remaining.slice(0,i),...remaining.slice(i+1)],depth+1,branch);}};walk(field,0,1);return field.map(item=>({...item,pPlace:totals.get(idOf(item))}));}
+export function normalizeH2HProbabilities(entries=[]){const pairs=new Map();for(const entry of entries){const a=idOf(entry),b=String(entry?.opponentSelectionId||''),p=Number(entry?.pBeatsOpponent);if(!a||!b||a===b||!Number.isFinite(p)||p<0||p>1)return[];const key=[a,b].sort().join(':'),canonical=a<b?p:1-p;if(pairs.has(key)&&Math.abs(pairs.get(key).probability-canonical)>1e-9)return[];pairs.set(key,{marketId:String(entry.marketId||''),a:[a,b].sort()[0],b:[a,b].sort()[1],probability:canonical});}return[...pairs.values()].flatMap(pair=>[{marketId:pair.marketId,selectionId:pair.a,opponentSelectionId:pair.b,pBeatsOpponent:pair.probability},{marketId:pair.marketId,selectionId:pair.b,opponentSelectionId:pair.a,pBeatsOpponent:1-pair.probability}]);}
+export const probabilityDiagnostics=(win=[],h2h=[])=>({rawProbabilities:win.map(item=>({selectionId:idOf(item),probabilityDecimal:Number(item.pWin)})),normalizedProbabilities:normalizeWinProbabilities(win).map(item=>({selectionId:idOf(item),probabilityDecimal:item.pWin})),h2hProbabilityStatus:h2h.length?'AVAILABLE':'NOT_AVAILABLE'});
+export function buildProbabilityMap(probabilities=[]){return new Map(normalizeWinProbabilities(probabilities).map(item=>[idOf(item),{...item,pWin:item.pWin}]));}
+export function buildH2HMap(probabilities=[]){return new Map(normalizeH2HProbabilities(probabilities).map(item=>[`${item.marketId}:${item.selectionId}`,item]));}

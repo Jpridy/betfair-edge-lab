@@ -5,6 +5,8 @@ import { ENRICHED_STRATEGY_LIBRARY } from './strategyLibrary';
 import { classifyFormData, getProbabilityLabel, getNoFormDisclaimer } from './raceFormProfile';
 import { resolveCommissionRate } from './commission';
 import { buildCalculationResult } from './exchangeMath';
+import { settleMarketOrders } from './paperSettlementCore';
+import { reconcileRiskExposure } from './riskExposure';
 
 export const BOT_STEPS = [
   'Scan Markets',
@@ -45,14 +47,10 @@ export function calcEVBack(modelProb, odds, commissionRate) {
   return buildCalculationResult({ side:'BACK', probability:modelProb, odds, normalizedCommissionRate:commissionRate, stake:1 }).ev;
 }
 
-export function calcEdge(modelProb, odds) {
-  return buildCalculationResult({ side:'BACK', probability:modelProb, odds, normalizedCommissionRate:0, stake:1 }).edge * 100;
-}
+export function calcEdge(modelProb,odds,commissionRate=0){return buildCalculationResult({side:'BACK',probabilityDecimal:modelProb,odds,commissionRateDecimal:commissionRate,stake:1}).commissionAdjustedEdge*100;}
 
 // Edge for LAY bets: positive when model thinks horse is LESS likely to win than market implies
-export function calcEdgeLay(modelProb, odds) {
-  return buildCalculationResult({ side:'LAY', probability:modelProb, odds, normalizedCommissionRate:0, stake:1 }).edge * 100;
-}
+export function calcEdgeLay(modelProb,odds,commissionRate=0){return buildCalculationResult({side:'LAY',probabilityDecimal:modelProb,odds,commissionRateDecimal:commissionRate,stake:1}).commissionAdjustedEdge*100;}
 
 // EV for LAY bets: (1 - modelProb) * (1 - comm) - modelProb * (odds - 1)
 export function calcEVLay(modelProb, odds, commissionRate) {
@@ -136,7 +134,8 @@ export function createSignal(strategyName, market, runner, settings, formData = 
     expectedValue: ev,
     calculationResult,
     mathematicalInvariantsPassed: calculationResult.mathematicalInvariantsPassed,
-    confidence: formData?.confidence != null ? formData.confidence / 100 : 50,
+    confidencePercent:formData?.confidence!=null?Number(formData.confidence):50,
+    confidence:formData?.confidence!=null?Number(formData.confidence):50,
     signalStatus: 'active',
     persistenceType: PERSISTENCE_TYPES.LAPSE,
     clvEstimate,
@@ -178,12 +177,7 @@ export function runRiskCheck(signal, settings, bankrollStats, paperOrders) {
   const maxUnmatched = settings.maxUnmatchedOrders || settings.maxOpenOrders || 10;
   if (unmatchedOrders.length >= maxUnmatched) reasons.push(`Max unmatched orders reached (${unmatchedOrders.length}/${maxUnmatched})`);
 
-  const exposure = openOrders.reduce((sum, o) => {
-    const stake = o.matched_size || o.matchedStake || o.requestedStake || 0;
-    const odds = o.matchedOdds || o.matched_price || o.requestedOdds || o.requested_price || 0;
-    if ((o.side || '').toUpperCase() === 'LAY' && odds > 1) return sum + stake * (odds - 1);
-    return sum + stake;
-  }, 0);
+  const exposure=reconcileRiskExposure(openOrders).totalExposure;
   if (exposure >= (settings.maxMarketExposure || 1000)) reasons.push('Market exposure limit reached');
 
   const todayOrders = paperOrders.filter(o => {
@@ -295,118 +289,7 @@ export function createPaperOrder(signal, market, runner, settings) {
   };
 }
 
-export function settleOrder(order, market, settings, outcome = null) {
-  // outcome: 'won' | 'lost' from real market results — REQUIRED, no random fallback.
-  // If outcome is null, return the order unchanged with awaiting_result status.
-  if (!outcome) {
-    return {
-      ...order,
-      status: 'awaiting_result',
-      settlementStatus: 'result_unknown',
-      netProfit: null,
-      exitReason: 'No result provided — awaiting real market result',
-      resultSource: 'missing',
-      resultConfidence: 'unknown',
-    };
-  }
-  // outcome represents whether the HORSE won the race — NOT whether the bet won.
-  // For BACK: bet wins when horse wins. For LAY: bet wins when horse loses.
-  const horseWon = outcome === 'won';
-  const won = order.side === 'LAY' ? !horseWon : horseWon;
-  
-  // Calculate commission using Market Base Rate model
-  const commResult = calculateCommission(
-    won ? (order.side === 'BACK' ? (order.matchedOdds - 1) * order.matchedStake : order.matchedStake) : 0,
-    market,
-    settings
-  );
-  
-  const commissionRate = commResult.rate;
-  const commissionSource = commResult.source;
-
-  if (won) {
-    let gross, net, commission;
-    if (order.side === 'BACK') {
-      gross = (order.matchedOdds - 1) * order.matchedStake;
-      commission = gross * commissionRate;
-      net = gross - commission;
-    } else {
-      gross = order.matchedStake;
-      commission = gross * commissionRate;
-      net = gross - commission;
-    }
-    
-    // Calculate CLV — for BACK, positive CLV means odds shortened (good).
-    // For LAY, positive CLV means odds drifted (good), so invert the sign.
-    // CLV: no random closingOdds — set to null if not provided by caller
-    const closingOdds = null;
-    const clv = 0;
-    
-    return {
-      ...order,
-      result: 'won',
-      grossProfit: gross,
-      commission,
-      commissionRateUsed: commissionRate,
-      commissionSource,
-      commission_calculation_status: commResult.status,
-      netProfit: net,
-      status: 'settled',
-      settlementStatus: 'settled',
-      settled_date: new Date().toISOString(),
-      settledAt: new Date().toISOString(),
-      matched_date: order.matched_date || order.placed_date,
-      matched_size: order.matchedStake,
-      remaining_size: 0,
-      average_price_matched: order.matchedOdds,
-      matched_price: order.matchedOdds,
-      closingOdds,
-      clv,
-      exitReason: `Race settled — runner ${horseWon ? 'won' : 'lost'}`,
-      resultSource: 'manual',
-      resultConfidence: 'confirmed',
-      voided: false,
-    };
-  } else {
-    let gross;
-    if (order.side === 'BACK') {
-      gross = -order.matchedStake;
-    } else {
-      const liability = (order.matchedOdds - 1) * order.matchedStake;
-      gross = -liability;
-    }
-    
-    // CLV: no random closingOdds
-    const closingOdds = null;
-    const clv = 0;
-    
-    return {
-      ...order,
-      result: 'lost',
-      grossProfit: gross,
-      commission: 0,
-      commissionRateUsed: commissionRate,
-      commissionSource,
-      commission_calculation_status: commResult.status,
-      netProfit: gross,
-      status: 'settled',
-      settlementStatus: 'settled',
-      settled_date: new Date().toISOString(),
-      settledAt: new Date().toISOString(),
-      matched_date: order.matched_date || order.placed_date,
-      matched_size: order.matchedStake,
-      remaining_size: 0,
-      average_price_matched: order.matchedOdds,
-      matched_price: order.matchedOdds,
-      closingOdds,
-      clv,
-      exitReason: `Race settled — runner ${horseWon ? 'won' : 'lost'}`,
-      resultSource: 'manual',
-      resultConfidence: 'confirmed',
-      voided: false,
-    };
-  }
-}
+export function settleOrder(order,market,settings,outcome=null){if(!outcome)return{...order,status:'awaiting_result',settlementStatus:'result_unknown',netProfit:null,netPL:null,settledAt:null,exitReason:'No result provided — awaiting real market result',resultSource:'missing',resultConfidence:'unknown'};const commission=resolveCommissionRate(market,settings);if(!commission.valid)throw new Error(commission.error);const selection=String(order.selectionId||order.betfairSelectionId||'');const winners=outcome==='won'?[selection]:['OTHER_SELECTION'];return settleMarketOrders([{...order,normalizedCommissionRate:commission.normalizedRate}],{status:'CLOSED',winnerSelectionIds:winners})[0];}
 
 export function getStrategyLabel(stats) {
   if (!stats || stats.totalPaperOrders < 10) return 'needs_more_data';

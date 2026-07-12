@@ -20,7 +20,7 @@ function EmptyChart({ text }) {
 export default function PerformanceAnalytics() {
   const { bankrollStats, strategyStats, plData, paperOrders, settings } = useApp();
 
-  const settledOrders = (paperOrders || []).filter(o => o.result === 'won' || o.result === 'lost');
+  const settledOrders=(paperOrders||[]).filter(o=>(o.result==='won'||o.result==='lost')&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
   const settledWins = settledOrders.filter(o => o.result === 'won').length;
   const settledLosses = settledOrders.filter(o => o.result === 'lost').length;
   const settledNetPL = settledOrders.reduce((sum, o) => sum + (o.netProfit || 0), 0);
@@ -87,7 +87,7 @@ export default function PerformanceAnalytics() {
     <div className="space-y-5">
       {/* Settled Orders Notice */}
       <div className="bg-card border border-border rounded-lg p-3 text-xs text-muted-foreground">
-        <span className="text-info font-semibold">Metrics based on settled orders only.</span> {settledOrders.length} settled out of {(paperOrders || []).length} total. Pending and voided orders are excluded from performance calculations. Gross P/L: <span className="font-mono">${settledGrossPL.toFixed(2)}</span> · Commission: <span className="font-mono">${settledCommission.toFixed(2)}</span> · Net: <span className="font-mono">${settledNetPL.toFixed(2)}</span>
+        <span className="text-info font-semibold">Metrics exclude proof, invalid, and unsettled orders.</span> {settledOrders.length} settled out of {(paperOrders || []).length} total. Pending and voided orders are excluded from performance calculations. Gross P/L: <span className="font-mono">${settledGrossPL.toFixed(2)}</span> · Commission: <span className="font-mono">${settledCommission.toFixed(2)}</span> · Net: <span className="font-mono">${settledNetPL.toFixed(2)}</span>
       </div>
 
       {/* KPI Cards */}

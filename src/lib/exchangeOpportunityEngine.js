@@ -39,6 +39,7 @@ import { activeRaceOrders, exposureBlock, normalizedMarketId } from './raceExpos
 import { marketCoverage, rejectedRelatedMarkets } from './marketClusterer';
 import { calculatePriceFeedStatus } from './marketFreshness';
 import { validateCompleteMarketBook } from './marketBookValidation';
+import { validateAndNormalizeWinProbabilities, probabilityDiagnostics } from './probabilityNormalizer';
 import { applyRaceOrderLock, buildRaceMonitoringDiagnostics } from './raceMonitoringDiagnostics';
 
 const OPEN_ORDER_STATUSES = ['pending', 'executable', 'matched', 'unmatched', 'partially_matched'];
@@ -817,7 +818,11 @@ export async function runExchangeCycle(params) {
     if (aiResult && !aiResult.decisionSource) aiResult.decisionSource = usedMarketOnlyFallback ? DECISION_SOURCES.DETERMINISTIC_MARKET_ONLY : DECISION_SOURCES.FEATHERLESS_AI;
     if (aiResult) aiResult.featherlessStatus = featherlessStatus;
 
-    // ── Step 5: Generate opportunities using Featherless probabilities ──
+    // ── Step 5: validate AI probability units and field integrity ──
+    const knownSelectionIds=marketRunners.map(runner=>String(runner.betfairSelectionId||runner.selectionId||'')).filter(Boolean);
+    const probabilityValidation=validateAndNormalizeWinProbabilities(aiResult.runnerProbabilities||[],knownSelectionIds,{min:Number(featherlessSettings?.minRawProbabilityTotal??.9),max:Number(featherlessSettings?.maxRawProbabilityTotal??1.1)});
+    if(!probabilityValidation.valid){aiRequiredFailures++;aiStatusLog.push({eventId:cluster.eventId,status:'ai_probability_invalid',reason:probabilityValidation.error,rawProbabilityTotal:probabilityValidation.rawProbabilityTotal??null});raceAssessments.push({eventId:cluster.eventId,eventName:cluster.eventName,failedGate:probabilityValidation.error,finalDecision:'NO_BET',finalReason:probabilityValidation.error,h2hProbabilityStatus:(aiResult.h2hProbabilities||[]).length?'AVAILABLE':'NOT_AVAILABLE'});continue;}
+    aiResult={...aiResult,runnerProbabilities:probabilityValidation.probabilities,rawProbabilityTotal:probabilityValidation.rawProbabilityTotal,normalizationFactor:probabilityValidation.normalizationFactor,...probabilityDiagnostics(aiResult.runnerProbabilities,aiResult.h2hProbabilities||[])};
     // The local exchange engine creates BACK/LAY opportunities across
     // WIN/PLACE/H2H using Featherless probabilities as model probabilities.
     // The local engine is the final mathematical and safety authority.
@@ -1001,10 +1006,10 @@ export async function runExchangeCycle(params) {
   // Proof opportunities must pass the same final race lock as normal opportunities.
   applyRaceOrderLock(allOpportunities, raceMonitoring);
   ranked = rankOpportunities(allOpportunities);
-  bestOpportunity = raceMonitoring.raceLocked ? null : (ranked.find(opportunity => opportunity.decision === 'BET') || null);
+  bestOpportunity=raceMonitoring.raceLocked?null:(ranked.find(opportunity=>opportunity.decision==='BET'||opportunity.decision==='PROOF_OVERRIDE')||null);
   if (raceMonitoring.raceLocked) bestNormalOpportunity = null;
   const topRankedOpportunity = ranked[0] || null;
-  const bestGatePassedOpportunity = ranked.find(opportunity => opportunity.decision === 'BET') || null;
+  const bestGatePassedOpportunity=ranked.find(opportunity=>opportunity.decision==='BET'||opportunity.decision==='PROOF_OVERRIDE')||null;
   const bestRejectedCandidate = ranked.find(opportunity => opportunity.decision !== 'BET') || null;
   const finalSelectedOpportunity = bestOpportunity;
 
@@ -1255,7 +1260,8 @@ export async function runExchangeCycle(params) {
     },
     positiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
     mathematicallyPositiveEVOpportunities: allOpportunities.filter(o => o.ev > 0 && !o.proofMode).length,
-    gateApprovedOpportunities: allOpportunities.filter(o => o.decision === 'BET' && !o.proofMode).length,
+    gateApprovedOpportunities:allOpportunities.filter(o=>o.decision==='BET'&&!o.proofMode).length,
+    proofOverrideOpportunities:allOpportunities.filter(o=>o.decision==='PROOF_OVERRIDE'&&o.proofMode).length,
     forcedProofOpportunities: allOpportunities.filter(o => o.proofMode === true).length,
     rejectedOpportunities: allOpportunities.filter(o => o.decision === 'NO_BET' || o.decision === 'REJECT').length,
     topOpportunities,
@@ -1372,6 +1378,7 @@ export async function runExchangeCycle(params) {
       featherlessAvgLatencyMs: featherlessCalled > 0 ? Math.round(featherlessTotalLatencyMs / featherlessCalled) : 0,
       localEngineOverruledFeatherless,
       raceAssessments,
+      h2hProbabilityStatus:raceAssessments.some(item=>item.h2hProbabilitiesReturned>0||item.h2hProbabilityStatus==='AVAILABLE')?'AVAILABLE':'NOT_AVAILABLE',
       lastRacePack: raceAssessments[0]?.racePackSummary || null,
     },
   };

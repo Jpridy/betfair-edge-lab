@@ -650,7 +650,7 @@ Deno.serve(async (req) => {
 
         const bestBackPrice = bestBack?.price || 0;
         const bestLayPrice = bestLay?.price || 0;
-        const impliedProb = bestBackPrice > 0 ? (1 / bestBackPrice) * 100 : 0;
+        const impliedProb=bestBackPrice>1?1/bestBackPrice:0;
 
         if (bestBackPrice > 0) runnersWithBackPrice++;
         if (bestLayPrice > 0) runnersWithLayPrice++;
@@ -720,7 +720,8 @@ Deno.serve(async (req) => {
           bestLaySize: bestLay?.size || 0,
           lastTradedPrice: lastTraded || 0,
           tradedVolume: tradedVol,
-          impliedProbability: impliedProb,
+          impliedProbability:impliedProb,
+          impliedProbabilityDecimal:impliedProb,
           favouriteRank: idx + 1,
           isFavourite: idx === 0,
           isOutsider: idx === sortedRunners.length - 1,

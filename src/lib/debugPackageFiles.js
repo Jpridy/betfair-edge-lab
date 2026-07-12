@@ -12,7 +12,7 @@ export const MINIMAL_DEBUG_PATHS = ['README-debug-package.txt','debug-summary.js
 
 const json = value => JSON.stringify(deepRedact(value), null, 2);
 const idOf = item => String(item?.betfairMarketId || item?.marketId || item?.id || '');
-const openStatuses = new Set(['pending','executable','matched','unmatched','partially_matched']);
+const openStatuses=new Set(['pending','executable','unmatched','partially_matched','matched','awaiting_result','result_unknown']);
 
 export function createDebugPackageFiles(state, { minimal = false, timestamp = new Date().toISOString(), exportErrors = [] } = {}) {
   const errors = [...exportErrors];

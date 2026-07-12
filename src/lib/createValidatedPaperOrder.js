@@ -11,7 +11,8 @@
 // ============================================================================
 
 import { resolveCommissionRate } from './commission';
-import { isPaperProofModeActive } from './paperProofDefaults';
+import { isPaperProofModeActive, PAPER_PROOF_MAX_STAKE, proofLiabilityLimit } from './paperProofDefaults';
+import { buildPartialMatchCalculations } from './exchangeMath';
 import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { ACTIVE_ORDER_STATUSES, exposureBlock } from './raceExposure';
 import { canonicalRaceIdentity } from './raceIdentity';
@@ -83,7 +84,8 @@ export function createValidatedPaperOrder({
   decisionSource = null,
   selectionDiagnostics = null,
   commissionResolution = null,
-  calculationResult = null,
+  calculationResult=null,
+  excludeFromPerformance=false,
 }) {
   const failures = [];
   if (side !== 'BACK' && side !== 'LAY') failures.push({ field:'INVALID_SIDE', reason:'Order side must be BACK or LAY' });
@@ -152,7 +154,7 @@ export function createValidatedPaperOrder({
 
   // ── Stake Bounds ── (relaxed in proof mode: $2 min, $5 max)
   const minStake = paperProofMode ? 2 : 1;
-  const maxStake = paperProofMode ? (settings.maxStake || 5) : (settings.maxStake || 500);
+  const maxStake=paperProofMode?Math.min(Number(settings.maxStake??PAPER_PROOF_MAX_STAKE),PAPER_PROOF_MAX_STAKE):(settings.maxStake||500);
   if (!stake || stake < minStake) {
     failures.push({ field: 'stake', reason: `Invalid stake: $${stake}` });
   }
@@ -168,10 +170,9 @@ export function createValidatedPaperOrder({
   // ── Lay Liability Check ── (always enforced, but max is $25 in proof mode)
   if (side === 'LAY' && price > 0) {
     const liability = stake * (price - 1);
-    const maxLiability = settings.maxLayLiability || 1500;
-    if (liability > maxLiability) {
-      failures.push({ field: 'layLiability', reason: `Lay liability $${liability.toFixed(2)} exceeds max $${maxLiability}` });
-    }
+    const maxLiability=paperProofMode?proofLiabilityLimit(settings):Number(settings.maxLayLiability??1500);
+    if(paperProofMode&&maxLiability/(price-1)<minStake)failures.push({field:'PROOF_LAY_MIN_STAKE_EXCEEDS_LIABILITY_CAP',reason:'PROOF_LAY_MIN_STAKE_EXCEEDS_LIABILITY_CAP'});
+    else if(liability>maxLiability)failures.push({field:'layLiability',reason:`Lay liability $${liability.toFixed(2)} exceeds max $${maxLiability}`});
   }
 
   // ── Opposite-Side Conflict Check ── (uses normalised match helpers)
@@ -309,6 +310,9 @@ export function createValidatedPaperOrder({
     orderStatus = 'matched';
   }
 
+  const probabilityDecimal=Number(calculationResult?.probabilityDecimal??calculationResult?.probability);
+  const partialCalculations=buildPartialMatchCalculations({side,probabilityDecimal,odds:price,commissionRateDecimal:Number(commissionResolution?.normalizedRate??calculationResult?.commissionRateDecimal??calculationResult?.normalizedCommissionRate),requestedStake:stake,matchedStake,remainingStake});
+  if(!partialCalculations.mathematicalInvariantsPassed)return{order:null,rejected:true,reason:'INVALID_PARTIAL_MATCH_CALCULATION'};
   // ── Commission rate is resolved independently of current profit ──
   const commResult = commissionResolution || resolveCommissionRate(market, settings);
   if (!commResult.valid) return { order:null, rejected:true, reason:commResult.error || 'INVALID_COMMISSION' };
@@ -352,6 +356,10 @@ export function createValidatedPaperOrder({
     liveMode: false,
     proofMode,
     proofReason,
+    excludeFromPerformance:excludeFromPerformance||proofMode,
+    requestedCalculation:partialCalculations.requestedCalculation,
+    matchedCalculation:partialCalculations.matchedCalculation,
+    remainingUnmatchedCalculation:partialCalculations.remainingUnmatchedCalculation,
     requested_size: stake,
     matched_size: matchedStake,
     remaining_size: remainingStake,
@@ -366,15 +374,18 @@ export function createValidatedPaperOrder({
     matchedStake: matchedStake,
     status: orderStatus,
     settlementStatus: (orderStatus === 'matched' || orderStatus === 'partially_matched') ? 'awaiting_result' : 'not_applicable',
-    liability: side === 'LAY' ? stake * (price - 1) : stake,
-    expectedValue: calculationResult?.ev ?? expectedValue,
-    modelProbability: calculationResult?.probability ?? null,
-    impliedProbability: calculationResult?.impliedProbability ?? null,
-    expectedROI: calculationResult?.roi ?? null,
-    edge: calculationResult?.edge ?? null,
-    calculationResult,
-    mathematicalInvariantsPassed: calculationResult?.mathematicalInvariantsPassed === true,
-    liability: calculationResult?.liability ?? (side === 'LAY' ? stake * (price - 1) : stake),
+    liability:partialCalculations.matchedCalculation.liability,
+    expectedValue:partialCalculations.matchedCalculation.ev,
+    modelProbability:probabilityDecimal,
+    probabilityDecimal,
+    impliedProbability:partialCalculations.matchedCalculation.impliedProbabilityDecimal,
+    impliedProbabilityDecimal:partialCalculations.matchedCalculation.impliedProbabilityDecimal,
+    expectedROI:partialCalculations.matchedCalculation.roi,
+    rawProbabilityEdge:partialCalculations.matchedCalculation.rawProbabilityEdge,
+    commissionAdjustedEdge:partialCalculations.matchedCalculation.commissionAdjustedEdge,
+    edge:partialCalculations.matchedCalculation.commissionAdjustedEdge,
+    calculationResult:partialCalculations.matchedCalculation,
+    mathematicalInvariantsPassed:partialCalculations.mathematicalInvariantsPassed,
     result: 'pending',
     grossProfit: 0,
     commission: 0,

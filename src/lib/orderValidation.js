@@ -10,6 +10,7 @@ import { isValidTickPrice, roundToNearestTick, countTicksBetween } from './tickL
 import { isCommissionValidForLive, isInPlayLocked, isOrderOpen } from './betfairMapping';
 import { isPaperProofModeActive } from './paperProofDefaults';
 import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
+import { orderExposure } from './riskExposure';
 
 /**
  * Run the full pre-order validation checklist.
@@ -216,7 +217,7 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
   // ── Lay Liability Check ──
   if (!riskDisabled && order.side === 'LAY') {
     const liability = order.size * (order.price - 1);
-    const maxLiability = settings.maxLayLiability || settings.maxStake * 3 || 1500;
+    const maxLiability=paperProofMode?Math.min(Number(settings.maxLayLiability??25),25):Number(settings.maxLayLiability??(settings.maxStake||500)*3);
     if (liability > maxLiability) {
       failures.push({ field: 'liability', reason: `Lay liability $${liability.toFixed(2)} exceeds max $${maxLiability}` });
     }
@@ -306,10 +307,7 @@ export function runPreOrderChecks(order, market, runner, strategy, settings, ban
     const eventOrders = existingOrders.filter(o =>
       o.eventId === order.eventId && isOrderOpen(o.status)
     );
-    const eventExposure = eventOrders.reduce((sum, o) => {
-      if (o.side === 'LAY') return sum + (o.liability || o.size * (o.price - 1) || 0);
-      return sum + (o.matched_size || o.matchedStake || o.requestedStake || o.size || 0);
-    }, 0);
+    const eventExposure=eventOrders.reduce((sum,o)=>{const exposure=orderExposure(o);return sum+exposure.backExposure+exposure.layLiability;},0);
     const orderExposure = order.side === 'LAY' ? (order.size * (order.price - 1)) : order.size;
     const maxEventExposure = (settings.maxMarketExposure || 1000) * 2;
     if (eventExposure + orderExposure > maxEventExposure) {

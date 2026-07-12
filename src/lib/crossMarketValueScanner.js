@@ -22,6 +22,7 @@ import { calculateFavouriteContext, calculateRunnerContextScores, applyFavourite
 import { compareOpportunities, scoreOpportunity } from './opportunityRanking';
 import { DECISION_SOURCES, dataSourceForDecisionSource } from './decisionProvenance';
 import { ACTIVE_ORDER_STATUSES, exposureBlock, normalizedMarketId } from './raceExposure';
+import { reconcileRiskExposure } from './riskExposure';
 import { resolveCommissionRate } from './commission';
 import { validateCompleteMarketBook } from './marketBookValidation';
 import { buildNormalizedFavouriteProbabilityField } from './favouriteProbabilityField';
@@ -350,7 +351,7 @@ function buildOpportunity({
     stake = applyStakeCaps(kelly.stake, bankroll, settings);
   }
   calculationResult = buildCalculationResult({ side, probability:modelProbability, odds, normalizedCommissionRate:commissionRate, stake });
-  const { liability = 0, ev = 0, roi = 0, edge = 0, breakevenProbability = 0, profitIfWin: maxProfit = 0, lossIfLose: maxLoss = 0 } = calculationResult;
+  const {liability=0,ev=0,roi=0,commissionAdjustedEdge:edge=0,rawProbabilityEdge=0,breakevenProbability=0,profitIfWin:maxProfit=0,lossIfLose:maxLoss=0}=calculationResult;
 
   const fillProbability = calcFillProbability(availableSize, stake, spreadTicks, timeBeforeJump);
 
@@ -438,11 +439,13 @@ function buildOpportunity({
   }
 
   // Kelly and minimum Betfair stake are hard calculation gates.
-  if (!paperProofMode && stake < 2) blockers.push('KELLY_BELOW_BETFAIR_MINIMUM');
+  if(!paperProofMode&&stake<2)blockers.push('KELLY_BELOW_BETFAIR_MINIMUM');
+  if(paperProofMode&&side==='LAY'&&stake<2)blockers.push('PROOF_LAY_MIN_STAKE_EXCEEDS_LIABILITY_CAP');
   if (!calculationResult.mathematicalInvariantsPassed) blockers.push('MATH_INVARIANT_VIOLATION');
   if (marketType === 'PLACE') blockers.push('PLACE_MODEL_NOT_VALIDATED');
 
-  // Confidence check — soft in proof mode
+  // Confidence is always stored as a 0-100 percentage.
+  if(!Number.isFinite(Number(confidence))||confidence<0||confidence>100)blockers.push('CONFIDENCE_OUT_OF_RANGE');
   const minConfidence = featherlessSettings?.minConfidence ?? 50;
   if (confidence < minConfidence) {
     const msg = `Confidence ${confidence.toFixed(0)} below ${minConfidence}`;
@@ -457,7 +460,7 @@ function buildOpportunity({
 
   // Liability check (LAY) — ALWAYS enforced
   if (side === 'LAY') {
-    const maxLiability = settings.maxLayLiability || 1500;
+    const maxLiability=paperProofMode?Math.min(Number(settings.maxLayLiability??25),25):Number(settings.maxLayLiability??1500);
     if (liability > maxLiability) {
       blockers.push(`Lay liability $${liability.toFixed(2)} exceeds max $${maxLiability}`);
     }
@@ -496,21 +499,9 @@ function buildOpportunity({
     blockers.push(`Conflicting ${oppositeSide} position exists (hedging not enabled)`);
   }
 
-  // Event exposure check — ALWAYS enforced (but limit is 500 in proof mode)
-  const eventExposure = paperOrders
-    .filter(o => {
-      const om = o.betfairMarketId || o.marketId;
-      return allClusterMarketIds(cluster).includes(om) && OPEN_ORDER_STATUSES.includes(o.status);
-    })
-    .reduce((sum, o) => {
-      const stake = o.matchedStake || o.requestedStake || 0;
-      const odds = o.matchedOdds || o.matched_price || o.requestedOdds || o.requested_price || 0;
-      if ((o.side || '').toUpperCase() === 'LAY' && odds > 1) return sum + stake * (odds - 1);
-      return sum + stake;
-    }, 0);
-  if (eventExposure + requiredFunds > (settings.maxMarketExposure || 1000) * 2) {
-    blockers.push('Event exposure limit breached');
-  }
+  // Canonical portfolio exposure check.
+  const eventExposure=reconcileRiskExposure(paperOrders).totalExposure;
+  if(eventExposure+requiredFunds>(settings.maxMarketExposure||1000)*2)blockers.push('Event exposure limit breached');
 
   const exposureAfterBet = (bankrollStats?.openPaperExposure || 0) + requiredFunds;
   const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
@@ -562,7 +553,11 @@ function buildOpportunity({
     maxProfit,
     maxLoss,
     modelProbability,
+    probabilityDecimal:modelProbability,
     impliedProbability,
+    impliedProbabilityDecimal:impliedProbability,
+    rawProbabilityEdge,
+    commissionAdjustedEdge:edge,
     breakevenProbability,
     fairOdds,
     commissionRate,

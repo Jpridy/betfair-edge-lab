@@ -46,10 +46,12 @@
         "type": "object",
         "properties": {
           "price": {
-            "type": "number"
+            "type": "number",
+            "exclusiveMinimum": 1
           },
           "size": {
-            "type": "number"
+            "type": "number",
+            "minimum": 0
           }
         }
       }
@@ -60,10 +62,12 @@
         "type": "object",
         "properties": {
           "price": {
-            "type": "number"
+            "type": "number",
+            "exclusiveMinimum": 1
           },
           "size": {
-            "type": "number"
+            "type": "number",
+            "minimum": 0
           }
         }
       }
@@ -86,13 +90,15 @@
       "type": "number"
     },
     "bestBackSize": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "bestLayPrice": {
       "type": "number"
     },
     "bestLaySize": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0
     },
     "lastTradedPrice": {
       "type": "number"
@@ -104,12 +110,37 @@
       "type": "number"
     },
     "impliedProbability": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "impliedProbabilityDecimal": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
     },
     "modelProbability": {
-      "type": "number"
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "probabilityDecimal": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidencePercent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
     },
     "edge": {
+      "type": "number"
+    },
+    "rawProbabilityEdge": {
+      "type": "number"
+    },
+    "commissionAdjustedEdge": {
       "type": "number"
     },
     "clvEstimate": {
