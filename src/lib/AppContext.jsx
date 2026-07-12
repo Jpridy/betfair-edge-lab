@@ -10,6 +10,7 @@ import { buildScanDiagnostics } from './scanDiagnostics';
 import { computeCalibration } from './calibration';
 import { fmtPct } from './candidateScoring';
 import { calculateRiskMetrics } from '@/lib/riskCalculations';
+import { calculatePortfolioAccounting } from '@/lib/portfolioAccounting';
 import { runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
 import { strategyForDecisionSource } from '@/lib/decisionProvenance';
 import { lapseUnmatchedOrder } from '@/lib/settlementService';
@@ -171,6 +172,7 @@ export function AppProvider({ children }) {
     roi: 0,
     strikeRate: 0,
   });
+  const accounting=useMemo(()=>calculatePortfolioAccounting(paperOrders,settings.paperBankroll??settings.bankroll??0),[paperOrders,settings.paperBankroll,settings.bankroll]);
   const riskStatus = useMemo(() => {
     const rm = calculateRiskMetrics(paperOrders, settings);
     const dailyLossUsed = Math.max(0, -(rm.dailyPL || 0));
@@ -379,51 +381,25 @@ export function AppProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Derive bankroll stats from settled paper orders (unified calculation) ──
-  useEffect(() => {
-    const rm = calculateRiskMetrics(paperOrders, settings);
-    const settled = paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
-    const wins = settled.filter(o => o.result === 'won').length;
-    const losses = settled.filter(o => o.result === 'lost').length;
-    const commissionPaid = settled.reduce((s, o) => s + (o.commission || 0), 0);
-    const startingBankroll = settings.paperBankroll || settings.bankroll;
-    const currentBankroll = startingBankroll + rm.totalPL;
-    const totalStake = settled.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
-    const roi = totalStake > 0 ? (rm.totalPL / totalStake) * 100 : 0;
-    const strikeRate = settled.length > 0 ? (wins / settled.length) * 100 : 0;
-
-    setBankrollStats(prev => ({
-      ...prev,
-      bankroll: currentBankroll,
-      paperBankroll: currentBankroll,
-      available: currentBankroll - rm.openExposure,
-      todayPL: rm.dailyPL,
-      weeklyPL: rm.weeklyPL,
-      totalPL: rm.totalPL,
-      commissionPaid,
-      openPaperExposure: rm.paperExposure,
-      openLiveExposure: rm.liveExposure,
-      maxDrawdown: rm.drawdown,
-      longestLosingStreak: rm.longestLosingStreak,
-      wins,
-      losses,
-      roi,
-      strikeRate,
-    }));
-  }, [paperOrders, settings.paperBankroll, settings.bankroll, settings.dailyLossLimit, settings.weeklyLossLimit, settings.maxMarketExposure, settings.maxOpenOrders, settings.maxUnmatchedOrders]);
+  // ── Derive bankroll stats from authoritative accounting ──
+  useEffect(()=>{
+    const rm=calculateRiskMetrics(paperOrders,settings);
+    const resultCount=accounting.wonOrderCount+accounting.lostOrderCount;
+    setBankrollStats(prev=>({...prev,bankroll:accounting.currentEquity,paperBankroll:accounting.currentEquity,available:accounting.availableBankroll,todayPL:rm.dailyPL,weeklyPL:rm.weeklyPL,totalPL:accounting.netRealisedPL,grossRealisedPL:accounting.grossRealisedPL,grossWinnings:accounting.grossWinnings,grossLosses:accounting.grossLosses,commissionPaid:accounting.commissionPaid,openPaperExposure:accounting.totalOpenExposure,openLiveExposure:0,maxDrawdown:rm.drawdown,longestLosingStreak:rm.longestLosingStreak,wins:accounting.wonOrderCount,losses:accounting.lostOrderCount,roi:accounting.netROI==null?0:accounting.netROI*100,strikeRate:resultCount?accounting.wonOrderCount/resultCount*100:0}));
+  },[accounting,paperOrders,settings]);
 
   // ── Derive P/L chart data from settled orders ──
   const plData = useMemo(() => {
-    const settled = paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord).slice().sort((a, b) => (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || ''));
-    const starting = settings.paperBankroll || settings.bankroll;
-    let running = starting;
-    return settled.map((o, i) => {
-      running += (o.netProfit || 0);
+    const settled=paperOrders.filter(o=>o.status==='settled'&&o.settlementStatus==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord).slice().sort((a,b)=>(a.settled_date??a.created_date??'').localeCompare(b.settled_date??b.created_date??''));
+    const starting=settings.paperBankroll??settings.bankroll??0;
+    let running=starting;
+    return settled.map((o,i)=>{
+      running+=o.netProfit??0;
       return {
-        date: (o.settled_date || o.created_date || '').slice(0, 10),
-        timestamp: o.settled_date || o.created_date,
-        bankroll: running,
-        pl: o.netProfit || 0,
+        date:(o.settled_date??o.created_date??'').slice(0,10),
+        timestamp:o.settled_date??o.created_date,
+        bankroll:running,
+        pl:o.netProfit??0,
         cumulativePL: running - starting,
         label: `Trade ${i + 1}`,
       };
@@ -1938,7 +1914,7 @@ export function AppProvider({ children }) {
         streamConnected: conn.streamConnectionStatus === 'connected' || conn.streamConnectionStatus === 'polling',
         lastStreamUpdateAt: conn.lastStreamUpdateAt || null,
         lastCatalogueRefreshAt: conn.lastCatalogueRefreshAt || null,
-        lastPriceUpdateAt: conn.lastStreamUpdateAt || conn.lastPriceFetchAt || null,
+        lastActualPriceUpdateAt:conn.lastActualPriceUpdateAt||conn.lastStreamUpdateAt||conn.lastPriceFetchAt||null,
         marketCatalogueError: null,
         streamError: conn.streamConnectionStatus === 'error' ? 'Stream connection error' : null,
         priceFeedStale: conn.dataFresh === false,
@@ -2451,7 +2427,7 @@ export function AppProvider({ children }) {
     betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair,
     betfairDiagnostics, rebuildBetfairDiagnostics, reconnectBetfairStream,
     settings, updateSettings, appMode, demoMode,
-    markets, runners, paperOrders, strategySignals, bankrollStats, riskStatus, heatmap,
+    markets, runners, paperOrders, strategySignals, bankrollStats, accounting, riskStatus, heatmap,
     auditLogs, backtestRuns, plData, dataLoading,
     addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,
     toggleWatchMarket, handleRunnerRemoval,

@@ -1,6 +1,7 @@
 // Unified risk and exposure calculations — single source of truth.
 // Used by AppContext, RiskManager, RiskOverview, Orders, PerformanceAnalytics, Dashboard, Sidebar, Bot.
 import { isActiveExposureOrder, reconcileRiskExposure } from './riskExposure';
+import { calculatePortfolioAccounting } from './portfolioAccounting';
 const UNMATCHED_STATUSES = ['unmatched', 'partially_matched'];
 
 /**
@@ -26,8 +27,9 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
   const liveExposure=0;
   const totalExposure=reconciledExposure.totalExposure;
 
-  // ── P/L Calculations ──
-  const totalPL = settled.reduce((s, o) => s + (o.netProfit || 0), 0);
+  // Portfolio P/L comes only from the authoritative accounting function.
+  const accounting=calculatePortfolioAccounting(paperOrders,settings.paperBankroll??settings.bankroll??0);
+  const totalPL=accounting.netRealisedPL;
 
   // Daily reset cutoff — if set, only count orders settled after that timestamp
   const dailyResetAt = settings.dailyResetAt || null;
@@ -41,12 +43,12 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
       }
       return settledDate.slice(0, 10) === today;
     })
-    .reduce((s, o) => s + (o.netProfit || 0), 0);
+    .reduce((s, o) => s + (o.netProfit ?? 0), 0);
 
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
   const weeklyPL = settled
     .filter(o => (o.settled_date || o.created_date || '') >= weekAgo)
-    .reduce((s, o) => s + (o.netProfit || 0), 0);
+    .reduce((s, o) => s + (o.netProfit ?? 0), 0);
 
   // ── Drawdown — peak-to-trough from starting bankroll ──
   const startingBankroll = settings.paperBankroll || settings.bankroll || 0;
@@ -57,7 +59,7 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
     (a.settled_date || a.created_date || '').localeCompare(b.settled_date || b.created_date || '')
   );
   for (const o of sorted) {
-    running += (o.netProfit || 0);
+    running += (o.netProfit ?? 0);
     if (running > peak) peak = running;
     const dd = running - peak;
     if (dd < maxDD) maxDD = dd;

@@ -3,29 +3,31 @@ import { useApp } from '@/lib/AppContext';
 import { Panel, StatusBadge, SideBadge, PLValue } from '@/components/ui/Trading';
 import { cn } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
+import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
 
 export default function RiskOrdersPanel() {
-  const { bankrollStats, settings, paperOrders, rejectedOrders, riskStatus } = useApp();
+  const {bankrollStats,paperOrders,rejectedOrders,riskStatus}=useApp();
+  const accounting=usePortfolioAccountingDisplay();
 
   const openOrders = paperOrders.filter(o => ['matched', 'partially_matched', 'pending', 'executable'].includes(o.status));
   const settledOrders = paperOrders.filter(o => o.status === 'settled');
   const latestOrder = paperOrders[0];
   const latestRejection = rejectedOrders[0];
 
-  const openExposure = (bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0);
-  const available = bankrollStats.available || 0;
-  const layOrders = openOrders.filter(o => o.side === 'LAY');
-  const totalLayLiability = layOrders.reduce((s, o) => s + (o.liability || 0), 0);
+  const openExposure=accounting.totalOpenExposure;
+  const available=accounting.availableBankroll;
+  const layOrders=openOrders.filter(o=>o.side==='LAY');
+  const totalLayLiability=accounting.matchedLayLiability;
 
   return (
     <div className="space-y-5">
       <Panel title="Risk & Exposure" subtitle="Bankroll, exposure, and loss limits">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border-subtle">
-          <Metric label="Bankroll" value={`$${(bankrollStats.bankroll || 0).toFixed(2)}`} />
-          <Metric label="Available" value={`$${available.toFixed(2)}`} tone={available < 0 ? 'danger' : 'default'} />
-          <Metric label="Open Exposure" value={`$${openExposure.toFixed(2)}`} tone={openExposure > 0 ? 'warning' : 'default'} />
-          <Metric label="Today P/L" value={<PLValue value={bankrollStats.todayPL || 0} />} />
-          <Metric label="Total P/L" value={<PLValue value={bankrollStats.totalPL || 0} />} />
+          <Metric label="Current Equity" value={`$${accounting.currentEquity.toFixed(2)}`} />
+          <Metric label="Available Bankroll" value={`$${available.toFixed(2)}`} tone={available<0?'danger':'default'} />
+          <Metric label="Open Exposure" value={`$${openExposure.toFixed(2)}`} tone={openExposure>0?'warning':'default'} />
+          <Metric label="Gross P/L Before Commission" value={<PLValue value={accounting.grossRealisedPL}/>} />
+          <Metric label="Net Realised P/L" value={<PLValue value={accounting.netRealisedPL}/>} />
           <Metric label="Daily Loss Used" value={`${(riskStatus?.dailyLossLimit?.value || 0).toFixed(0)}%`} tone={riskStatus?.dailyLossLimit?.status === 'danger' ? 'danger' : 'default'} />
           <Metric label="Weekly Loss Used" value={`${(riskStatus?.weeklyLossLimit?.value || 0).toFixed(0)}%`} tone={riskStatus?.weeklyLossLimit?.status === 'danger' ? 'danger' : 'default'} />
           <Metric label="Max Drawdown" value={`$${(bankrollStats.maxDrawdown || 0).toFixed(2)}`} tone="warning" />
@@ -60,9 +62,9 @@ export default function RiskOrdersPanel() {
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <KV label="Market" value={latestOrder.marketName || latestOrder.venue || '—'} />
-                <KV label="Odds" value={latestOrder.requestedOdds?.toFixed(2) || latestOrder.matchedOdds?.toFixed(2) || '—'} mono />
-                <KV label="Stake" value={`$${(latestOrder.requestedStake || 0).toFixed(2)}`} mono />
-                <KV label="Liability" value={`$${(latestOrder.liability || 0).toFixed(2)}`} mono />
+                <KV label="Odds" value={latestOrder.matchedOdds?.toFixed(2)??latestOrder.requestedOdds?.toFixed(2)??'—'} mono />
+                <KV label="Stake" value={`$${(latestOrder.requestedStake??0).toFixed(2)}`} mono />
+                <KV label="Liability" value={`$${(latestOrder.liability??0).toFixed(2)}`} mono />
                 {latestOrder.result && <KV label="Result" value={latestOrder.result} />}
                 {latestOrder.netProfit != null && <KV label="Net P/L" value={<PLValue value={latestOrder.netProfit} />} />}
               </div>

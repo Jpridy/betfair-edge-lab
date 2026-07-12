@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, DollarSign, Target, Percent, Activity, BarChart3 } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { buildEquityCurve, buildMonthlyGrowth, buildWinLossDistribution, buildDrawdownCurve, buildCLVByStrategy, buildStrikeRateByStrategy, buildProfitByOddsRange, buildProfitByVenue, buildProfitBySide } from '@/lib/performanceData';
+import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
 
 const COLORS = ['hsl(142 71% 45%)', 'hsl(0 72% 51%)', 'hsl(263 70% 55%)', 'hsl(199 89% 48%)'];
 
@@ -18,14 +19,14 @@ function EmptyChart({ text }) {
 }
 
 export default function PerformanceAnalytics() {
-  const { bankrollStats, strategyStats, plData, paperOrders, settings } = useApp();
-
-  const settledOrders=(paperOrders||[]).filter(o=>(o.result==='won'||o.result==='lost')&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
-  const settledWins = settledOrders.filter(o => o.result === 'won').length;
-  const settledLosses = settledOrders.filter(o => o.result === 'lost').length;
-  const settledNetPL = settledOrders.reduce((sum, o) => sum + (o.netProfit || 0), 0);
-  const settledGrossPL = settledOrders.reduce((sum, o) => sum + (o.grossProfit || 0), 0);
-  const settledCommission = settledOrders.reduce((sum, o) => sum + (o.commission || 0), 0);
+  const {bankrollStats,strategyStats,plData,paperOrders,settings}=useApp();
+  const accounting=usePortfolioAccountingDisplay();
+  const settledOrders=(paperOrders||[]).filter(o=>o.status==='settled'&&o.settlementStatus==='settled'&&(o.result==='won'||o.result==='lost')&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
+  const settledWins=accounting.wonOrderCount;
+  const settledLosses=accounting.lostOrderCount;
+  const settledNetPL=accounting.netRealisedPL;
+  const settledGrossPL=accounting.grossRealisedPL;
+  const settledCommission=accounting.commissionPaid;
   const avgCLV = settledOrders.length > 0 ? settledOrders.reduce((sum, o) => sum + (o.clv || 0), 0) / settledOrders.length : 0;
   const avgSlippage = settledOrders.length > 0 ? settledOrders.reduce((sum, o) => sum + (o.slippage || 0), 0) / settledOrders.length : 0;
 
@@ -34,10 +35,10 @@ export default function PerformanceAnalytics() {
   const winLossRatio = totalLosses > 0 ? (totalWins / totalLosses).toFixed(2) : '—';
   const totalBets = totalWins + totalLosses;
   const totalNetPL = settledNetPL;
-  const avgROI = bankrollStats.roi || 0;
+  const avgROI=accounting.netROI==null?0:accounting.netROI*100;
 
   // Live-derived chart data
-  const startingBankroll = settings.paperBankroll || settings.bankroll || 10000;
+  const startingBankroll=settings.paperBankroll??settings.bankroll??10000;
   const equityCurve = buildEquityCurve(plData);
   const monthlyGrowth = buildMonthlyGrowth(settledOrders, startingBankroll);
   const winLossDist = buildWinLossDistribution(settledOrders);
@@ -58,8 +59,8 @@ export default function PerformanceAnalytics() {
 
   const kpiCards = [
     { label: 'Settled Net P/L', value: `${settledNetPL >= 0 ? '+' : ''}$${settledNetPL.toFixed(2)}`, icon: DollarSign, trend: settledNetPL >= 0 ? 'up' : 'down', color: settledNetPL >= 0 ? 'text-success' : 'text-danger' },
-    { label: 'Win/Loss Ratio', value: winLossRatio, icon: Target, trend: totalWins > totalLosses ? 'up' : 'down', color: totalWins > totalLosses ? 'text-success' : 'text-danger' },
-    { label: 'Avg ROI', value: `${avgROI.toFixed(2)}%`, icon: Percent, trend: avgROI > 0 ? 'up' : 'down', color: avgROI > 0 ? 'text-success' : 'text-danger' },
+    {label:'Profit Factor',value:accounting.profitFactor==null?'—':accounting.profitFactor.toFixed(4),icon:Target,trend:accounting.profitFactor>=1?'up':'down',color:accounting.profitFactor>=1?'text-success':'text-danger'},
+    {label:'Net ROI on Capital at Risk',value:`${avgROI.toFixed(2)}%`,icon:Percent,trend:avgROI>0?'up':'down',color:avgROI>0?'text-success':'text-danger'},
     { label: 'Settled Bets', value: settledOrders.length, icon: Activity, trend: 'neutral', color: 'text-foreground' },
     { label: 'Strike Rate', value: `${settledOrders.length > 0 ? ((settledWins / settledOrders.length) * 100).toFixed(1) : 0}%`, icon: TrendingUp, trend: 'up', color: 'text-info' },
     { label: 'Avg CLV', value: `${avgCLV >= 0 ? '+' : ''}${avgCLV.toFixed(2)}%`, icon: Target, trend: avgCLV >= 0 ? 'up' : 'down', color: avgCLV >= 0 ? 'text-success' : 'text-danger' },

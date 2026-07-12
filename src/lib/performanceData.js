@@ -51,7 +51,7 @@ export function buildMonthlyGrowth(settledOrders, startingBankroll) {
     const key = getMonthKey(getOrderDate(o));
     if (!key) continue;
     if (!byMonth[key]) byMonth[key] = { month: getMonthLabel(getOrderDate(o)), netPL: 0 };
-    byMonth[key].netPL += (o.netProfit || 0);
+    byMonth[key].netPL += (o.netProfit ?? 0);
   }
   const sorted = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
   let running = startingBankroll;
@@ -160,7 +160,7 @@ export function buildProfitByOddsRange(settledOrders) {
         const odds = o.matchedOdds || o.requestedOdds || 0;
         return odds >= r.min && odds < r.max;
       })
-      .reduce((s, o) => s + (o.netProfit || 0), 0);
+      .reduce((s, o) => s + (o.netProfit ?? 0), 0);
     return { range: r.label, profit: Math.round(profit * 100) / 100 };
   }).filter(r => r.profit !== 0);
 }
@@ -175,7 +175,7 @@ export function buildProfitByVenue(settledOrders) {
   for (const o of settledOrders) {
     const venue = o.venue || 'Unknown';
     if (!byVenue[venue]) byVenue[venue] = 0;
-    byVenue[venue] += (o.netProfit || 0);
+    byVenue[venue] += (o.netProfit ?? 0);
   }
   return Object.entries(byVenue)
     .map(([venue, profit]) => ({ venue, profit: Math.round(profit * 100) / 100 }))
@@ -192,7 +192,7 @@ export function buildProfitBySide(settledOrders) {
   for (const o of settledOrders) {
     const side = o.side || 'BACK';
     if (!bySide[side]) bySide[side] = 0;
-    bySide[side] += (o.netProfit || 0);
+    bySide[side] += (o.netProfit ?? 0);
   }
   return Object.entries(bySide).map(([side, profit]) => ({ side, profit: Math.round(profit * 100) / 100 }));
 }

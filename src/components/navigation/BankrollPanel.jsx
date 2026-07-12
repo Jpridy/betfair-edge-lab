@@ -1,18 +1,18 @@
 import React from 'react';
 import { WalletCards } from 'lucide-react';
-import { useApp } from '@/lib/AppContext';
+import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
 import { cn } from '@/lib/utils';
 
-const money = (value) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(value) || 0);
+const money=value=>new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD'}).format(Number.isFinite(Number(value))?Number(value):0);
 const plClass = (value) => Number(value) > 0 ? 'text-success' : Number(value) < 0 ? 'text-danger' : 'text-sidebar-foreground';
 
 export default function BankrollPanel() {
-  const { bankrollStats } = useApp();
-  const rows = [
-    { label: 'Bankroll', value: bankrollStats.bankroll },
-    { label: 'Today P/L', value: bankrollStats.todayPL, profitLoss: true },
-    { label: 'Total P/L', value: bankrollStats.totalPL, profitLoss: true },
-    { label: 'Open exposure', value: bankrollStats.openPaperExposure },
+  const accounting=usePortfolioAccountingDisplay();
+  const rows=[
+    {label:'Current Equity',value:accounting.currentEquity},
+    {label:'Net Realised P/L',value:accounting.netRealisedPL,profitLoss:true},
+    {label:'Open Exposure',value:accounting.totalOpenExposure},
+    {label:'Available',value:accounting.availableBankroll},
   ];
 
   return (

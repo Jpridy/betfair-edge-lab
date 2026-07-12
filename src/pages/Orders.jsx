@@ -9,9 +9,11 @@ import { Download, AlertTriangle, Inbox } from 'lucide-react';
 import { exportToCSV } from '@/lib/csvExport';
 import EmptyState from '@/components/EmptyState';
 import SettlementWorkerPanel from '@/components/orders/SettlementWorkerPanel';
+import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
 
 export default function Orders() {
-  const { paperOrders, dataLoading } = useApp();
+  const {paperOrders,dataLoading}=useApp();
+  const accounting=usePortfolioAccountingDisplay();
   const [statusFilter, setStatusFilter] = useState('all');
   const [sideFilter, setSideFilter] = useState('all');
   const [strategyFilter, setStrategyFilter] = useState('all');
@@ -72,10 +74,10 @@ export default function Orders() {
       { key: 'result', label: 'Result' },
       { key: 'resultSource', label: 'Result Source' },
       { key: 'resultConfidence', label: 'Result Confidence' },
-      { key: 'grossProfit', label: 'Gross' },
-      { key: 'commission', label: 'Commission' },
-      { key: 'commissionSource', label: 'Comm Source' },
-      { key: 'netProfit', label: 'Net P/L' },
+      {key:'grossProfit',label:'Gross Result'},
+      {key:'commission',label:'Commission'},
+      {key:'commissionSource',label:'Comm Source'},
+      {key:'netProfit',label:'Net Result'},
       { key: 'clv', label: 'CLV %' },
       { key: 'slippage', label: 'Slippage' },
       { key: 'entryReason', label: 'Entry Reason' },
@@ -89,9 +91,9 @@ export default function Orders() {
 
   // Only count matched/partially_matched orders in staked totals — rejected/unmatched don't stake real funds
   const stakedOrders = filtered.filter(o => o.status === 'matched' || o.status === 'partially_matched' || o.status === 'settled');
-  const totalStake = stakedOrders.reduce((sum, o) => sum + (o.matchedStake || 0), 0);
-  const totalUnmatched = filtered.filter(o => o.status !== 'rejected').reduce((sum, o) => sum + ((o.requestedStake || 0) - (o.matchedStake || 0)), 0);
-  const totalPL = filtered.reduce((sum, o) => sum + (o.netProfit || 0), 0);
+  const totalStake=stakedOrders.reduce((sum,o)=>sum+(o.matchedStake??0),0);
+  const totalUnmatched=filtered.filter(o=>o.status!=='rejected').reduce((sum,o)=>sum+((o.requestedStake??0)-(o.matchedStake??0)),0);
+  const totalPL=accounting.netRealisedPL;
   const matched = filtered.filter(o => o.status === 'matched').length;
 
   return (
@@ -223,9 +225,9 @@ export default function Orders() {
               <TableHead className="text-xs">Result</TableHead>
               <TableHead className="text-xs">Result Source</TableHead>
               <TableHead className="text-xs text-right">CLV</TableHead>
-              <TableHead className="text-xs text-right">Gross</TableHead>
-              <TableHead className="text-xs text-right">Comm</TableHead>
-              <TableHead className="text-xs text-right">Net P/L</TableHead>
+              <TableHead className="text-xs text-right">Gross Result</TableHead>
+              <TableHead className="text-xs text-right">Commission</TableHead>
+              <TableHead className="text-xs text-right">Net Result</TableHead>
               <TableHead className="text-xs">Flags</TableHead>
             </TableRow>
           </TableHeader>
@@ -292,9 +294,9 @@ export default function Orders() {
                 </TableCell>
                 <TableCell className="text-[10px] text-muted-foreground">{o.resultSource || '—'}</TableCell>
                 <TableCell className={`text-xs text-right font-mono ${(o.clv || 0) >= 0 ? 'text-success' : 'text-danger'}`}>{o.clv != null ? `${o.clv >= 0 ? '+' : ''}${o.clv.toFixed(1)}%` : '—'}</TableCell>
-                <TableCell className="text-xs text-right font-mono">${o.grossProfit?.toFixed(2) || '0.00'}</TableCell>
-                <TableCell className="text-xs text-right font-mono text-muted-foreground">${o.commission?.toFixed(2) || '0.00'}</TableCell>
-                <TableCell className="text-xs text-right"><PLValue value={o.netProfit || 0} /></TableCell>
+                <TableCell className="text-xs text-right font-mono">{o.grossProfit==null?'—':<PLValue value={o.grossProfit}/>}</TableCell>
+                <TableCell className="text-xs text-right font-mono text-muted-foreground">{o.commission==null?'—':`$${o.commission.toFixed(2)}`}</TableCell>
+                <TableCell className="text-xs text-right">{o.netProfit==null?'—':<PLValue value={o.netProfit}/>}</TableCell>
                 <TableCell className="text-xs">
                   {o.warningFlags?.length > 0 ? (
                     <span className="inline-flex items-center gap-1 text-warning" title={o.warningFlags.join('; ')}>

@@ -8,6 +8,7 @@ import BetfairConnection from '@/components/settings/BetfairConnection';
 import RiskOrdersPanel from '@/components/controlroom/RiskOrdersPanel';
 import PaperProofPanel from '@/components/controlroom/PaperProofPanel';
 import SelectedRaceMonitoring from '@/components/controlroom/SelectedRaceMonitoring';
+import AccountingSummary from '@/components/accounting/AccountingSummary';
 
 export default function Controls() {
   return <div className="space-y-6">
@@ -16,6 +17,7 @@ export default function Controls() {
       <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight-brand text-foreground">Control Centre</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Connect market data, control the paper-trading bot, and review risk before placing an order.</p>
     </header>
+    <AccountingSummary />
 
     <Tabs defaultValue="operations" className="space-y-5">
       <TabsList className="grid h-auto w-full grid-cols-1 gap-1 p-1 sm:grid-cols-3">

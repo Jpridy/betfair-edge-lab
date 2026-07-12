@@ -6,10 +6,12 @@ import AIExecutionPanel from '@/components/controlroom/AIExecutionPanel';
 import DashboardOpportunities from '@/components/dashboard/DashboardOpportunities';
 import DashboardMarkets from '@/components/dashboard/DashboardMarkets';
 import DashboardActivity from '@/components/dashboard/DashboardActivity';
+import AccountingSummary from '@/components/accounting/AccountingSummary';
 
 export default function Dashboard() {
   return <div className="space-y-5">
     <SafetyBanners />
+    <AccountingSummary />
     <DashboardStatus />
     <LatestDecision />
     <AIExecutionPanel />
