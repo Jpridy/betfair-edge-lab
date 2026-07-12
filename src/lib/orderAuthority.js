@@ -22,8 +22,9 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
   const requiredLiquidity=proofOverride?2:Number(opportunity.requiredMinLiquidity);
   if(!Number.isFinite(currentAvailableSize)||currentAvailableSize<requiredLiquidity)return fail('LIQUIDITY_BELOW_MINIMUM','Current liquidity is below the required minimum');
   if(!proofOverride&&(Number(opportunity.odds)<Number(opportunity.requiredMinOdds)||Number(opportunity.odds)>Number(opportunity.requiredMaxOdds)))return fail('ODDS_OUTSIDE_MARKET_RANGE','Odds are outside the frozen market range');
-  if (context.apiConnected !== true || connectionState.apiConnected !== true) return fail('BETFAIR_API_DISCONNECTED', 'Betfair API state is not CONNECTED');
-  if (!market || market.status !== 'OPEN') return fail('MARKET_NOT_OPEN', 'Market must be OPEN');
+  if(settings.forcedPaperOnlyMode!==true||settings.liveTradingEnabled===true||context.botSettings?.liveTradingEnabled===true)return fail('PAPER_ONLY_LOCK_REQUIRED','Paper-only safety lock is not active');
+  if(context.apiConnected!==true||connectionState.apiConnected!==true)return fail('BETFAIR_API_DISCONNECTED','Betfair API state is not CONNECTED');
+  if(!market||market.status!=='OPEN')return fail('MARKET_NOT_OPEN','Market must be OPEN');
   if (market.inPlay === true) return fail('MARKET_IN_PLAY', 'In-play orders are not authorized');
   const currentPrice = Number(opportunity.side === 'BACK' ? runner?.bestBackPrice : runner?.bestLayPrice);
   if (!(currentPrice > 1)) return fail('PRICE_DATA_UNAVAILABLE', 'Current executable runner price is unavailable');
@@ -41,6 +42,19 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
   if (secondsToStart > windowStart) return fail('TOO_EARLY_FOR_ORDER', 'Order window has not opened', { secondsToStart });
   if (secondsToStart < windowEnd) return fail('TOO_LATE_FOR_ORDER', 'Order window has closed', { secondsToStart });
 
+  if(Number(market.totalMatched??0)<Number(settings.minimumTradedVolume??0))return fail('MINIMUM_TRADED_VOLUME','Market traded volume is below the effective minimum');
+  if(opportunity.marketType==='H2H')return fail('H2H_MODEL_NOT_VALIDATED','H2H ordering is disabled until complementary probabilities are validated');
+  const today=new Date().toISOString().slice(0,10),todayOrders=existingOrders.filter(order=>(order.placed_date??order.created_date??'').slice(0,10)===today&&order.status!=='rejected');
+  if(todayOrders.length>=Number(settings.maxTradesPerDay??20))return fail('MAX_DAILY_TRADES','Maximum daily trade count reached');
+  const sameMarket=todayOrders.filter(order=>String(order.normalizedMarketId??order.betfairMarketId??order.marketId)===String(opportunity.normalizedMarketId??opportunity.betfairMarketId??opportunity.marketId));
+  if(sameMarket.length>=Number(settings.maxTradesPerMarket??1))return fail('MAX_MARKET_TRADES','Maximum trades for this market reached');
+  const sameRunner=todayOrders.filter(order=>String(order.normalizedSelectionId??order.selectionId)===String(opportunity.selectionId));
+  if(sameRunner.length>=Number(settings.maxTradesPerRunner??1))return fail('MAX_RUNNER_TRADES','Maximum trades for this runner reached');
+  const unmatched=existingOrders.filter(order=>['unmatched','partially_matched'].includes(order.status));
+  if(unmatched.length>=Number(settings.maxUnmatchedOrders??2))return fail('MAX_UNMATCHED_ORDERS','Maximum unmatched orders reached');
+  if(context.botSettings?.stopOnDailyLoss!==false&&Number(bankrollStats.todayPL??0)<=-Number(settings.dailyLossLimit??100))return fail('DAILY_LOSS_LIMIT','Daily loss limit reached');
+  if(context.botSettings?.stopOnMaxDrawdown!==false&&Math.abs(Number(bankrollStats.maxDrawdown??0))>=Number(context.botSettings?.maxDrawdownLimit??300))return fail('MAX_DRAWDOWN_LIMIT','Maximum drawdown reached');
+  if(context.botSettings?.stopOnLosingStreak!==false&&Number(bankrollStats.longestLosingStreak??0)>=Number(context.botSettings?.maxLosingStreak??8))return fail('MAX_LOSING_STREAK','Maximum losing streak reached');
   const commission = resolveCommissionRate(market, settings);
   if (!commission.valid) return fail('INVALID_COMMISSION', commission.error, { commission });
   const book=validateCompleteMarketBook(marketRunners,market,settings.maxBackBookPercentage||150);
@@ -80,7 +94,7 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
   const validated=createValidatedPaperOrder({market,runner,side:opportunity.side,stake,odds:currentPrice,strategyName:context.strategyName,source:context.source||'bot',settings,bankrollStats,existingOrders,emergencyStop,apiConnected:true,persistenceType:context.persistenceType||'LAPSE',expectedValue:ev,entryReason:(opportunity.reasons||[]).join('; '),dataSource:opportunity.dataSource,botSettings:context.botSettings,featherlessSettings,marketType:opportunity.marketType,marketTypeCode:opportunity.marketTypeCode,eventId:opportunity.eventId,eventName:opportunity.eventName,numberOfWinners:opportunity.numberOfWinners,placeTerms:opportunity.placeTerms,proofMode:opportunity.proofMode||false,proofReason:opportunity.proofReason||null,decisionSource:opportunity.decisionSource,selectionDiagnostics:context.selectionDiagnostics,commissionResolution:commission,calculationResult:recomputedCalculation,excludeFromPerformance:proofOverride});
   if(validated.rejected)return fail(validated.order?.failed_validation_field||'RISK_CHECK_FAILED',validated.reason,{rejectedOrder:validated.order});
   if (!entityApi?.create) return fail('DATABASE_UPDATE_FAILED', 'PaperOrder entity API is unavailable');
-  const order = { ...validated.order, rawCommissionRate: commission.rawRate, normalizedCommissionRate: commission.normalizedRate, commissionSource: commission.source, commissionNormalizationApplied: commission.normalizationApplied, priceFeedStatus: freshness.priceFeedStatus, priceAgeSeconds: freshness.priceAgeSeconds, paperSimulationQuality: freshness.priceFeedStatus === 'LIVE' ? validated.order.paperSimulationQuality : 'Basic' };
+  const order={...validated.order,rankedCalculation,finalAuthorityRecalculation:recomputedCalculation,valuesMatched:true,finalAuthorityReached:true,rawCommissionRate:commission.rawRate,normalizedCommissionRate:commission.normalizedRate,commissionSource:commission.source,commissionNormalizationApplied:commission.normalizationApplied,priceFeedStatus:freshness.priceFeedStatus,priceAgeSeconds:freshness.priceAgeSeconds,paperSimulationQuality:freshness.priceFeedStatus==='LIVE'?validated.order.paperSimulationQuality:'Basic'};
   try { const saved = await entityApi.create(order); return { authorized: true, persisted: true, order: saved || order, failedGate: null, reason: null, secondsToStart, marketBookDiagnostics: book, priceFreshness: freshness }; }
   catch (error) { return fail('DATABASE_UPDATE_FAILED', error.message, { attemptedOrder: order }); }
 }

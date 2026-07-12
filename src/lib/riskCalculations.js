@@ -51,7 +51,7 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
     .reduce((s, o) => s + (o.netProfit ?? 0), 0);
 
   // ── Drawdown — peak-to-trough from starting bankroll ──
-  const startingBankroll = settings.paperBankroll || settings.bankroll || 0;
+  const startingBankroll=settings.paperBankroll??settings.bankroll??0;
   let peak = startingBankroll;
   let maxDD = 0;
   let running = startingBankroll;

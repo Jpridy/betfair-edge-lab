@@ -17,6 +17,7 @@ import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { ACTIVE_ORDER_STATUSES, exposureBlock } from './raceExposure';
 import { canonicalRaceIdentity } from './raceIdentity';
 import { DECISION_SOURCES, strategyForDecisionSource, dataSourceForDecisionSource } from './decisionProvenance';
+import { isValidTickPrice } from './tickLadder';
 
 const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
@@ -140,7 +141,8 @@ export function createValidatedPaperOrder({
   const currentPrice=Number(side==='BACK'?runner?.bestBackPrice:runner?.bestLayPrice);
   const requestedPrice=odds==null?currentPrice:Number(odds);
   const price = currentPrice;
-  if (currentPrice > 0 && Math.abs(requestedPrice - currentPrice) > 1e-9) failures.push({ field:'PRICE_MOVED', reason:`Requested odds ${requestedPrice} no longer match current odds ${currentPrice}` });
+  if(currentPrice>0&&Math.abs(requestedPrice-currentPrice)>1e-9)failures.push({field:'PRICE_MOVED',reason:`Requested odds ${requestedPrice} no longer match current odds ${currentPrice}`});
+  if(!isValidTickPrice(currentPrice))failures.push({field:'INVALID_TICK_PRICE',reason:`Odds ${currentPrice} are not on the Betfair tick ladder`});
 
   // ── Odds Bounds ── (relaxed in proof mode)
   const minOddsCheck = paperProofMode ? (settings.minOdds || 1.01) : (settings.minOdds || 1.5);
@@ -154,15 +156,15 @@ export function createValidatedPaperOrder({
 
   // ── Stake Bounds ── (relaxed in proof mode: $2 min, $5 max)
   const minStake = paperProofMode ? 2 : 1;
-  const maxStake=paperProofMode?Math.min(Number(settings.maxStake??PAPER_PROOF_MAX_STAKE),PAPER_PROOF_MAX_STAKE):(settings.maxStake||500);
+  const maxStake=paperProofMode?Math.min(Number(settings.maxStake??PAPER_PROOF_MAX_STAKE),PAPER_PROOF_MAX_STAKE):(settings.maxStake??500);
   if (!stake || stake < minStake) {
     failures.push({ field: 'stake', reason: `Invalid stake: $${stake}` });
   }
   if (stake > maxStake) {
     failures.push({ field: 'stake', reason: `Stake $${stake} exceeds max $${maxStake}` });
   }
-  const stakePct = bankrollStats.bankroll > 0 ? (stake / bankrollStats.bankroll) * 100 : 0;
-  const maxStakePct = paperProofMode ? (settings.maxStakePercent || 0.1) : (settings.maxStakePercent || 5);
+  const stakePct=bankrollStats.bankroll>0?(stake/bankrollStats.bankroll)*100:0;
+  const maxStakePct=paperProofMode?(settings.maxStakePercent??.1):(settings.maxStakePercent??5);
   if (stakePct > maxStakePct) {
     failures.push({ field: 'stakePercent', reason: `Stake ${stakePct.toFixed(1)}% exceeds max ${maxStakePct}% of bankroll` });
   }
@@ -220,8 +222,8 @@ export function createValidatedPaperOrder({
 
   // ── Max Open Orders ──
   const openCount = existingOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status) || OPEN_ORDER_STATUSES.includes(o.settlementStatus)).length;
-  if (openCount >= (settings.maxOpenOrders || 10)) {
-    failures.push({ field: 'maxOpenOrders', reason: `Max open orders reached (${openCount}/${settings.maxOpenOrders || 10})` });
+  if(openCount>=(settings.maxOpenOrders??10)){
+    failures.push({field:'maxOpenOrders',reason:`Max open orders reached (${openCount}/${settings.maxOpenOrders??10})`});
   }
 
   // ── Available Size Check ──

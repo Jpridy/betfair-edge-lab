@@ -152,18 +152,18 @@ export default function Settings() {
                 These settings control financial safety limits. Changing them affects how much the bot can stake and lose in paper trading.
               </InfoHint>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Field label="Paper Bankroll ($)"><Input type="number" value={local.paperBankroll || local.bankroll} onChange={e => update('paperBankroll', +e.target.value)} /></Field>
+                <Field label="Paper Bankroll ($)"><Input type="number" value={local.paperBankroll??local.bankroll} onChange={e => update('paperBankroll', +e.target.value)} /></Field>
                 <Field label="Base Stake ($)"><Input type="number" value={local.baseStake} onChange={e => update('baseStake', +e.target.value)} /></Field>
                 <Field label="Max Stake ($)"><Input type="number" value={local.maxStake} onChange={e => update('maxStake', +e.target.value)} /></Field>
                 <Field label="Max Stake % of Bankroll"><Input type="number" value={local.maxStakePercent} onChange={e => update('maxStakePercent', +e.target.value)} /></Field>
-                <Field label="Max Lay Liability ($)"><Input type="number" value={local.maxLayLiability || 1500} onChange={e => update('maxLayLiability', +e.target.value)} /></Field>
+                <Field label="Max Lay Liability ($)"><Input type="number" value={local.maxLayLiability??1500} onChange={e => update('maxLayLiability', +e.target.value)} /></Field>
                 <Field label="Daily Loss Limit ($)"><Input type="number" value={local.dailyLossLimit} onChange={e => update('dailyLossLimit', +e.target.value)} /></Field>
-                <Field label="Weekly Loss Limit ($)"><Input type="number" value={local.weeklyLossLimit || local.dailyLossLimit * 5} onChange={e => update('weeklyLossLimit', +e.target.value)} /></Field>
+                <Field label="Weekly Loss Limit ($)"><Input type="number" value={local.weeklyLossLimit??local.dailyLossLimit*5} onChange={e => update('weeklyLossLimit', +e.target.value)} /></Field>
                 <Field label="Max Market Exposure ($)"><Input type="number" value={local.maxMarketExposure} onChange={e => update('maxMarketExposure', +e.target.value)} /></Field>
                 <Field label="Max Open Orders"><Input type="number" value={local.maxOpenOrders} onChange={e => update('maxOpenOrders', +e.target.value)} /></Field>
-                <Field label="Max Unmatched Orders"><Input type="number" value={local.maxUnmatchedOrders || local.maxOpenOrders} onChange={e => update('maxUnmatchedOrders', +e.target.value)} /></Field>
+                <Field label="Max Unmatched Orders"><Input type="number" value={local.maxUnmatchedOrders??local.maxOpenOrders} onChange={e => update('maxUnmatchedOrders', +e.target.value)} /></Field>
                 <Field label="Max Trades Per Market"><Input type="number" value={local.maxTradesPerMarket} onChange={e => update('maxTradesPerMarket', +e.target.value)} /></Field>
-                <Field label="Max Trades Per Runner"><Input type="number" value={local.maxTradesPerRunner || 1} onChange={e => update('maxTradesPerRunner', +e.target.value)} /></Field>
+                <Field label="Max Trades Per Runner"><Input type="number" value={local.maxTradesPerRunner??1} onChange={e => update('maxTradesPerRunner', +e.target.value)} /></Field>
                 <Field label="Max Trades Per Day"><Input type="number" value={local.maxTradesPerDay} onChange={e => update('maxTradesPerDay', +e.target.value)} /></Field>
               </div>
               <div className="space-y-3 pt-3 border-t border-border">
@@ -180,8 +180,8 @@ export default function Settings() {
           <Panel title="Commission Model" className="mt-5">
             <div className="p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Field label="Default Commission Rate (%)"><Input type="number" step="0.1" value={(local.defaultCommissionRate || 0.05) * 100} onChange={e => update('defaultCommissionRate', +e.target.value / 100)} /></Field>
-                <Field label="Manual Override (%)"><Input type="number" step="0.1" value={(local.manualCommissionRate || 0) * 100} placeholder="Leave empty for no override" onChange={e => update('manualCommissionRate', e.target.value ? +e.target.value / 100 : null)} /></Field>
+                <Field label="Default Commission Rate (%)"><Input type="number" step="0.1" value={(local.defaultCommissionRate??.05)*100} onChange={e => update('defaultCommissionRate', +e.target.value / 100)} /></Field>
+                <Field label="Manual Override (%)"><Input type="number" step="0.1" value={(local.manualCommissionRate??0)*100} placeholder="Leave empty for no override" onChange={e => update('manualCommissionRate', e.target.value ? +e.target.value / 100 : null)} /></Field>
                 <Field label="Source"><div className="pt-2 text-xs text-muted-foreground">{local.manualCommissionRate ? 'Manual Override' : local.useMarketBaseRate ? 'Market Base Rate' : 'Default Fallback'}</div></Field>
               </div>
               <ToggleRow label="Use Market Base Rate where available" checked={local.useMarketBaseRate !== false} onChange={v => update('useMarketBaseRate', v)} />

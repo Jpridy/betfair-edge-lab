@@ -1,10 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { createBetfairStream } from '@/lib/betfairApi';
-import { BOT_STEPS, getEnabledStrategies, settleOrder } from '@/lib/botEngine';
-import { calculateCommission, isCommissionValidForLive } from '@/lib/betfairMapping';
+import { BOT_STEPS } from '@/lib/botEngine';
 import { authorizeAndCreatePaperOrder } from '@/lib/orderAuthority';
-import { countTicksBetween } from '@/lib/tickLadder';
 import { ENRICHED_STRATEGY_LIBRARY } from '@/lib/strategyLibrary';
 import { buildScanDiagnostics } from './scanDiagnostics';
 import { computeCalibration } from './calibration';
@@ -13,9 +11,7 @@ import { calculateRiskMetrics } from '@/lib/riskCalculations';
 import { calculatePortfolioAccounting } from '@/lib/portfolioAccounting';
 import { runExchangeCycle, opportunityToSignal } from '@/lib/exchangeOpportunityEngine';
 import { strategyForDecisionSource } from '@/lib/decisionProvenance';
-import { lapseUnmatchedOrder } from '@/lib/settlementService';
 import { PAPER_PROOF_BOT_SETTINGS, PAPER_PROOF_APP_SETTINGS, PAPER_PROOF_FEATHERLESS_SETTINGS, isPaperProofModeActive } from '@/lib/paperProofDefaults';
-import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { buildBetfairDiagnostics } from '@/lib/betfairDiagnostics';
 import { buildDecisionLogging, bestRejectedNoBetReason } from '@/lib/decisionLogging';
 import { invokeOpenAIWebSearchWithBackoff } from '@/lib/openAIWebSearchBackoff';
@@ -25,7 +21,7 @@ import { PAPER_VALIDATION_PRESET } from '@/lib/paperValidationPreset';
 import { resolveEffectiveSettings } from '@/lib/settingsRegistry';
 import { calculateStatisticalValidation } from '@/lib/statisticalValidation';
 
-import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
+import { mergeBetfairMarkets } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
 import { safeEntityWrite, generateIdempotencyKey } from '@/lib/safePersistence';
 
@@ -38,8 +34,6 @@ function stripDbMeta(rec) {
   for (const f of DB_META_FIELDS) delete clean[f];
   return clean;
 }
-
-import { DEFAULT_FEATHERLESS_SETTINGS, DEFAULT_BOT_SETTINGS } from '@/lib/appDefaultSettings';
 
 const AppContext = createContext(null);
 
@@ -87,6 +81,7 @@ export function AppProvider({ children }) {
 
   // ── Conservative paper-validation settings ──
   const [settings,setSettings]=useState({...PAPER_VALIDATION_PRESET.appSettings});
+  const enforcedAppSettings=useMemo(()=>resolveEffectiveSettings({appSettings:settings}).appSettings,[settings]);
 
   // ── Data State — loaded from database, no demo fallback ──
   const [dataLoading, setDataLoading] = useState(true);
@@ -95,10 +90,10 @@ export function AppProvider({ children }) {
   const [paperOrders, setPaperOrders] = useState([]);
   const [strategySignals, setStrategySignals] = useState([]);
   const [bankrollStats, setBankrollStats] = useState({
-    bankroll: settings.paperBankroll || settings.bankroll,
-    paperBankroll: settings.paperBankroll || settings.bankroll,
+    bankroll:settings.paperBankroll??settings.bankroll,
+    paperBankroll:settings.paperBankroll??settings.bankroll,
     accountBankroll: 0,
-    available: settings.paperBankroll || settings.bankroll,
+    available:settings.paperBankroll??settings.bankroll,
     todayPL: 0,
     weeklyPL: 0,
     totalPL: 0,
@@ -111,14 +106,14 @@ export function AppProvider({ children }) {
     roi: 0,
     strikeRate: 0,
   });
-  const accounting=useMemo(()=>calculatePortfolioAccounting(paperOrders,settings.paperBankroll??settings.bankroll??0),[paperOrders,settings.paperBankroll,settings.bankroll]);
+  const accounting=useMemo(()=>calculatePortfolioAccounting(paperOrders,enforcedAppSettings.paperBankroll??enforcedAppSettings.bankroll??0),[paperOrders,enforcedAppSettings.paperBankroll,enforcedAppSettings.bankroll]);
   const riskStatus = useMemo(() => {
-    const rm = calculateRiskMetrics(paperOrders, settings);
-    const dailyLossUsed = Math.max(0, -(rm.dailyPL || 0));
-    const weeklyLossUsed = Math.max(0, -(rm.weeklyPL || 0));
-    const dailyLossLimit = settings.dailyLossLimit || 500;
-    const weeklyLossLimit = settings.weeklyLossLimit || 2500;
-    const maxMarketExposure = settings.maxMarketExposure || 1000;
+    const rm=calculateRiskMetrics(paperOrders,enforcedAppSettings);
+    const dailyLossUsed=Math.max(0,-(rm.dailyPL??0));
+    const weeklyLossUsed=Math.max(0,-(rm.weeklyPL??0));
+    const dailyLossLimit=enforcedAppSettings.dailyLossLimit??500;
+    const weeklyLossLimit=enforcedAppSettings.weeklyLossLimit??2500;
+    const maxMarketExposure=enforcedAppSettings.maxMarketExposure??1000;
     const maxOpenOrders = settings.maxOpenOrders || 10;
     const maxUnmatched = settings.maxUnmatchedOrders || settings.maxOpenOrders || 10;
     return {
@@ -324,10 +319,10 @@ export function AppProvider({ children }) {
 
   // ── Derive bankroll stats from authoritative accounting ──
   useEffect(()=>{
-    const rm=calculateRiskMetrics(paperOrders,settings);
+    const rm=calculateRiskMetrics(paperOrders,enforcedAppSettings);
     const resultCount=accounting.wonOrderCount+accounting.lostOrderCount;
     setBankrollStats(prev=>({...prev,bankroll:accounting.currentEquity,paperBankroll:accounting.currentEquity,available:accounting.availableBankroll,todayPL:rm.dailyPL,weeklyPL:rm.weeklyPL,totalPL:accounting.netRealisedPL,grossRealisedPL:accounting.grossRealisedPL,grossWinnings:accounting.grossWinnings,grossLosses:accounting.grossLosses,commissionPaid:accounting.commissionPaid,openPaperExposure:accounting.totalOpenExposure,openLiveExposure:0,maxDrawdown:rm.drawdown,longestLosingStreak:rm.longestLosingStreak,wins:accounting.wonOrderCount,losses:accounting.lostOrderCount,roi:accounting.netROI==null?0:accounting.netROI*100,strikeRate:resultCount?accounting.wonOrderCount/resultCount*100:0}));
-  },[accounting,paperOrders,settings]);
+  },[accounting,paperOrders,enforcedAppSettings]);
 
   // ── Derive P/L chart data from settled orders ──
   const plData = useMemo(() => {
@@ -441,7 +436,7 @@ export function AppProvider({ children }) {
     setStrategyStats([]);
     setAiDecisions([]);
     setBotActivity([]);
-    const startingBankroll = settings.paperBankroll || settings.bankroll;
+    const startingBankroll=settings.paperBankroll??settings.bankroll;
     setBankrollStats(prev => ({
       ...prev,
       bankroll: startingBankroll,
@@ -731,34 +726,7 @@ export function AppProvider({ children }) {
     setBetfairConnection(prev => ({ ...prev, lastClearedOrderSyncTime: now }));
   };
 
-  const recalculateMetrics = () => {
-    const now = new Date().toISOString();
-    setSyncState(prev => ({ ...prev, lastMetricRecalculation: now }));
-    
-    // Recalculate strategy stats from settled orders only
-    const settled = paperOrders.filter(o=>o.status==='settled'&&!o.proofMode&&!o.excludeFromPerformance&&!o.invalidTestRecord);
-    const newStats = strategyStats.map(stat => {
-      const strategySettled = settled.filter(o => o.strategyName === stat.strategyName);
-      const wins = strategySettled.filter(o => o.result === 'won').length;
-      const losses = strategySettled.filter(o => o.result === 'lost').length;
-      const totalStake = strategySettled.reduce((s, o) => s + (o.matchedStake || o.matched_size || 0), 0);
-      const netProfit = strategySettled.reduce((s, o) => s + (o.netProfit || 0), 0);
-      const roi = totalStake > 0 ? (netProfit / totalStake) * 100 : 0;
-      return {
-        ...stat,
-        totalPaperOrders: strategySettled.length,
-        wins,
-        losses,
-        strikeRate: strategySettled.length > 0 ? (wins / strategySettled.length) * 100 : 0,
-        totalStake,
-        netProfit,
-        roi,
-        updatedAt: now,
-      };
-    });
-    setStrategyStats(newStats);
-    addAuditLog('Metrics Recalculated', 'system', 'info', `Recalculated strategy metrics from ${settled.length} settled orders`);
-  };
+  const recalculateMetrics=()=>{const now=new Date().toISOString();setSyncState(prev=>({...prev,lastMetricRecalculation:now}));addAuditLog('Metrics Refreshed','system','info',`Portfolio accounting and statistical validation refreshed from ${paperOrders.length} persisted orders`);};
 
   const recalculateRiskState = () => {
     const now = new Date().toISOString();
@@ -804,7 +772,7 @@ export function AppProvider({ children }) {
     const s=stateRef.current;
     const selected=[...(s.markets || [])].filter(market=>market.status==='OPEN'&&!market.inPlay).sort((a,b)=>new Date(a.marketStartTime || a.startTime || 0)-new Date(b.marketStartTime || b.startTime || 0))[0] || s.markets?.[0] || {};
     const selectedRaceKey=canonicalRaceIdentity(selected,s.markets || []).canonicalRaceKey;
-    const permit=await schedulerControllerRef.current.acquire({selectedRaceKey,scanIntervalSeconds:s.botSettings?.scanIntervalSeconds || 10,triggerSource,startedBy:schedulerControllerRef.current.browserTabId,hasPersistedRun:async cycleRunKey=>{const rows=await base44.entities.BotCycle.filter({cycleRunKey},'-created_date',1).catch(()=>[]);return rows.length>0;}});
+    const permit=await schedulerControllerRef.current.acquire({selectedRaceKey,scanIntervalSeconds:s.botSettings?.scanIntervalSeconds??10,triggerSource,startedBy:schedulerControllerRef.current.browserTabId,hasPersistedRun:async cycleRunKey=>{const rows=await base44.entities.BotCycle.filter({cycleRunKey},'-created_date',1).catch(()=>[]);return rows.length>0;}});
     setSchedulerDiagnostics(schedulerControllerRef.current.diagnostics());
     return permit;
   };
@@ -885,8 +853,8 @@ export function AppProvider({ children }) {
           cycleId: debugCycleId, cycleNumber: cycleNum,
           schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
           botMode: 'paper',
-          startedAt: now,
-          finishedAt: new Date().toISOString(),
+          startedAt:now,runStartedAt:now,
+          finishedAt:new Date().toISOString(),runFinishedAt:new Date().toISOString(),
           status: 'completed', cycleOutcome: 'NO_BET', settlementStatus: 'not_applicable',
           debugOnly: true,
           scanStage: result.diagnostics.scanStage || 'completed',
@@ -1040,8 +1008,8 @@ export function AppProvider({ children }) {
           cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
           schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
           botMode: 'paper',
-          startedAt: now,
-          finishedAt: new Date().toISOString(),
+          startedAt:now,runStartedAt:now,
+          finishedAt:new Date().toISOString(),runFinishedAt:new Date().toISOString(),
           status: 'failed',
           debugOnly: true,
           marketsScanned: marketsLoaded,

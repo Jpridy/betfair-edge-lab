@@ -470,7 +470,7 @@ function buildOpportunity({
   }
 
   // Daily loss limit — soft in proof mode (limits are 999999 anyway)
-  if (bankrollStats?.todayPL < -(settings.dailyLossLimit || 500)) {
+  if(bankrollStats?.todayPL<-(settings.dailyLossLimit??500)){
     const msg = 'Daily loss limit reached';
     if (!paperProofMode) blockers.push(msg);
   }
@@ -498,9 +498,9 @@ function buildOpportunity({
 
   // Canonical portfolio exposure check.
   const eventExposure=reconcileRiskExposure(paperOrders).totalExposure;
-  if(eventExposure+requiredFunds>(settings.maxMarketExposure||1000)*2)blockers.push('Event exposure limit breached');
+  if(eventExposure+requiredFunds>(settings.maxMarketExposure??1000)*2)blockers.push('Event exposure limit breached');
 
-  const exposureAfterBet = (bankrollStats?.openPaperExposure || 0) + requiredFunds;
+  const exposureAfterBet=(bankrollStats?.openPaperExposure??0)+requiredFunds;
   const liquidityScore = Math.min(1, availableSize / Math.max(thresholds.minLiquidity * 5, 1));
 
   if (!(ev > 0)) { const index=blockers.indexOf('NON_POSITIVE_EV'); if (index > 0) blockers.splice(index,1); if (blockers[0] !== 'NON_POSITIVE_EV') blockers.unshift('NON_POSITIVE_EV'); }
@@ -541,10 +541,10 @@ function buildOpportunity({
     side,
     odds,
     availableSize,
-    bestBackPrice: runner.bestBackPrice || null,
-    bestLayPrice: runner.bestLayPrice || null,
-    bestBackSize: runner.bestBackSize || null,
-    bestLaySize: runner.bestLaySize || null,
+    bestBackPrice:runner.bestBackPrice??null,
+    bestLayPrice:runner.bestLayPrice??null,
+    bestBackSize:runner.bestBackSize??null,
+    bestLaySize:runner.bestLaySize??null,
     stake,
     stakingDiagnostics,
     liability,

@@ -1,6 +1,6 @@
 const LEASE_KEY = 'betfair-edge-bot-lease';
 const RUN_KEY_PREFIX = 'betfair-edge-cycle:';
-const memory = { runInProgress:false, activeRunKey:null, skipped:[], listeners:new Set() };
+const memory={runInProgress:false,activeRunKey:null,runStartedAt:null,runFinishedAt:null,skipped:[],listeners:new Set()};
 const storage = () => typeof window !== 'undefined' ? window.localStorage : null;
 const id = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
 
@@ -29,18 +29,19 @@ export function createBotCycleController(options = {}) {
     else if (input.hasPersistedRun && await input.hasPersistedRun(cycleRunKey)) reason = 'PERSISTED_CYCLE_RUN_KEY_EXISTS';
     if (reason) { const skipped=diagnostic(reason,input,cycleRunKey); memory.skipped.unshift(skipped); memory.skipped=memory.skipped.slice(0,100); return { acquired:false, ...skipped }; }
     memory.runInProgress = true;
-    memory.activeRunKey = cycleRunKey;
+    memory.activeRunKey=cycleRunKey;
+    memory.runStartedAt=new Date(now).toISOString();memory.runFinishedAt=null;
     storage()?.setItem(RUN_KEY_PREFIX + cycleRunKey, String(now));
     writeLease({ browserTabId, schedulerInstanceId, cycleRunKey, expiresAt:now+leaseMs, updatedAt:now });
     return { acquired:true, runInProgress:true, skippedDuplicateRun:false, schedulerInstanceId, browserTabId, triggerSource:input.triggerSource, cycleRunKey, startedBy:input.startedBy || browserTabId };
   }
 
   function release(cycleRunKey) {
-    if (!cycleRunKey || memory.activeRunKey === cycleRunKey) { memory.runInProgress=false; memory.activeRunKey=null; }
+    if(!cycleRunKey||memory.activeRunKey===cycleRunKey){memory.runInProgress=false;memory.activeRunKey=null;memory.runFinishedAt=new Date().toISOString();}
     const lease=readLease();
     if (lease?.browserTabId === browserTabId) storage()?.removeItem(LEASE_KEY);
   }
 
-  function diagnostics() { return { schedulerInstanceId, browserTabId, runInProgress:memory.runInProgress, activeCycleRunKey:memory.activeRunKey, skippedDuplicateRuns:[...memory.skipped] }; }
+  function diagnostics(){return{schedulerInstanceId,browserTabId,runInProgress:memory.runInProgress,activeCycleRunKey:memory.activeRunKey,runStartedAt:memory.runStartedAt,runFinishedAt:memory.runFinishedAt,skippedDuplicateRuns:[...memory.skipped]};}
   return { acquire, release, diagnostics, schedulerInstanceId, browserTabId };
 }

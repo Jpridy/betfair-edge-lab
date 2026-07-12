@@ -5,11 +5,13 @@ import Orders from '@/pages/Orders';
 import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import AccountingSummary from '@/components/accounting/AccountingSummary';
 import ValidationStatus from '@/components/validation/ValidationStatus';
+import ValidationResearchPanel from '@/components/validation/ValidationResearchPanel';
 
 export default function Analytics() {
   return <Tabs defaultValue="performance" className="space-y-5">
     <AccountingSummary />
     <ValidationStatus />
+    <ValidationResearchPanel />
     <TabsList><TabsTrigger value="performance">Performance</TabsTrigger><TabsTrigger value="orders">Orders</TabsTrigger><TabsTrigger value="decisions">Decisions</TabsTrigger></TabsList>
     <TabsContent value="performance"><PerformanceAnalytics /></TabsContent>
     <TabsContent value="orders"><Orders /></TabsContent>
