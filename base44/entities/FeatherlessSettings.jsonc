@@ -72,7 +72,18 @@
     },
     "stakingMode": {
       "type": "string",
-      "default": "confidence_weighted_fractional_kelly"
+      "enum": [
+        "flat",
+        "fractional_kelly",
+        "flat_proof_stake"
+      ],
+      "default": "fractional_kelly"
+    },
+    "kellyMultiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.1
     },
     "webResearchEnabled": {
       "type": "boolean",
@@ -126,6 +137,10 @@
       "type": "number",
       "default": 1
     },
+    "placeOrdersEnabled": {
+      "type": "boolean",
+      "default": false
+    },
     "placeMinOdds": {
       "type": "number",
       "default": 1.2
@@ -149,6 +164,10 @@
     "placeMinROI": {
       "type": "number",
       "default": 1
+    },
+    "h2hOrdersEnabled": {
+      "type": "boolean",
+      "default": false
     },
     "h2hMinOdds": {
       "type": "number",
@@ -213,6 +232,10 @@
     "featherlessAlwaysRequired": {
       "type": "boolean",
       "default": true
+    },
+    "allowDeterministicFallback": {
+      "type": "boolean",
+      "default": false
     },
     "requireFullRacePack": {
       "type": "boolean",
