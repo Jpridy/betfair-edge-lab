@@ -18,8 +18,8 @@ async function fetchBooks(ids,session){if(!ids.length)return[];const jurisdictio
 function commissionRate(order){const raw=Number(order.normalizedCommissionRate ?? order.commissionRateUsed ?? .05);const rate=raw>1?raw/100:raw;if(!Number.isFinite(rate)||rate<0||rate>.2)throw new Error('INVALID_COMMISSION');return rate;}
 function calculation(order,winners){const selectedWon=winners.includes(clean(order.normalizedSelectionId||order.selectionId));const stake=Number(order.matchedStake??order.matched_size)||0;const odds=Number(order.matchedOdds??order.matched_price)||0;const liability=Number(order.liability)||stake*Math.max(0,odds-1);const betWon=order.side==='LAY'?!selectedWon:selectedWon;const grossProfit=order.side==='LAY'?(selectedWon?-liability:stake):(selectedWon?stake*(odds-1):-stake);return{order,betWon,grossProfit};}
 
-Deno.serve(async req=>{try{
-  const base44=createClientFromRequest(req);let body={};try{body=await req.json();}catch(_){ }
+Deno.serve(async req=>{let base44=null,run=null;try{
+  base44=createClientFromRequest(req);let body={};try{body=await req.json();}catch(_){ }
   const internal=['scheduled','workflow'].includes(body.trigger);let user=null;try{user=await base44.auth.me();}catch(_){ }
   if(!internal&&!user)return errorResponse('UNAUTHORIZED_MANUAL_REQUEST','Manual settlement requires an authenticated user',401);
   const now=new Date(),runId=crypto.randomUUID(),creds=credentials();
@@ -29,8 +29,8 @@ Deno.serve(async req=>{try{
   const activeRun=recentRuns.find(run=>now.getTime()-new Date(run.startedAt||0).getTime()<LOCK_TTL_MS);
   if(activeRun)return Response.json({workerStatus:'completed',settlementCheckStatus:'SKIPPED_OVERLAPPING_RUN',skipped:true,activeRunId:activeRun.runId,errorCode:null,checkedAt:now.toISOString()});
   const triggerMode=internal?'internal':'manual';
-  const run=await base44.asServiceRole.entities.SettlementWorkerRun.create({runId,lockKey:'paper-settlement-worker',triggerMode,requestingUserId:user?.id||null,startedAt:now.toISOString(),status:'running',...creds,ordersChecked:0,marketsChecked:0,ordersSettled:0,ordersVoided:0,ordersUnresolved:0});
-  const finish=async details=>{const payload={runId,workerStatus:'completed',checkedAt:now.toISOString(),errorCode:null,...details};await base44.asServiceRole.entities.SettlementWorkerRun.update(run.id,{completedAt:new Date().toISOString(),status:'completed',errorCode:null,errorMessage:null,ordersChecked:payload.ordersChecked||0,marketsChecked:payload.marketsChecked||0,ordersSettled:payload.ordersSettled||0,ordersVoided:payload.ordersVoided||0,ordersUnresolved:payload.ordersUnresolved||0,details:payload});return Response.json(payload);};
+  run=await base44.asServiceRole.entities.SettlementWorkerRun.create({runId,lockKey:'paper-settlement-worker',triggerMode,requestingUserId:user?.id||null,startedAt:now.toISOString(),status:'running',...creds,ordersChecked:0,marketsChecked:0,ordersSettled:0,ordersVoided:0,ordersUnresolved:0});
+  const finish=async details=>{const payload={runId,workerStatus:'completed',checkedAt:now.toISOString(),errorCode:null,...details};await base44.asServiceRole.entities.SettlementWorkerRun.update(run.id,{completedAt:new Date().toISOString(),status:'completed',errorCode:null,errorMessage:null,ordersChecked:payload.ordersChecked||0,marketsChecked:payload.marketsChecked||0,ordersSettled:payload.ordersSettled||0,ordersVoided:payload.ordersVoided||0,ordersUnresolved:payload.ordersUnresolved||0,lastLoginStatus:payload.currentSessionCreatedAt?'success':null,lastLoginError:null,currentSessionCreatedAt:payload.currentSessionCreatedAt||null,currentSessionExpiresAt:payload.currentSessionExpiresAt||null,details:payload});return Response.json(payload);};
   const all=await base44.asServiceRole.entities.PaperOrder.filter({},'-created_date',500);
   const repairs=all.filter(order=>['won','lost','void'].includes(order.result)&&!['settled','voided'].includes(order.settlementStatus)).map(order=>({id:order.id,status:order.result==='void'?'voided':'settled',settlementStatus:order.result==='void'?'voided':'settled',settledAt:order.settledAt||order.settled_date||now.toISOString(),settled_date:order.settled_date||order.settledAt||now.toISOString(),settlementError:null}));
   if(repairs.length)await base44.asServiceRole.entities.PaperOrder.bulkUpdate(repairs);
@@ -54,4 +54,4 @@ Deno.serve(async req=>{try{
   }
   if(updates.length)await base44.asServiceRole.entities.PaperOrder.bulkUpdate(updates);
   return finish({settlementCheckStatus:'COMPLETED',settlementGraceSeconds:graceSeconds,ordersChecked:due.length,ordersNotDue:notDue.length,ordersInBackoff:backoff.length,marketsChecked:groups.size,marketsStillOpen,marketsClosed,ordersSettled,ordersVoided,ordersUnresolved,repairsApplied:repairs.length,currentSessionCreatedAt:session.createdAt,currentSessionExpiresAt:session.expiresAt});
-}catch(error){return errorResponse('SETTLEMENT_WORKER_FAILED',error.message,500,{workerStatus:'failed',checkedAt:new Date().toISOString()});}});
+}catch(error){if(base44&&run?.id){try{await base44.asServiceRole.entities.SettlementWorkerRun.update(run.id,{completedAt:new Date().toISOString(),status:'failed',errorCode:'SETTLEMENT_WORKER_FAILED',errorMessage:error.message,lastLoginStatus:'failed',lastLoginError:error.message});}catch(_){ }}return errorResponse('SETTLEMENT_WORKER_FAILED',error.message,500,{workerStatus:'failed',checkedAt:new Date().toISOString()});}});
