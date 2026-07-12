@@ -4,20 +4,19 @@
   "properties": {
     "botEnabled": {
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "botMode": {
       "type": "string",
       "enum": [
-        "demo",
-        "live",
+        "paper",
         "paper_proof"
       ],
-      "default": "demo"
+      "default": "paper"
     },
     "scanIntervalSeconds": {
       "type": "number",
-      "default": 30
+      "default": 10
     },
     "selectedStrategies": {
       "type": "array",
@@ -27,7 +26,7 @@
     },
     "autoPaperTradingEnabled": {
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "liveTradingLocked": {
       "type": "boolean",
@@ -47,7 +46,7 @@
     },
     "maxBotCyclesPerHour": {
       "type": "number",
-      "default": 60
+      "default": 360
     },
     "stopOnApiError": {
       "type": "boolean",
@@ -68,6 +67,14 @@
     "stopOnEmergency": {
       "type": "boolean",
       "default": true
+    },
+    "maxDrawdownLimit": {
+      "type": "number",
+      "default": 300
+    },
+    "maxLosingStreak": {
+      "type": "number",
+      "default": 8
     },
     "paperProofMode": {
       "type": "boolean",

@@ -21,6 +21,9 @@ import { buildDecisionLogging, bestRejectedNoBetReason } from '@/lib/decisionLog
 import { invokeOpenAIWebSearchWithBackoff } from '@/lib/openAIWebSearchBackoff';
 import { createBotCycleController } from '@/lib/botCycleController';
 import { canonicalRaceIdentity } from '@/lib/raceIdentity';
+import { PAPER_VALIDATION_PRESET } from '@/lib/paperValidationPreset';
+import { resolveEffectiveSettings } from '@/lib/settingsRegistry';
+import { calculateStatisticalValidation } from '@/lib/statisticalValidation';
 
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
@@ -82,72 +85,8 @@ export function AppProvider({ children }) {
     subscribedMarkets: 0,
   });
 
-  // ── Settings with Commission Model ──
-  const [settings, setSettings] = useState({
-    // Commission Model
-    defaultCommissionRate: 0.05,
-    useMarketBaseRate: true,
-    manualCommissionRate: null,
-    commissionSource: null,
-    commissionRate: 0.05, // Legacy field for backward compat
-
-    // Bankroll
-    bankroll: 10000,
-    paperBankroll: 10000,
-    baseStake: 100,
-    maxStake: 500,
-    maxStakePercent: 5,
-    maxLayLiability: 1500,
-
-    // Risk Limits
-    dailyLossLimit: 500,
-    weeklyLossLimit: 2500,
-    maxMarketExposure: 1000,
-    maxOpenOrders: 10,
-    maxUnmatchedOrders: 10,
-    maxTradesPerMarket: 5,
-    maxTradesPerRunner: 1,
-    maxTradesPerDay: 50,
-
-    // Market Filters
-    minimumLiquidity: 500,
-    minimumTradedVolume: 1000,
-    minOdds: 1.5,
-    maxOdds: 20,
-
-    // Time Windows
-    defaultTimeWindowStartSeconds: 500,
-    defaultTimeWindowEndSeconds: 30,
-
-    // In-Play Safety
-    allowInPlay: false,
-    persistApproved: false,
-
-    // API Settings
-    apiPollingInterval: 5,
-    marketRefreshInterval: 10,
-    dataFreshnessLimit: 30,
-    streamApiEnabled: false,
-
-    // Strategy Toggles — only Featherless AI is available
-    favouriteSideEnabled: true,
-    outsiderSideEnabled: true,
-
-    // Responsible Gambling
-    forcedPaperOnlyMode: false,
-    dailyDepositReminderEnabled: false,
-
-    // Testing — bypass all risk limits
-    riskLimitsDisabled: false,
-
-    // Hedging — allow conflicting BACK+LAY positions on same selection
-    allowHedging: false,
-
-    // Legacy
-    emergencyStopActive: false,
-    liveTradingEnabled: false,
-    selectedJurisdiction: 'AU',
-  });
+  // ── Conservative paper-validation settings ──
+  const [settings,setSettings]=useState({...PAPER_VALIDATION_PRESET.appSettings});
 
   // ── Data State — loaded from database, no demo fallback ──
   const [dataLoading, setDataLoading] = useState(true);
@@ -227,7 +166,7 @@ export function AppProvider({ children }) {
     botPLToday: 0,
     botMode: 'stopped', // stopped, paper_scanning, live_locked, live_running
   });
-  const [botSettings, setBotSettings] = useState(DEFAULT_BOT_SETTINGS);
+  const [botSettings,setBotSettings]=useState({...PAPER_VALIDATION_PRESET.botSettings});
   const [botCycles, setBotCycles] = useState([]);
   const [strategyStats, setStrategyStats] = useState([]);
   const [botActivity, setBotActivity] = useState([]);
@@ -236,7 +175,9 @@ export function AppProvider({ children }) {
   const [rejectedOrders, setRejectedOrders] = useState([]);
 
   // ── Featherless AI ──
-  const [featherlessSettings, setFeatherlessSettings] = useState({ ...DEFAULT_FEATHERLESS_SETTINGS });
+  const [featherlessSettings,setFeatherlessSettings]=useState({...PAPER_VALIDATION_PRESET.featherlessSettings});
+  const effectiveSettings=useMemo(()=>resolveEffectiveSettings({appSettings:settings,botSettings,featherlessSettings}),[settings,botSettings,featherlessSettings]);
+  const statisticalValidation=useMemo(()=>calculateStatisticalValidation(paperOrders,PAPER_VALIDATION_PRESET.validationRules,effectiveSettings.appSettings.paperBankroll),[paperOrders,effectiveSettings]);
   const [aiDecisions, setAiDecisions] = useState([]);
   const [lastScanDiagnostics, setLastScanDiagnostics] = useState(null);
   const [exchangeOpportunities, setExchangeOpportunities] = useState([]);
@@ -258,7 +199,7 @@ export function AppProvider({ children }) {
 
   // Ref for latest state (avoids stale closures in interval)
   const stateRef = useRef({});
-  stateRef.current = { markets, runners, settings, paperOrders, bankrollStats, botSettings, botCycles, emergencyStop, botState, strategyStats, strategyLibrary, betfairConnection, syncState, apiConnected, betfairSessionToken, featherlessSettings, featherlessSettingsRecordId };
+  stateRef.current={markets,runners,settings:effectiveSettings.appSettings,paperOrders,bankrollStats,botSettings:effectiveSettings.botSettings,botCycles,emergencyStop,botState,strategyStats,strategyLibrary,betfairConnection,syncState,apiConnected,betfairSessionToken,featherlessSettings:effectiveSettings.featherlessSettings,featherlessSettingsRecordId};
 
   // Ref for the Betfair Stream client
   const streamClientRef = useRef(null);
@@ -320,8 +261,8 @@ export function AppProvider({ children }) {
           const rec = botSettingsRecs[0];
           botSettingsRecordId.current = rec.id;
           const clean = stripDbMeta(rec);
-          clean.liveTradingEnabled = false;
-          clean.autoPaperTradingEnabled = false;
+          clean.liveTradingEnabled=false;
+          clean.liveTradingLocked=true;
           setBotSettings(prev => ({ ...prev, ...clean }));
         }
         if (featherlessRecs && featherlessRecs.length > 0) {
@@ -544,7 +485,7 @@ export function AppProvider({ children }) {
     const resetAt = new Date().toISOString();
     setSettings(prev => {
       const merged = { ...prev, dailyResetAt: resetAt };
-      const payload = { ...merged, mode: 'demo' };
+      const payload={...merged,mode:'connected_paper',forcedPaperOnlyMode:true,liveTradingEnabled:false};
       if (settingsRecordId.current) {
         safeEntityWrite({ entityName: 'AppSettings', operation: 'update', payload: { ...payload, id: settingsRecordId.current }, entityApi: base44.entities.AppSettings });
       } else {
@@ -608,7 +549,7 @@ export function AppProvider({ children }) {
         beforeValue: JSON.stringify({ commissionRate: prev.commissionRate, allowInPlay: prev.allowInPlay }),
         afterValue: JSON.stringify({ commissionRate: patch.commissionRate ?? prev.commissionRate, allowInPlay: patch.allowInPlay ?? prev.allowInPlay }),
       });
-      const payload = { ...merged, mode: 'demo' };
+      const payload={...merged,mode:'connected_paper',forcedPaperOnlyMode:true,liveTradingEnabled:false};
       if (settingsRecordId.current) {
         safeEntityWrite({ entityName: 'AppSettings', operation: 'update', payload: { ...payload, id: settingsRecordId.current }, entityApi: base44.entities.AppSettings });
       } else {
@@ -623,7 +564,7 @@ export function AppProvider({ children }) {
     setBotSettings(prev => {
       const merged = { ...prev, ...patch };
       addAuditLog('Bot Settings Updated', 'settings', 'info', 'Bot configuration updated');
-      const payload = { ...merged, botMode: 'demo' };
+      const payload={...merged,botMode:'paper',liveTradingLocked:true,liveTradingEnabled:false};
       if (botSettingsRecordId.current) {
         safeEntityWrite({ entityName: 'BotSettings', operation: 'update', payload: { ...payload, id: botSettingsRecordId.current }, entityApi: base44.entities.BotSettings });
       } else {
@@ -2426,7 +2367,7 @@ export function AppProvider({ children }) {
     jurisdiction, setJurisdiction, notifications, setNotifications,
     betfairConnection, updateBetfairConnection, testBetfairConnection, disconnectBetfair,
     betfairDiagnostics, rebuildBetfairDiagnostics, reconnectBetfairStream,
-    settings, updateSettings, appMode, demoMode,
+    settings,updateSettings,effectiveSettings,statisticalValidation,appMode,demoMode,
     markets, runners, paperOrders, strategySignals, bankrollStats, accounting, riskStatus, heatmap,
     auditLogs, backtestRuns, plData, dataLoading,
     addPaperOrder, addRejectedOrder, addRiskEvent, addStrategySignal, addBacktestRun, addAuditLog,

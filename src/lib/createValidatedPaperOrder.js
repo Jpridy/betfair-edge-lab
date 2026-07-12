@@ -137,8 +137,8 @@ export function createValidatedPaperOrder({
   }
 
   // ── Determine price from the current executable book ──
-  const currentPrice = Number(side === 'BACK' ? runner?.bestBackPrice : runner?.bestLayPrice) || 0;
-  const requestedPrice = Number(odds) || currentPrice;
+  const currentPrice=Number(side==='BACK'?runner?.bestBackPrice:runner?.bestLayPrice);
+  const requestedPrice=odds==null?currentPrice:Number(odds);
   const price = currentPrice;
   if (currentPrice > 0 && Math.abs(requestedPrice - currentPrice) > 1e-9) failures.push({ field:'PRICE_MOVED', reason:`Requested odds ${requestedPrice} no longer match current odds ${currentPrice}` });
 
@@ -191,10 +191,11 @@ export function createValidatedPaperOrder({
   }
 
   // ── Exposure Limit ──
-  const currentExposure = (bankrollStats.openPaperExposure || 0) + (bankrollStats.openLiveExposure || 0);
-  const newExposure = side === 'LAY' ? stake * (price - 1) : stake;
-  if (currentExposure + newExposure > (settings.maxMarketExposure || 1000)) {
-    failures.push({ field: 'exposure', reason: `Exposure $${(currentExposure + newExposure).toFixed(2)} would exceed max $${settings.maxMarketExposure || 1000}` });
+  const currentExposure=(bankrollStats.openPaperExposure??0)+(bankrollStats.openLiveExposure??0);
+  const newExposure=side==='LAY'?stake*(price-1):stake;
+  const maxExposure=settings.maxMarketExposure??1000;
+  if(currentExposure+newExposure>maxExposure){
+    failures.push({field:'exposure',reason:`Exposure $${(currentExposure+newExposure).toFixed(2)} would exceed max $${maxExposure}`});
   }
 
   // ── One market / one race exposure guard ──

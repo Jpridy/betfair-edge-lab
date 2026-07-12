@@ -4,7 +4,7 @@
 // and data quality badges for every strategy.
 // ============================================================================
 
-export const MIN_SAMPLE_SIZE = 200;
+export const MIN_SAMPLE_SIZE = 500;
 export const MIN_PROFIT_FACTOR = 1.20;
 export const MIN_CLV = 0;
 export const MAX_DRAWDOWN_PERCENT = 10; // % of bankroll
@@ -67,12 +67,8 @@ export function computeTrafficLight(strategy, audit, settings) {
     greenReasons.push('Has unresolved data quality warnings');
   }
 
-  if (isGreen) {
-    return { light: 'green', label: 'Paper Validated', reasons: ['All validation criteria passed'] };
-  }
-
-  // Yellow: paper testing only
-  return { light: 'yellow', label: 'Paper Testing', reasons: greenReasons.length > 0 ? greenReasons : ['Strategy needs more data or testing'] };
+  if(isGreen)return{light:'yellow',label:'POSITIVE EXPECTANCY OBSERVED',reasons:['In-sample metrics are positive; out-of-sample validation is still required']};
+  return{light:'yellow',label:'PAPER VALIDATION IN PROGRESS',reasons:greenReasons.length>0?greenReasons:['Strategy needs more data or testing']};
 }
 
 // ─── Data Quality Badge ─────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ import InfoHint from '@/components/InfoHint';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
 import ResetAppData from '@/components/settings/ResetAppData';
+import EffectiveSettingsTable from '@/components/settings/EffectiveSettingsTable';
+import { PAPER_VALIDATION_PRESET } from '@/lib/paperValidationPreset';
 
 export default function Settings() {
   const {
@@ -36,6 +38,8 @@ export default function Settings() {
     setTimeout(() => setSavedSection(null), 2000);
   };
 
+  const applyValidationPreset=()=>{updateSettings(PAPER_VALIDATION_PRESET.appSettings);updateBotSettings(PAPER_VALIDATION_PRESET.botSettings);updateFeatherlessSettings(PAPER_VALIDATION_PRESET.featherlessSettings);setLocal(PAPER_VALIDATION_PRESET.appSettings);setBotLocal(PAPER_VALIDATION_PRESET.botSettings);addAuditLog('Statistical Paper Validation Preset Applied','settings','info','Conservative paper-only validation preset applied.');};
+
   const handleExportSettings = () => {
     const exportData = { ...local };
     delete exportData.id; delete exportData.created_date; delete exportData.updated_date; delete exportData.created_by_id;
@@ -54,6 +58,7 @@ export default function Settings() {
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">Configure bot behaviour, market filters, opportunity thresholds, risk limits, commission, and AI research.</div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={applyValidationPreset}>Apply Validation Preset</Button>
           <Button variant="outline" size="sm" onClick={handleExportSettings}><Download className="h-4 w-4 mr-1" /> Export JSON</Button>
           <Button size="sm" onClick={() => handleSave('all')}>
             {savedSection === 'all' ? <><CheckCircle2 className="h-4 w-4 mr-1" /> Saved!</> : <><Save className="h-4 w-4 mr-1" /> Save All</>}
@@ -201,6 +206,7 @@ export default function Settings() {
         </TabsContent>
 
       </Tabs>
+      <Panel title="Effective Settings" subtitle="Stored values, enforced values, units and linked engine consumers"><EffectiveSettingsTable /></Panel>
       <ResetAppData />
     </div>
   );

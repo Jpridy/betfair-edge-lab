@@ -8,10 +8,14 @@ import MockFeatherlessRun from '@/pages/MockFeatherlessRun';
 import BetfairDataDiagnostics from '@/components/bot/BetfairDataDiagnostics';
 import DebugPackageExport from '@/components/debug/DebugPackageExport';
 import AccountingSummary from '@/components/accounting/AccountingSummary';
+import EffectiveSettingsTable from '@/components/settings/EffectiveSettingsTable';
+import ValidationStatus from '@/components/validation/ValidationStatus';
 
 export default function Debug() {
   return <Tabs defaultValue="health" className="space-y-5">
     <AccountingSummary />
+    <ValidationStatus />
+    <EffectiveSettingsTable />
     <DebugPackageExport />
     <TabsList className="flex-wrap h-auto"><TabsTrigger value="health">System Tests</TabsTrigger><TabsTrigger value="wiring">Wiring</TabsTrigger><TabsTrigger value="logs">Logs</TabsTrigger><TabsTrigger value="market">Market Data</TabsTrigger><TabsTrigger value="ai">AI Test</TabsTrigger></TabsList>
     <TabsContent value="health"><SetupWizard /></TabsContent>

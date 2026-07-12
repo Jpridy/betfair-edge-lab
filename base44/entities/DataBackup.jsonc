@@ -1,0 +1,37 @@
+{
+  "name": "DataBackup",
+  "type": "object",
+  "properties": {
+    "backupType": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "recordCounts": {
+      "type": "object"
+    },
+    "settingsSnapshot": {
+      "type": "object"
+    },
+    "ordersSnapshot": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "cyclesSnapshot": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "backupType",
+    "createdAt"
+  ]
+}

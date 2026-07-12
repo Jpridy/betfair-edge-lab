@@ -6,13 +6,13 @@
       "type": "string",
       "enum": [
         "demo",
-        "live"
+        "connected_paper"
       ],
-      "default": "demo"
+      "default": "connected_paper"
     },
     "defaultCommissionRate": {
       "type": "number",
-      "default": 0.05
+      "default": 0.08
     },
     "useMarketBaseRate": {
       "type": "boolean",
@@ -21,12 +21,9 @@
     "manualCommissionRate": {
       "type": "number"
     },
-    "commissionSource": {
-      "type": "string"
-    },
     "commissionRate": {
       "type": "number",
-      "default": 0.05
+      "default": 0.08
     },
     "bankroll": {
       "type": "number",
@@ -38,43 +35,43 @@
     },
     "baseStake": {
       "type": "number",
-      "default": 100
+      "default": 2
     },
     "maxStake": {
       "type": "number",
-      "default": 500
+      "default": 25
     },
     "maxStakePercent": {
       "type": "number",
-      "default": 5
+      "default": 0.25
     },
     "maxLayLiability": {
       "type": "number",
-      "default": 1500
+      "default": 50
     },
     "dailyLossLimit": {
       "type": "number",
-      "default": 500
+      "default": 100
     },
     "weeklyLossLimit": {
       "type": "number",
-      "default": 2500
+      "default": 300
     },
     "maxMarketExposure": {
       "type": "number",
-      "default": 1000
+      "default": 100
     },
     "maxOpenOrders": {
       "type": "number",
-      "default": 10
+      "default": 5
     },
     "maxUnmatchedOrders": {
       "type": "number",
-      "default": 10
+      "default": 2
     },
     "maxTradesPerMarket": {
       "type": "number",
-      "default": 5
+      "default": 1
     },
     "maxTradesPerRunner": {
       "type": "number",
@@ -82,15 +79,15 @@
     },
     "maxTradesPerDay": {
       "type": "number",
-      "default": 50
+      "default": 20
     },
     "minimumLiquidity": {
       "type": "number",
-      "default": 500
+      "default": 50
     },
     "minimumTradedVolume": {
       "type": "number",
-      "default": 1000
+      "default": 5000
     },
     "minOdds": {
       "type": "number",
@@ -98,11 +95,11 @@
     },
     "maxOdds": {
       "type": "number",
-      "default": 20
+      "default": 15
     },
     "defaultTimeWindowStartSeconds": {
       "type": "number",
-      "default": 500
+      "default": 300
     },
     "defaultTimeWindowEndSeconds": {
       "type": "number",
@@ -131,9 +128,7 @@
     "defaultPersistenceType": {
       "type": "string",
       "enum": [
-        "LAPSE",
-        "PERSIST",
-        "MARKET_ON_CLOSE"
+        "LAPSE"
       ],
       "default": "LAPSE"
     },
@@ -155,7 +150,7 @@
     },
     "streamApiEnabled": {
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "favouriteSideEnabled": {
       "type": "boolean",
@@ -167,7 +162,7 @@
     },
     "forcedPaperOnlyMode": {
       "type": "boolean",
-      "default": false
+      "default": true
     },
     "dailyDepositReminderEnabled": {
       "type": "boolean",
@@ -179,7 +174,7 @@
     },
     "minimumPaperTrades": {
       "type": "number",
-      "default": 200
+      "default": 500
     },
     "dailyResetAt": {
       "type": "string"

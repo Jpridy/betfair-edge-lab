@@ -7,11 +7,13 @@ import DashboardOpportunities from '@/components/dashboard/DashboardOpportunitie
 import DashboardMarkets from '@/components/dashboard/DashboardMarkets';
 import DashboardActivity from '@/components/dashboard/DashboardActivity';
 import AccountingSummary from '@/components/accounting/AccountingSummary';
+import ValidationStatus from '@/components/validation/ValidationStatus';
 
 export default function Dashboard() {
   return <div className="space-y-5">
     <SafetyBanners />
     <AccountingSummary />
+    <ValidationStatus />
     <DashboardStatus />
     <LatestDecision />
     <AIExecutionPanel />

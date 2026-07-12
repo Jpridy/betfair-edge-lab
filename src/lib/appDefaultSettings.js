@@ -18,7 +18,7 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
   minLiquidity: 20,
   timeWindowStart: 500,
   timeWindowEnd: 30,
-  stakingMode: 'confidence_weighted_fractional_kelly',
+  stakingMode: 'fractional_kelly',
   webResearchEnabled: false,
   aiDecisionMode: 'strict',
   requireExternalFormData: false,
@@ -67,11 +67,11 @@ export const DEFAULT_FEATHERLESS_SETTINGS = {
 };
 
 export const DEFAULT_BOT_SETTINGS = {
-  botEnabled: false,
-  botMode: 'demo',
-  scanIntervalSeconds: 30,
+  botEnabled:true,
+  botMode:'paper',
+  scanIntervalSeconds:10,
   selectedStrategies: ['Featherless AI Value Decision Engine'],
-  autoPaperTradingEnabled: false,
+  autoPaperTradingEnabled: true,
   liveTradingLocked: true,
   liveTradingEnabled: false,
   requireLiveConfirmationText: true,

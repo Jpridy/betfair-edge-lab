@@ -339,17 +339,11 @@ function buildOpportunity({
   const paperProofMode = isPaperProofModeActive(settings, botSettings, featherlessSettings);
 
   // Calculate stake using Kelly (or flat proof stake in proof mode)
-  const bankroll = bankrollStats?.bankroll || settings.paperBankroll || settings.bankroll || 10000;
-  let stake, calculationResult;
-
-  if (paperProofMode) {
-    stake = calcProofStake(side, odds, settings);
-  } else {
-    const kelly = side === 'BACK'
-      ? calcKellyStake(modelProbability, odds, bankroll, confidence / 100, .25, commissionRate)
-      : calcLayKellyStake(modelProbability, odds, bankroll, confidence / 100, .25, commissionRate);
-    stake = applyStakeCaps(kelly.stake, bankroll, settings);
-  }
+  const bankroll=bankrollStats?.bankroll??settings.paperBankroll??settings.bankroll??10000;
+  let stake,calculationResult,stakingDiagnostics={};
+  if(paperProofMode){stake=calcProofStake(side,odds,settings);stakingDiagnostics={stakingMode:'flat_proof_stake',configuredMultiplier:0,finalStake:stake};}
+  else if(featherlessSettings?.stakingMode==='flat'){stake=applyStakeCaps(Number(settings.baseStake??2),bankroll,settings);stakingDiagnostics={stakingMode:'flat',configuredMultiplier:0,uncappedStake:Number(settings.baseStake??2),finalStake:stake};}
+  else{const multiplier=Number(featherlessSettings?.kellyMultiplier??.1),confidenceAdjustment=confidence/100,kelly=side==='BACK'?calcKellyStake(modelProbability,odds,bankroll,confidenceAdjustment,multiplier,commissionRate):calcLayKellyStake(modelProbability,odds,bankroll,confidenceAdjustment,multiplier,commissionRate);stake=applyStakeCaps(kelly.stake,bankroll,settings);stakingDiagnostics={stakingMode:'fractional_kelly',fullKellyFraction:kelly.kellyFraction,configuredMultiplier:multiplier,confidenceAdjustment,uncappedStake:kelly.stake,maxStakeCap:settings.maxStake,maxPercentCap:settings.maxStakePercent,finalStake:stake};}
   calculationResult = buildCalculationResult({ side, probability:modelProbability, odds, normalizedCommissionRate:commissionRate, stake });
   const {liability=0,ev=0,roi=0,commissionAdjustedEdge:edge=0,rawProbabilityEdge=0,breakevenProbability=0,profitIfWin:maxProfit=0,lossIfLose:maxLoss=0}=calculationResult;
 
@@ -387,6 +381,9 @@ function buildOpportunity({
     const msg = `Liquidity $${availableSize.toFixed(2)} below $${thresholds.minLiquidity} minimum`;
     if (!paperProofMode || availableSize < 2) blockers.push(msg);
   }
+
+  if(Number(market.totalMatched??0)<Number(settings.minimumTradedVolume??0))blockers.push('MINIMUM_TRADED_VOLUME');
+  if(marketType==='H2H'&&featherlessSettings?.h2hOrdersEnabled!==true)blockers.push('H2H_MODEL_NOT_VALIDATED');
 
   // Spread/price check — soft in proof mode
   const hasBack = !!(runner.bestBackPrice && runner.bestBackPrice > 0);
@@ -549,6 +546,7 @@ function buildOpportunity({
     bestBackSize: runner.bestBackSize || null,
     bestLaySize: runner.bestLaySize || null,
     stake,
+    stakingDiagnostics,
     liability,
     maxProfit,
     maxLoss,
