@@ -17,6 +17,7 @@ import { calculateSpreadTicks } from './tickLadder';
 import { countTicksBetween } from './tickLadder';
 import { findRunnerResearch, applyExternalAdjustment, applyConfidenceAdjustment, determineDecisionImpact, getMarketOnlyFallbackReason } from './externalSearchIntegration';
 import { isPaperProofModeActive, isSoftBlocker, calcProofStake } from './paperProofDefaults';
+import { robustOpportunity } from './edgeDiscovery';
 import { matchRunnerToMarket, matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { calculateFavouriteContext, calculateRunnerContextScores, applyFavouriteContextToOpportunity, generateSpecificNoBetReason } from './favouriteValueContext';
 import { compareOpportunities, scoreOpportunity } from './opportunityRanking';
@@ -520,6 +521,7 @@ function buildOpportunity({
 
   const opportunity = {
     opportunityId: `opp_${cluster.eventId}_${normalizedMarketId(market)}_${selectionId}_${side}`,
+    decisionTimestamp:new Date().toISOString(),
     raceKey:cluster.canonicalRaceKey || cluster.raceKey,
     canonicalRaceKey:cluster.canonicalRaceKey || cluster.raceKey,
     raceNumber:cluster.raceNumber,
@@ -629,8 +631,12 @@ function buildOpportunity({
     specificNoBetReason: null,
   };
   opportunity.priceFreshnessScore = market.priceFeedStale ? 0 : market.source === 'cached' ? 0.4 : 1;
+  opportunity.priceFeedStatus=market.priceFeedStale?'STALE':'LIVE';
+  opportunity.dataFreshness=opportunity.priceFeedStatus;
+  opportunity.tradedVolume=market.totalMatched??runner.tradedVolumeAmount??0;
+  opportunity.fieldSize=market.numberOfActiveRunners??market.numberOfRunners??0;
   opportunity.riskAdjustedScore = scoreOpportunity(opportunity);
-  return opportunity;
+  return robustOpportunity(opportunity,{minimumROI:thresholds.minROI/100,sampleSize:paperOrders.filter(order=>order.status==='settled'&&order.settlementStatus==='settled'&&!order.proofMode&&!order.excludeFromPerformance&&!order.invalidTestRecord).length});
 }
 
 function allClusterMarketIds(cluster) {

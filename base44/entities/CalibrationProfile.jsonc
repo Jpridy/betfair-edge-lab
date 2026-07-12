@@ -20,7 +20,8 @@
         "REJECTED",
         "ROLLED_BACK",
         "BASELINE",
-        "PAUSED"
+        "PAUSED",
+        "RETIRED"
       ]
     },
     "parentProfileId": {
@@ -94,6 +95,31 @@
     },
     "rollbackReason": {
       "type": "string"
+    },
+    "retiredAt": {
+      "type": "string"
+    },
+    "retirementReason": {
+      "type": "string"
+    },
+    "approvedForBandit": {
+      "type": "boolean",
+      "default": false
+    },
+    "regime": {
+      "type": "string"
+    },
+    "benchmarkResults": {
+      "type": "object"
+    },
+    "clvMetrics": {
+      "type": "object"
+    },
+    "driftStatus": {
+      "type": "object"
+    },
+    "reliabilityStatus": {
+      "type": "object"
     }
   },
   "required": [

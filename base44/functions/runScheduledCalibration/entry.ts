@@ -77,14 +77,18 @@ Deno.serve(async req => {
     if(latestRuns[0]?.resultCode==='CALIBRATION_PAUSED')return Response.json({status:'paused',resultCode:'CALIBRATION_PAUSED'});
     const active=await base44.asServiceRole.entities.CalibrationRun.filter({status:'running'},'-created_date',1);
     if(active.some(run=>Date.now()-new Date(run.startedAt).getTime()<1800000)) return Response.json({ status: 'blocked', resultCode: 'CALIBRATION_SINGLE_FLIGHT_LOCKED' });
-    const [cycles, settlements] = await Promise.all([
-      base44.asServiceRole.entities.BotCycle.filter({ status: 'running' }, '-created_date', 1),
-      base44.asServiceRole.entities.SettlementWorkerRun.filter({ status: 'running' }, '-created_date', 1)
+    const [cycles,settlements,reliability]=await Promise.all([
+      base44.asServiceRole.entities.BotCycle.filter({status:'running'},'-created_date',1),
+      base44.asServiceRole.entities.SettlementWorkerRun.filter({status:'running'},'-created_date',1),
+      base44.asServiceRole.entities.ReliabilityEvent.filter({resolved:false},'-timestamp',200)
     ]);
+    if(reliability.some(event=>event.severity==='critical')||reliability.filter(event=>event.severity==='warning').length>10)return Response.json({status:'blocked',resultCode:'RELIABILITY_ERROR_BUDGET_BREACHED'});
     if (cycles.length || settlements.length) return Response.json({ status: 'blocked', resultCode: 'BOT_OR_SETTLEMENT_ACTIVE' });
     const startedAt = new Date().toISOString();
     lock = await base44.asServiceRole.entities.CalibrationRun.create({ runId: crypto.randomUUID(), triggerMode, status: 'running', calibrationState: 'BLOCKED', objectiveMode: 'STRIKE_RATE_WITH_PROFIT', startedAt, eligibleSettledBets: 0, resultCode: 'CALIBRATION_RUNNING' });
-    const orders = (await base44.asServiceRole.entities.PaperOrder.filter({ status: 'settled' }, 'settled_date', 2000)).filter(eligible).sort((a, b) => new Date(dateOf(a)) - new Date(dateOf(b)));
+    const holdouts=await base44.asServiceRole.entities.HoldoutVault.filter({locked:true,consumed:false},'-createdAt',20);
+    const lockedOrderIds=new Set(holdouts.flatMap(holdout=>holdout.orderIds||[]).map(String));
+    const orders=(await base44.asServiceRole.entities.PaperOrder.filter({status:'settled'},'settled_date',2000)).filter(order=>eligible(order)&&!lockedOrderIds.has(String(order.id))).sort((a,b)=>new Date(dateOf(a))-new Date(dateOf(b)));
     const previous = await base44.asServiceRole.entities.CalibrationRun.filter({ status: 'completed' }, '-completedAt', 1);
     const newSettledBets = Math.max(0, orders.length - Number(previous[0]?.eligibleSettledBets ?? 0));
     const due = triggerMode === 'nightly' ? newSettledBets >= 25 : newSettledBets >= 100;

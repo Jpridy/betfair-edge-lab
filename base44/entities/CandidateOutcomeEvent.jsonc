@@ -1,0 +1,64 @@
+{
+  "name": "CandidateOutcomeEvent",
+  "type": "object",
+  "description": "Immutable post-decision outcome and adverse-selection observation linked to a timestamp-valid candidate.",
+  "properties": {
+    "outcomeId": {
+      "type": "string"
+    },
+    "candidateId": {
+      "type": "string"
+    },
+    "observedAt": {
+      "type": "string"
+    },
+    "eventualResult": {
+      "type": "string"
+    },
+    "hypotheticalNetPL": {
+      "type": "number"
+    },
+    "hypotheticalCapitalAtRisk": {
+      "type": "number"
+    },
+    "closingOdds": {
+      "type": "number"
+    },
+    "clv": {
+      "type": "number"
+    },
+    "movement5Seconds": {
+      "type": "number"
+    },
+    "movement15Seconds": {
+      "type": "number"
+    },
+    "movement30Seconds": {
+      "type": "number"
+    },
+    "movementToClose": {
+      "type": "number"
+    },
+    "immediateAdverseMovementRate": {
+      "type": "number"
+    },
+    "averageAdverseTicks": {
+      "type": "number"
+    },
+    "adverseSelectionCost": {
+      "type": "number"
+    },
+    "futureSnapshotsUsed": {
+      "type": "number"
+    },
+    "integrityPassed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "outcomeId",
+    "candidateId",
+    "observedAt",
+    "integrityPassed"
+  ]
+}

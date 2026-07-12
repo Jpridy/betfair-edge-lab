@@ -1,0 +1,82 @@
+{
+  "name": "MarketEventSnapshot",
+  "type": "object",
+  "description": "Immutable decision-time market event used for replay and shadow research.",
+  "properties": {
+    "snapshotId": {
+      "type": "string"
+    },
+    "snapshotVersion": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "canonicalRaceKey": {
+      "type": "string"
+    },
+    "marketId": {
+      "type": "string"
+    },
+    "selectionId": {
+      "type": "string"
+    },
+    "bestBackPrice": {
+      "type": "number"
+    },
+    "bestBackSize": {
+      "type": "number"
+    },
+    "bestLayPrice": {
+      "type": "number"
+    },
+    "bestLaySize": {
+      "type": "number"
+    },
+    "tradedVolume": {
+      "type": "number"
+    },
+    "marketStatus": {
+      "type": "string"
+    },
+    "inPlay": {
+      "type": "boolean"
+    },
+    "secondsToStart": {
+      "type": "number"
+    },
+    "source": {
+      "type": "string"
+    },
+    "dataFreshness": {
+      "type": "string"
+    },
+    "priceAgeSeconds": {
+      "type": "number"
+    },
+    "modelVersion": {
+      "type": "string"
+    },
+    "effectiveSettingsVersion": {
+      "type": "string"
+    },
+    "engineVersion": {
+      "type": "string"
+    },
+    "settingsProfileId": {
+      "type": "string"
+    },
+    "eventHash": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshotId",
+    "timestamp",
+    "canonicalRaceKey",
+    "marketId",
+    "selectionId",
+    "snapshotVersion",
+    "engineVersion"
+  ]
+}

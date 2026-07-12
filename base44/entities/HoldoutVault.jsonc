@@ -1,0 +1,54 @@
+{
+  "name": "HoldoutVault",
+  "type": "object",
+  "description": "Locked promotion holdout; tuning code may inspect metadata but not order IDs or results.",
+  "properties": {
+    "holdoutId": {
+      "type": "string"
+    },
+    "startDate": {
+      "type": "string"
+    },
+    "endDate": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "consumedAt": {
+      "type": "string"
+    },
+    "profileTested": {
+      "type": "string"
+    },
+    "result": {
+      "type": "object"
+    },
+    "integrityHash": {
+      "type": "string"
+    },
+    "orderIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "locked": {
+      "type": "boolean",
+      "default": true
+    },
+    "consumed": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "holdoutId",
+    "startDate",
+    "endDate",
+    "createdAt",
+    "integrityHash",
+    "locked",
+    "consumed"
+  ]
+}

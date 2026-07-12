@@ -24,6 +24,7 @@ import { calculateStatisticalValidation } from '@/lib/statisticalValidation';
 import { mergeBetfairMarkets } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
 import { safeEntityWrite, generateIdempotencyKey } from '@/lib/safePersistence';
+import useEdgeResearchCapture from '@/hooks/useEdgeResearchCapture';
 
 // ── Metadata fields to strip when loading settings from DB ──
 const DB_META_FIELDS = ['id', 'created_date', 'updated_date', 'created_by_id', 'owner', 'owner_id', '_v'];
@@ -2328,6 +2329,7 @@ export function AppProvider({ children }) {
 
   // ── Calibration from settled paper orders ──
   const calibration = useMemo(() => computeCalibration(paperOrders), [paperOrders]);
+  useEdgeResearchCapture({markets,runners,opportunities:exchangeOpportunities,botCycles,settings,featherlessSettings,betfairConnection});
 
   const value = {
     emergencyStop, triggerEmergencyStop, clearEmergencyStop,

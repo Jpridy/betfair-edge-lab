@@ -1,0 +1,51 @@
+{
+  "name": "ReplayRun",
+  "type": "object",
+  "description": "Auditable deterministic market replay run.",
+  "properties": {
+    "replayRunId": {
+      "type": "string"
+    },
+    "replayTimestamp": {
+      "type": "string"
+    },
+    "snapshotVersion": {
+      "type": "string"
+    },
+    "engineVersion": {
+      "type": "string"
+    },
+    "settingsProfileId": {
+      "type": "string"
+    },
+    "modelVersion": {
+      "type": "string"
+    },
+    "deterministicSeed": {
+      "type": "number"
+    },
+    "replayIntegrityPassed": {
+      "type": "boolean"
+    },
+    "futureLeakageDetected": {
+      "type": "boolean"
+    },
+    "snapshotsUsed": {
+      "type": "number"
+    },
+    "candidatesProduced": {
+      "type": "number"
+    },
+    "details": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "replayRunId",
+    "replayTimestamp",
+    "snapshotVersion",
+    "engineVersion",
+    "deterministicSeed",
+    "replayIntegrityPassed"
+  ]
+}

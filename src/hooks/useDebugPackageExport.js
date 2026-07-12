@@ -21,8 +21,9 @@ export default function useDebugPackageExport() {
       const settlementWorkerRuns=minimal?[]:await safeFetch('SettlementWorkerRun',200,[],errors);
       const calibrationProfiles=minimal?[]:await safeFetch('CalibrationProfile',50,[],errors);
       const calibrationRuns=minimal?[]:await safeFetch('CalibrationRun',50,[],errors);
+      const [marketEvents,counterfactualCandidates,candidateOutcomeEvents,holdoutVaults,reliabilityEvents]=minimal?[[],[],[],[],[]]:await Promise.all([safeFetch('MarketEventSnapshot',1000,[],errors),safeFetch('CounterfactualCandidate',1000,[],errors),safeFetch('CandidateOutcomeEvent',1000,[],errors),safeFetch('HoldoutVault',50,[],errors),safeFetch('ReliabilityEvent',200,[],errors)]);
       await showProgress(setProgress, 'Building ZIP...');
-      const result=await buildDebugPackage({...app,paperOrders,botCycles,auditLogs,settlementWorkerRuns,calibrationProfiles,calibrationRuns,currentPage:window.location.pathname,localStorageSnapshot:localSnapshot()},{minimal,exportErrors:errors});
+      const result=await buildDebugPackage({...app,paperOrders,botCycles,auditLogs,settlementWorkerRuns,calibrationProfiles,calibrationRuns,marketEvents,counterfactualCandidates,candidateOutcomeEvents,holdoutVaults,reliabilityEvents,currentPage:window.location.pathname,localStorageSnapshot:localSnapshot()},{minimal,exportErrors:errors});
       await showProgress(setProgress, 'Downloading...'); downloadDebugBlob(result.blob,debugPackageFilename());
       toast({title:errors.length ? 'Debug package downloaded with warnings. See /errors/export-errors.json.' : 'Debug package downloaded.'});
       return result;

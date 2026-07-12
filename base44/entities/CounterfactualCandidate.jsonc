@@ -1,0 +1,112 @@
+{
+  "name": "CounterfactualCandidate",
+  "type": "object",
+  "description": "Immutable candidate recorded at decision time for profile comparison; post-decision observations are separate outcome events.",
+  "properties": {
+    "candidateId": {
+      "type": "string"
+    },
+    "snapshotId": {
+      "type": "string"
+    },
+    "decisionTimestamp": {
+      "type": "string"
+    },
+    "marketStartTime": {
+      "type": "string"
+    },
+    "canonicalRaceKey": {
+      "type": "string"
+    },
+    "marketId": {
+      "type": "string"
+    },
+    "selectionId": {
+      "type": "string"
+    },
+    "runnerName": {
+      "type": "string"
+    },
+    "profileDecisions": {
+      "type": "object"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "BACK",
+        "LAY"
+      ]
+    },
+    "odds": {
+      "type": "number"
+    },
+    "probability": {
+      "type": "number"
+    },
+    "confidence": {
+      "type": "number"
+    },
+    "expectedValue": {
+      "type": "number"
+    },
+    "expectedROI": {
+      "type": "number"
+    },
+    "edge": {
+      "type": "number"
+    },
+    "liability": {
+      "type": "number"
+    },
+    "failedGates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "eventualResult": {
+      "type": "string"
+    },
+    "hypotheticalNetPL": {
+      "type": "number"
+    },
+    "hypotheticalCapitalAtRisk": {
+      "type": "number"
+    },
+    "fillRealism": {
+      "type": "object"
+    },
+    "probabilityComponents": {
+      "type": "object"
+    },
+    "uncertainty": {
+      "type": "object"
+    },
+    "regimes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dataQuality": {
+      "type": "object"
+    },
+    "explanation": {
+      "type": "object"
+    },
+    "engineVersion": {
+      "type": "string"
+    },
+    "modelVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidateId",
+    "decisionTimestamp",
+    "canonicalRaceKey",
+    "marketId",
+    "selectionId",
+    "side"
+  ]
+}

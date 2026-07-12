@@ -1,0 +1,50 @@
+{
+  "name": "ReliabilityEvent",
+  "type": "object",
+  "description": "Runtime reliability incident used by the error budget.",
+  "properties": {
+    "eventId": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "STALE_DATA",
+        "MISSED_SETTLEMENT",
+        "DUPLICATE_CYCLE",
+        "RACE_IDENTITY",
+        "CALCULATION",
+        "ACCOUNTING",
+        "AI_SCHEMA",
+        "RUNNER_MAPPING",
+        "FILL_SIMULATION"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "warning",
+        "critical"
+      ]
+    },
+    "details": {
+      "type": "object"
+    },
+    "resolved": {
+      "type": "boolean",
+      "default": false
+    },
+    "resolvedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "timestamp",
+    "category",
+    "severity"
+  ]
+}
