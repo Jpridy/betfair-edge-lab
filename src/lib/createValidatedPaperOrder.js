@@ -14,6 +14,7 @@ import { resolveCommissionRate } from './commission';
 import { isPaperProofModeActive } from './paperProofDefaults';
 import { matchOrderToMarket, matchSelectionId } from './marketIdMatcher';
 import { ACTIVE_ORDER_STATUSES, exposureBlock } from './raceExposure';
+import { canonicalRaceIdentity } from './raceIdentity';
 import { DECISION_SOURCES, strategyForDecisionSource, dataSourceForDecisionSource } from './decisionProvenance';
 
 const OPEN_ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
@@ -97,6 +98,7 @@ export function createValidatedPaperOrder({
   const paperProofMode = paperProofModeOverride != null
     ? paperProofModeOverride
     : isPaperProofModeActive(settings, botSettings, featherlessSettings);
+  const raceIdentity=canonicalRaceIdentity({...market,eventId:eventId || market?.eventId,eventName:eventName || market?.eventName});
 
   // ── Emergency Stop ──
   if (emergencyStop) {
@@ -242,11 +244,13 @@ export function createValidatedPaperOrder({
       horseNumber: runner?.horseNumber || 0,
       marketName: market?.venue ? `${market.venue} - ${market.marketName || 'Win'}` : (market?.marketName || 'Unknown'),
       venue: market?.venue || '',
-      raceNumber: market?.raceNumber || 0,
-      marketStartTime: market?.startTime || market?.marketStartTime || null,
-      raceStartTime: market?.startTime || market?.marketStartTime || null,
-      eventName: eventName || market?.eventName || '',
-      eventId: eventId || market?.eventId || '',
+      canonicalRaceKey:raceIdentity.canonicalRaceKey,
+      raceNumber:raceIdentity.raceNumber,
+      marketStartTime:raceIdentity.startTime,
+      raceStartTime:raceIdentity.startTime,
+      eventName:eventName || market?.eventName || '',
+      eventId:raceIdentity.eventId,
+      betfairEventId:raceIdentity.betfairEventId,
       marketType: marketType || market?.marketType || null,
       marketTypeCode: marketTypeCode || market?.marketTypeCode || null,
       side,
@@ -325,11 +329,13 @@ export function createValidatedPaperOrder({
     horseNumber: runner.horseNumber || 0,
     marketName: market.venue ? `${market.venue} - ${market.marketName || 'Win'}` : (market.marketName || 'Unknown Market'),
     venue: market.venue || '',
-    raceNumber: market.raceNumber || 0,
-    marketStartTime: market.startTime || market.marketStartTime || null,
-    raceStartTime: market.startTime || market.marketStartTime || null,
-    eventName: eventName || market.eventName || '',
-    eventId: eventId || market.eventId || '',
+    canonicalRaceKey:raceIdentity.canonicalRaceKey,
+    raceNumber:raceIdentity.raceNumber,
+    marketStartTime:raceIdentity.startTime,
+    raceStartTime:raceIdentity.startTime,
+    eventName:eventName || market.eventName || '',
+    eventId:raceIdentity.eventId,
+    betfairEventId:raceIdentity.betfairEventId,
     marketType: marketType || market.marketType || null,
     marketTypeCode: marketTypeCode || market.marketTypeCode || null,
     numberOfWinners: numberOfWinners || market.numberOfWinners || null,

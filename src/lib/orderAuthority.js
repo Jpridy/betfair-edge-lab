@@ -46,7 +46,7 @@ export async function authorizeAndCreatePaperOrder(context = {}) {
 
   const commission = resolveCommissionRate(market, settings);
   if (!commission.valid) return fail('INVALID_COMMISSION', commission.error, { commission });
-  const book = validateCompleteMarketBook(marketRunners, settings.maxBackBookPercentage || 150);
+  const book = validateCompleteMarketBook(marketRunners, market, settings.maxBackBookPercentage || 150);
   if (!book.valid) return fail('INVALID_MARKET_BOOK', book.errors.join('; '), { marketBookDiagnostics: book });
 
   const stake = Number(opportunity.stake);

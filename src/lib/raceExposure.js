@@ -1,36 +1,28 @@
-export const ACTIVE_ORDER_STATUSES = Object.freeze(['pending', 'executable', 'unmatched', 'partially_matched', 'matched', 'awaiting_result', 'result_unknown']);
+import { canonicalRaceIdentity } from './raceIdentity';
 
-const clean = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const roundedStart = value => { const ms = new Date(value || 0).getTime(); return Number.isFinite(ms) && ms > 0 ? Math.round(ms / 300000) : 0; };
+export const ACTIVE_ORDER_STATUSES = Object.freeze(['pending','executable','unmatched','partially_matched','matched','awaiting_result','result_unknown']);
+export const TERMINAL_ORDER_STATUSES = Object.freeze(['settled','voided','lapsed','cancelled','rejected']);
 
 export function normalizedMarketId(value) {
   return String(value?.normalizedMarketId || value?.betfairMarketId || value?.marketId || value?.id || '').trim();
 }
 
-export function raceNumberOf(value) {
-  const supplied=Number(value?.raceNumber || 0);
-  if (supplied > 0) return supplied;
-  for (const text of [value?.marketName,value?.eventName,value?.raceName]) { const match=String(text || '').match(/(?:^|\s)R(?:ACE)?\s*(\d+)\b/i); if (match) return Number(match[1]); }
-  return 0;
-}
+export function raceNumberOf(value) { return canonicalRaceIdentity(value).raceNumber; }
+export function raceKeyOf(value) { return value?.canonicalRaceKey || canonicalRaceIdentity(value).canonicalRaceKey; }
 
-export function raceKeyOf(value) {
-  const eventId = String(value?.eventId || value?.betfairEventId || '').trim();
-  if (eventId) return eventId;
-  const venue = clean(value?.venue || value?.eventName);
-  const race = raceNumberOf(value);
-  const start = roundedStart(value?.raceStartTime || value?.marketStartTime || value?.startTime);
-  return `race:${venue}:${race}:${start}`;
+export function isActiveOrder(order) {
+  if (TERMINAL_ORDER_STATUSES.includes(order?.status) || TERMINAL_ORDER_STATUSES.includes(order?.settlementStatus)) return false;
+  return ACTIVE_ORDER_STATUSES.includes(order?.status) || ACTIVE_ORDER_STATUSES.includes(order?.settlementStatus);
 }
 
 export function activeRaceOrders(orders, raceLike) {
-  const key = raceKeyOf(raceLike);
-  return (orders || []).filter(order => ACTIVE_ORDER_STATUSES.includes(order.settlementStatus) || ACTIVE_ORDER_STATUSES.includes(order.status)).filter(order => raceKeyOf(order) === key);
+  const key=raceKeyOf(raceLike);
+  return (orders || []).filter(isActiveOrder).filter(order => raceKeyOf(order) === key);
 }
 
 export function exposureBlock(orders, market, settings = {}) {
-  const active = activeRaceOrders(orders, market);
+  const active=activeRaceOrders(orders,market);
   if (!active.length) return null;
   if (settings.portfolioModeEnabled === true) return 'PORTFOLIO_PROOF_REQUIRED';
-  return active.some(order => normalizedMarketId(order) === normalizedMarketId(market)) ? 'DUPLICATE_MARKET_EXPOSURE' : 'DUPLICATE_RACE_EXPOSURE';
+  return 'DUPLICATE_RACE_EXPOSURE';
 }

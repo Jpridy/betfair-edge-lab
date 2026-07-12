@@ -1,7 +1,6 @@
 // Unified risk and exposure calculations — single source of truth.
 // Used by AppContext, RiskManager, RiskOverview, Orders, PerformanceAnalytics, Dashboard, Sidebar, Bot.
-
-const OPEN_ORDER_STATUSES = ['pending', 'executable', 'unmatched', 'partially_matched', 'matched', 'awaiting_result', 'result_unknown'];
+import { isActiveExposureOrder, reconcileRiskExposure } from './riskExposure';
 const UNMATCHED_STATUSES = ['unmatched', 'partially_matched'];
 
 /**
@@ -16,8 +15,9 @@ const UNMATCHED_STATUSES = ['unmatched', 'partially_matched'];
  */
 export function calculateRiskMetrics(paperOrders, settings = {}) {
   const settled = paperOrders.filter(o => o.status === 'settled');
-  const openOrders = paperOrders.filter(o => OPEN_ORDER_STATUSES.includes(o.status));
+  const openOrders = paperOrders.filter(isActiveExposureOrder);
   const unmatchedOrders = paperOrders.filter(o => UNMATCHED_STATUSES.includes(o.status));
+  const reconciledExposure=reconcileRiskExposure(paperOrders);
 
   // ── Separate BACK and LAY exposure ──
   const backOrders = openOrders.filter(o => (o.side || '').toUpperCase() === 'BACK');
@@ -131,7 +131,12 @@ export function calculateRiskMetrics(paperOrders, settings = {}) {
     totalPL,
     drawdown: maxDD,
     longestLosingStreak,
-    activeOrderCount: openOrders.length,
+    activeOrderCount:reconciledExposure.activeOrderCount,
+    unresolvedMatchedOrderCount:reconciledExposure.unresolvedMatchedOrderCount,
+    totalBackExposure:reconciledExposure.totalBackExposure,
+    totalLayLiability:reconciledExposure.totalLayLiability,
+    exposureByRace:reconciledExposure.exposureByRace,
+    exposureByMarket:reconciledExposure.exposureByMarket,
     unmatchedOrderCount: unmatchedOrders.length,
     settledCount: settled.length,
     dailyOrders,

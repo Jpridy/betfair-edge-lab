@@ -1,0 +1,4 @@
+import { describe, expect, it } from 'vitest';
+import { activeRaceOrders, exposureBlock } from './raceExposure';
+
+describe('canonical race exposure',()=>{it('locks every market in a race for an awaiting result order',()=>{const order={id:'o1',status:'awaiting_result',settlementStatus:'awaiting_result',canonicalRaceKey:'race:35807338:5:20260712T043500Z',betfairMarketId:'win'};const place={canonicalRaceKey:'race:35807338:5:20260712T043500Z',betfairMarketId:'place'};expect(activeRaceOrders([order],place).map(item=>item.id)).toEqual(['o1']);expect(exposureBlock([order],place)).toBe('DUPLICATE_RACE_EXPOSURE');});});

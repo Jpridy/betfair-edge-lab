@@ -53,7 +53,7 @@ export function buildMarketBookValidation(markets = [], runners = [], sentIds = 
   return markets.filter(market => allowed.size > 0 && allowed.has(marketIdOf(market))).map(market => {
     const marketId = marketIdOf(market);
     const marketRunners = runners.filter(runner => marketIdOf(runner) === marketId);
-    const validation = validateCompleteMarketBook(marketRunners);
+    const validation = validateCompleteMarketBook(marketRunners,market);
     return { marketId, marketType:market.marketTypeCode || market.marketType, ...validation, runners:marketRunners.map(runner => ({ selectionId:runner.betfairSelectionId || runner.selectionId || null, runnerName:runner.runnerName || null, bestBackPrice:runner.bestBackPrice ?? null, bestBackSize:runner.bestBackSize ?? null, bestLayPrice:runner.bestLayPrice ?? null, bestLaySize:runner.bestLaySize ?? null })) };
   });
 }

@@ -5,6 +5,9 @@
     "runId": {
       "type": "string"
     },
+    "lockKey": {
+      "type": "string"
+    },
     "triggerMode": {
       "type": "string",
       "enum": [

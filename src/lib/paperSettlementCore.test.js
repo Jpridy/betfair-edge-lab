@@ -16,6 +16,7 @@ describe('paper settlement worker core', () => {
   it('charges commission only on positive market gross', () => { const positive=allocateMarketCommission([{grossProfit:4},{grossProfit:-2}],0.05); expect(positive.reduce((s,x)=>s+x.commission,0)).toBeCloseTo(.1); expect(positive[1].commission).toBe(0); expect(allocateMarketCommission([{grossProfit:1},{grossProfit:-2}],0.05).reduce((s,x)=>s+x.commission,0)).toBe(0); });
   it('keeps open markets awaiting', () => expect(settleMarketOrders([back], {...closed,status:'OPEN'})[0].settlementStatus).toBe('awaiting_result'));
   it('settles closed markets', () => expect(settleMarketOrders([back], closed)[0].resultSource).toBe('BETFAIR_MARKET_BOOK'));
+  it('writes settlement status, result and net P/L atomically',()=>expect(settleMarketOrders([back],closed)[0]).toMatchObject({status:'settled',settlementStatus:'settled',result:'won',netProfit:3.8,netPL:3.8,settlementError:null,marketStatusAtSettlement:'CLOSED'}));
   it('voids and refunds void markets', () => expect(settleMarketOrders([back], {...closed,voided:true})[0].netProfit).toBe(0));
   it('is idempotent for already settled orders', () => { const once=settleMarketOrders([back],closed)[0]; expect(settleMarketOrders([once],closed)[0].netProfit).toBe(once.netProfit); });
   it('records missing winner errors', () => expect(settleMarketOrders([back], {...closed,winnerSelectionIds:[]})[0].settlementError).toBe('CLOSED_MARKET_WITHOUT_WINNER'));

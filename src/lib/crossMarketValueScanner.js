@@ -118,7 +118,7 @@ export function generateOpportunitiesForEvent(cluster, allRunners, aiResult, set
 
     const thresholds = resolveMarketTypeThresholds(marketType, featherlessSettings);
     const marketRunners = allRunners.filter(r => matchRunnerToMarket(r, market) && r.status === 'ACTIVE');
-    const marketBookValidation = validateCompleteMarketBook(marketRunners, settings.maxBackBookPercentage || 150);
+    const marketBookValidation = validateCompleteMarketBook(marketRunners, market, settings.maxBackBookPercentage || 150);
     if (!marketBookValidation.valid) continue;
     const commissionResult = resolveCommissionRate(market, settings);
     if (!commissionResult.valid) continue;
@@ -532,6 +532,11 @@ function buildOpportunity({
 
   const opportunity = {
     opportunityId: `opp_${cluster.eventId}_${normalizedMarketId(market)}_${selectionId}_${side}`,
+    raceKey:cluster.canonicalRaceKey || cluster.raceKey,
+    canonicalRaceKey:cluster.canonicalRaceKey || cluster.raceKey,
+    raceNumber:cluster.raceNumber,
+    raceStartTime:cluster.startTime,
+    betfairEventId:cluster.betfairEventId || cluster.eventId,
     eventId: cluster.eventId,
     eventName: cluster.eventName || market.eventName || '',
     marketId: normalizedMarketId(market),

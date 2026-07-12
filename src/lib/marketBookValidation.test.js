@@ -1,0 +1,4 @@
+import { describe, expect, it } from 'vitest';
+import { validateCompleteMarketBook } from './marketBookValidation';
+
+describe('multi-winner book validation',()=>{it('normalizes a four-winner PLACE book near 400 percent',()=>{const runners=Array.from({length:4},(_,i)=>({selectionId:String(i),status:'ACTIVE',bestBackPrice:1.091,bestLayPrice:1.1}));const result=validateCompleteMarketBook(runners,{marketTypeCode:'PLACE',numberOfWinners:4});expect(result.expectedBookPercentage).toBe(400);expect(result.rawBackBookPercentage).toBeGreaterThan(360);expect(result.normalizedBackBookPercentage).toBeLessThan(100);expect(result.errors.some(error=>error.startsWith('BACK_BOOK_ABOVE_MAX'))).toBe(false);});});

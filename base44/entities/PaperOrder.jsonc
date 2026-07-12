@@ -20,6 +20,9 @@
     "normalizedMarketId": {
       "type": "string"
     },
+    "canonicalRaceKey": {
+      "type": "string"
+    },
     "selectionId": {
       "type": "string"
     },
@@ -54,6 +57,9 @@
       "type": "string"
     },
     "eventId": {
+      "type": "string"
+    },
+    "betfairEventId": {
       "type": "string"
     },
     "marketType": {
@@ -151,6 +157,12 @@
       "type": "string"
     },
     "settlementStatus": {
+      "type": "string"
+    },
+    "settlementCheckStatus": {
+      "type": "string"
+    },
+    "nextSettlementRetryAt": {
       "type": "string"
     },
     "resultSource": {

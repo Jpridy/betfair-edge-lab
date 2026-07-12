@@ -180,6 +180,37 @@
     },
     "aiRunnerCountReturned": {
       "type": "number"
+    },
+    "schedulerInstanceId": {
+      "type": "string"
+    },
+    "browserTabId": {
+      "type": "string"
+    },
+    "triggerSource": {
+      "type": "string"
+    },
+    "cycleRunKey": {
+      "type": "string"
+    },
+    "startedBy": {
+      "type": "string"
+    },
+    "skippedDuplicateRun": {
+      "type": "boolean",
+      "default": false
+    },
+    "cycleFailedGate": {
+      "type": "string"
+    },
+    "bestRejectedCandidateId": {
+      "type": "string"
+    },
+    "bestRejectedFailedGate": {
+      "type": "string"
+    },
+    "bestRejectedBlocker": {
+      "type": "string"
     }
   },
   "required": [

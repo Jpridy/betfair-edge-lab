@@ -18,6 +18,8 @@ import { buildProofOpportunity } from '@/lib/paperProofScanner';
 import { buildBetfairDiagnostics } from '@/lib/betfairDiagnostics';
 import { buildDecisionLogging, bestRejectedNoBetReason } from '@/lib/decisionLogging';
 import { invokeOpenAIWebSearchWithBackoff } from '@/lib/openAIWebSearchBackoff';
+import { createBotCycleController } from '@/lib/botCycleController';
+import { canonicalRaceIdentity } from '@/lib/raceIdentity';
 
 import { mergeBetfairMarkets, getMarketDataSourceLabel } from '@/lib/betfairMarketMerge';
 import { matchRunnerToMarket } from '@/lib/marketIdMatcher';
@@ -245,6 +247,7 @@ export function AppProvider({ children }) {
   const [betfairRawDiagnostics, setBetfairRawDiagnostics] = useState({ catalogueRecordsReturned: 0, marketBooksReturned: 0, streamMarketsUpdated: 0, catalogueMarkets: [], marketBooks: [], streamMarkets: [], samples: {} });
   const [diagnosticsRevision, setDiagnosticsRevision] = useState(0);
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
+  const [schedulerDiagnostics, setSchedulerDiagnostics] = useState({});
 
   // Refs for DB record IDs (for settings persistence)
   const settingsRecordId = useRef(null);
@@ -269,6 +272,10 @@ export function AppProvider({ children }) {
   // 7-22s, which may exceed the scan interval. Without this guard, setInterval
   // would fire a new cycle while the previous one is still running.
   const cycleInProgressRef = useRef(false);
+  const botIntervalRef = useRef(null);
+  const botInitialTimerRef = useRef(null);
+  const schedulerControllerRef = useRef(null);
+  if (!schedulerControllerRef.current) schedulerControllerRef.current=createBotCycleController();
 
   // ── Load all app-generated data from database on mount ──
   useEffect(() => {
@@ -298,12 +305,6 @@ export function AppProvider({ children }) {
         setBacktestRuns(runs);
         setStrategyStats(stats);
         setAiDecisions(aiDecls);
-        base44.functions.invoke('runPaperSettlementWorker', { trigger: 'app_load' }).then(async response => {
-          if (cancelled) return;
-          setSettlementReport(response.data);
-          const refreshed = await base44.entities.PaperOrder.filter({}, '-created_date', 200);
-          if (!cancelled) setPaperOrders(refreshed);
-        }).catch(error => { if (!cancelled) setSettlementReport({ checkedAt: new Date().toISOString(), errors: 1, errorMessages: [error.message] }); });
         // Load persisted settings — strip DB metadata, merge with defaults so new fields are never lost
         if (appSettingsRecs && appSettingsRecs.length > 0) {
           const rec = appSettingsRecs[0];
@@ -882,16 +883,24 @@ export function AppProvider({ children }) {
     addToBotActivity('Bot stopped', 'All bot activity halted');
   };
 
+  const acquireCyclePermit = async triggerSource => {
+    const s=stateRef.current;
+    const selected=[...(s.markets || [])].filter(market=>market.status==='OPEN'&&!market.inPlay).sort((a,b)=>new Date(a.marketStartTime || a.startTime || 0)-new Date(b.marketStartTime || b.startTime || 0))[0] || s.markets?.[0] || {};
+    const selectedRaceKey=canonicalRaceIdentity(selected,s.markets || []).canonicalRaceKey;
+    const permit=await schedulerControllerRef.current.acquire({selectedRaceKey,scanIntervalSeconds:s.botSettings?.scanIntervalSeconds || 10,triggerSource,startedBy:schedulerControllerRef.current.browserTabId,hasPersistedRun:async cycleRunKey=>{const rows=await base44.entities.BotCycle.filter({cycleRunKey},'-created_date',1).catch(()=>[]);return rows.length>0;}});
+    setSchedulerDiagnostics(schedulerControllerRef.current.diagnostics());
+    return permit;
+  };
+
   const runManualScan = () => {
     addAuditLog('Manual Scan Triggered', 'system', 'info', 'Manual market scan initiated');
-    runBotCycleRef.current();
+    return runBotCycleRef.current('manual');
   };
 
   // ── Debug Scan Cycle — diagnostic only, never creates orders/signals ──
   const runDebugScanCycle = async () => {
-    if (cycleInProgressRef.current) {
-      return { success: false, cycleCreated: false, error: 'A scan is already in progress' };
-    }
+    const cyclePermit=await acquireCyclePermit('debug');
+    if (!cyclePermit.acquired) return {success:false,cycleCreated:false,error:'DUPLICATE_CYCLE_SKIPPED',diagnostic:cyclePermit};
     cycleInProgressRef.current = true;
     const s = stateRef.current;
     const cycleNum = s.botState.cycleNumber + 1;
@@ -904,7 +913,7 @@ export function AppProvider({ children }) {
     setLastDebugScanError(null);
 
     if (s.emergencyStop) {
-      cycleInProgressRef.current = false;
+      cycleInProgressRef.current=false;schedulerControllerRef.current.release(cyclePermit.cycleRunKey);setSchedulerDiagnostics(schedulerControllerRef.current.diagnostics());
       return { success: false, cycleCreated: false, cycleNumber: cycleNum, marketsLoaded, eligibleMarkets: 0, opportunitiesGenerated: 0, error: 'Emergency stop is active' };
     }
 
@@ -957,6 +966,7 @@ export function AppProvider({ children }) {
         const debugDecisionLogging = buildDecisionLogging({ opportunities:result.allOpportunities, runners:s.runners, cycleId:debugCycleId, cycleNumber:cycleNum, raceKey:result.diagnostics.selectedRaceKey || '', aiStatus:result.diagnostics.aiStatus, finalSelectedOpportunity:result.bestOpportunity, previousCycle:s.botCycles?.[0] || null });
         const cycleRecord = {
           cycleId: debugCycleId, cycleNumber: cycleNum,
+          schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
           botMode: 'paper',
           startedAt: now,
           finishedAt: new Date().toISOString(),
@@ -1111,6 +1121,7 @@ export function AppProvider({ children }) {
         // Create a failed BotCycle so Last Cycle doesn't stay "Never"
         const failedCycleRecord = {
           cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
+          schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
           botMode: 'paper',
           startedAt: now,
           finishedAt: new Date().toISOString(),
@@ -1161,6 +1172,8 @@ export function AppProvider({ children }) {
         return failResult;
       } finally {
         cycleInProgressRef.current = false;
+        schedulerControllerRef.current.release(cyclePermit.cycleRunKey);
+        setSchedulerDiagnostics(schedulerControllerRef.current.diagnostics());
     }
   };
 
@@ -1398,8 +1411,9 @@ export function AppProvider({ children }) {
 
   // ── Bot Cycle Runner ──
   const runBotCycleRef = useRef(() => {});
-  runBotCycleRef.current = async () => {
-    if (cycleInProgressRef.current) return;
+  runBotCycleRef.current = async (triggerSource = 'interval') => {
+    const cyclePermit=await acquireCyclePermit(triggerSource);
+    if (!cyclePermit.acquired) return {skippedDuplicateRun:true,diagnostic:cyclePermit};
     cycleInProgressRef.current = true;
     try {
     const s = stateRef.current;
@@ -1424,6 +1438,7 @@ export function AppProvider({ children }) {
 
       const cycleRecord = {
         cycleId: crypto.randomUUID(), cycleNumber: cycleNum,
+        schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
         botMode: 'paper',
         startedAt: now,
         finishedAt: new Date().toISOString(),
@@ -1442,11 +1457,10 @@ export function AppProvider({ children }) {
       };
       const localBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
       setBotCycles(prev => [{ ...cycleRecord, id: localBcId }, ...prev].slice(0, 100));
-      safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', localBcId), entityApi: base44.entities.BotCycle });
+      safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: cyclePermit.cycleRunKey, entityApi: base44.entities.BotCycle });
       setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
       addAuditLog(`Bot Cycle #${cycleNum} — No Markets`, 'system', 'warning', noMarketsReason);
-      await base44.functions.invoke('runPaperSettlementWorker', { trigger: 'bot_cycle' });
-      return;
+        return;
     }
 
     // Run candidate scoring diagnostics for transparency — always runs
@@ -1668,6 +1682,7 @@ export function AppProvider({ children }) {
 
     const cycleRecord = {
       cycleId, cycleNumber: cycleNum,
+      schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
       botMode: 'paper',
       startedAt: now,
       finishedAt: new Date().toISOString(),
@@ -1790,7 +1805,11 @@ export function AppProvider({ children }) {
         topOpportunities: decisionLogging.opportunityLog.slice(0, 20),
         topRejected: decisionLogging.opportunityLog.filter(item => item.gatesPassed !== true).slice(0, 10),
         noBetReason: finalNoBetReason,
-        failedGate: exchangeDiag.failedGate || decisionLogging.bestRejectedCandidate?.failedGate || null,
+        cycleFailedGate:ordersCreated > 0 ? null : (exchangeDiag.failedGate || null),
+        failedGate:ordersCreated > 0 ? null : (exchangeDiag.failedGate || null),
+        bestRejectedCandidateId:decisionLogging.bestRejectedCandidate?.opportunityId || null,
+        bestRejectedFailedGate:decisionLogging.bestRejectedCandidate?.failedGate || null,
+        bestRejectedBlocker:decisionLogging.bestRejectedCandidate?.blocker || null,
         debugScanMode: exchangeDiag.debugScanMode ?? false,
         marketFeedDiagnostics: exchangeDiag.marketFeedDiagnostics ?? null,
         marketFilterFunnel: exchangeDiag.marketFilterFunnel ?? null,
@@ -1813,7 +1832,7 @@ export function AppProvider({ children }) {
     };
     const mainBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
     setBotCycles(prev => [{ ...cycleRecord, id: mainBcId }, ...prev].slice(0, 100));
-    safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', mainBcId), entityApi: base44.entities.BotCycle });
+    safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey:cyclePermit.cycleRunKey, entityApi: base44.entities.BotCycle });
 
     // Update lastScanDiagnostics with the actual cycle reason so the dashboard
     // WhyNoBetPanel shows the real blocker, not just the candidate-scoring reason.
@@ -1835,11 +1854,10 @@ export function AppProvider({ children }) {
     if (riskBlockedReason) {
       addToBotActivity('Risk blocked', riskBlockedReason);
     }
-    base44.functions.invoke('runPaperSettlementWorker', { trigger: 'bot_cycle' })
-      .then(response => setSettlementReport(response.data))
-      .catch(error => setSettlementReport({ checkedAt: new Date().toISOString(), errors: 1, errorMessages: [error.message] }));
     } finally {
       cycleInProgressRef.current = false;
+      schedulerControllerRef.current.release(cyclePermit.cycleRunKey);
+      setSchedulerDiagnostics(schedulerControllerRef.current.diagnostics());
     }
   };
 
@@ -1886,7 +1904,8 @@ export function AppProvider({ children }) {
 
   // ── Paper Proof Mode: Run Proof Scan ──
   const runProofScan = async () => {
-    if (cycleInProgressRef.current) return { error: 'A scan is already in progress' };
+    const cyclePermit=await acquireCyclePermit('proof');
+    if (!cyclePermit.acquired) return {error:'DUPLICATE_CYCLE_SKIPPED',diagnostic:cyclePermit};
     cycleInProgressRef.current = true;
     try {
       const s = stateRef.current;
@@ -2024,6 +2043,7 @@ export function AppProvider({ children }) {
       const proofDecisionLogging = buildDecisionLogging({ opportunities:result.allOpportunities, runners:s.runners, cycleId:proofCycleId, cycleNumber:cycleNum, raceKey:result.diagnostics.selectedRaceKey || '', aiStatus:result.diagnostics.aiStatus, finalSelectedOpportunity:result.bestOpportunity, previousCycle:s.botCycles?.[0] || null });
       const cycleRecord = {
         cycleId: proofCycleId, cycleNumber: cycleNum,
+        schedulerInstanceId:cyclePermit.schedulerInstanceId,browserTabId:cyclePermit.browserTabId,triggerSource:cyclePermit.triggerSource,cycleRunKey:cyclePermit.cycleRunKey,startedBy:cyclePermit.startedBy,skippedDuplicateRun:false,
         botMode: 'paper_proof',
         startedAt: now,
         finishedAt: new Date().toISOString(),
@@ -2076,6 +2096,8 @@ export function AppProvider({ children }) {
           orderStatus,
           settlementStatus,
           paperProofMode: true,
+          cycleFailedGate:paperOrderCreated ? null : (result.diagnostics.failedGate || null),
+          failedGate:paperOrderCreated ? null : (result.diagnostics.failedGate || null),
           opportunityFunnel: result.diagnostics.opportunityFunnel ?? null,
           ...result.diagnostics.raceMonitoring,
           ...proofDecisionLogging,
@@ -2084,7 +2106,7 @@ export function AppProvider({ children }) {
       };
       const proofBcId = 'bc' + Date.now() + Math.random().toString(36).slice(2, 6);
       setBotCycles(prev => [{ ...cycleRecord, id: proofBcId }, ...prev].slice(0, 100));
-      safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey: generateIdempotencyKey('cycle', proofBcId), entityApi: base44.entities.BotCycle });
+      safeEntityWrite({ entityName: 'BotCycle', operation: 'create', payload: cycleRecord, idempotencyKey:cyclePermit.cycleRunKey, entityApi: base44.entities.BotCycle });
 
       setBotState(prev => ({ ...prev, cycleNumber: cycleNum, lastCycleTime: now }));
       addAuditLog('Proof Scan Complete', 'system', 'info',
@@ -2120,6 +2142,8 @@ export function AppProvider({ children }) {
       return { error: err.message };
     } finally {
       cycleInProgressRef.current = false;
+      schedulerControllerRef.current.release(cyclePermit.cycleRunKey);
+      setSchedulerDiagnostics(schedulerControllerRef.current.diagnostics());
     }
   };
 
@@ -2143,13 +2167,14 @@ export function AppProvider({ children }) {
 
   // ── Bot Cycle Interval ──
   useEffect(() => {
+    if (botIntervalRef.current) clearInterval(botIntervalRef.current);
+    if (botInitialTimerRef.current) clearTimeout(botInitialTimerRef.current);
+    botIntervalRef.current=null; botInitialTimerRef.current=null;
     if (!botState.running || emergencyStop) return;
-    const intervalMs = (botSettings.scanIntervalSeconds || 10) * 1000;
-
-    const initialDelay = setTimeout(() => { runBotCycleRef.current(); }, 500);
-    const timer = setInterval(() => { runBotCycleRef.current(); }, intervalMs);
-
-    return () => { clearTimeout(initialDelay); clearInterval(timer); };
+    const intervalMs=(botSettings.scanIntervalSeconds || 10)*1000;
+    botInitialTimerRef.current=setTimeout(()=>runBotCycleRef.current('initial'),500);
+    botIntervalRef.current=setInterval(()=>runBotCycleRef.current('interval'),intervalMs);
+    return ()=>{if(botInitialTimerRef.current)clearTimeout(botInitialTimerRef.current);if(botIntervalRef.current)clearInterval(botIntervalRef.current);botInitialTimerRef.current=null;botIntervalRef.current=null;};
   }, [botState.running, emergencyStop, botSettings.scanIntervalSeconds]);
 
   // ── Countdown Timer ──
@@ -2448,6 +2473,7 @@ export function AppProvider({ children }) {
     lastScanDiagnostics, calibration,
     exchangeOpportunities, lastExchangeDiagnostics,
     lastDebugScanResult, lastDebugScanError, lastDebugScanAt,
+    schedulerDiagnostics,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
