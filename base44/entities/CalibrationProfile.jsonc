@@ -1,0 +1,108 @@
+{
+  "name": "CalibrationProfile",
+  "type": "object",
+  "properties": {
+    "profileId": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "CHAMPION",
+        "CHALLENGER",
+        "PENDING_APPROVAL",
+        "REJECTED",
+        "ROLLED_BACK",
+        "BASELINE",
+        "PAUSED"
+      ]
+    },
+    "parentProfileId": {
+      "type": "string"
+    },
+    "objectiveMode": {
+      "type": "string",
+      "enum": [
+        "BALANCED",
+        "STRIKE_RATE_WITH_PROFIT",
+        "PROFIT_MAXIMISING",
+        "LOW_DRAWDOWN"
+      ]
+    },
+    "segment": {
+      "type": "string"
+    },
+    "settingsSnapshot": {
+      "type": "object"
+    },
+    "calculationVersion": {
+      "type": "string"
+    },
+    "modelVersion": {
+      "type": "string"
+    },
+    "promptVersion": {
+      "type": "string"
+    },
+    "trainingMetrics": {
+      "type": "object"
+    },
+    "validationMetrics": {
+      "type": "object"
+    },
+    "testMetrics": {
+      "type": "object"
+    },
+    "shadowMetrics": {
+      "type": "object"
+    },
+    "confidenceIntervals": {
+      "type": "object"
+    },
+    "walkForwardResults": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "overfittingChecks": {
+      "type": "object"
+    },
+    "complexity": {
+      "type": "number"
+    },
+    "paretoRank": {
+      "type": "number"
+    },
+    "promotionReason": {
+      "type": "string"
+    },
+    "rejectionReason": {
+      "type": "string"
+    },
+    "activatedAt": {
+      "type": "string"
+    },
+    "deactivatedAt": {
+      "type": "string"
+    },
+    "rollbackReason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profileId",
+    "version",
+    "name",
+    "status",
+    "objectiveMode",
+    "segment",
+    "settingsSnapshot"
+  ]
+}

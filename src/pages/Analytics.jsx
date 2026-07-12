@@ -6,15 +6,17 @@ import DecisionLogPanel from '@/components/bot/DecisionLogPanel';
 import AccountingSummary from '@/components/accounting/AccountingSummary';
 import ValidationStatus from '@/components/validation/ValidationStatus';
 import ValidationResearchPanel from '@/components/validation/ValidationResearchPanel';
+import SelfCalibrationPanel from '@/components/calibration/SelfCalibrationPanel';
 
 export default function Analytics() {
   return <Tabs defaultValue="performance" className="space-y-5">
     <AccountingSummary />
     <ValidationStatus />
     <ValidationResearchPanel />
-    <TabsList><TabsTrigger value="performance">Performance</TabsTrigger><TabsTrigger value="orders">Orders</TabsTrigger><TabsTrigger value="decisions">Decisions</TabsTrigger></TabsList>
+    <TabsList><TabsTrigger value="performance">Performance</TabsTrigger><TabsTrigger value="orders">Orders</TabsTrigger><TabsTrigger value="decisions">Decisions</TabsTrigger><TabsTrigger value="calibration">Self-Calibration</TabsTrigger></TabsList>
     <TabsContent value="performance"><PerformanceAnalytics /></TabsContent>
     <TabsContent value="orders"><Orders /></TabsContent>
     <TabsContent value="decisions"><DecisionLogPanel /></TabsContent>
+    <TabsContent value="calibration"><SelfCalibrationPanel /></TabsContent>
   </Tabs>;
 }

@@ -1,0 +1,120 @@
+{
+  "name": "CalibrationRun",
+  "type": "object",
+  "properties": {
+    "runId": {
+      "type": "string"
+    },
+    "triggerMode": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "nightly",
+        "settled_count"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "failed",
+        "paused",
+        "blocked"
+      ]
+    },
+    "calibrationState": {
+      "type": "string",
+      "enum": [
+        "NOT_ENOUGH_DATA",
+        "LEARNING",
+        "PAPER_VALIDATION",
+        "ELIGIBLE_FOR_CHAMPION_SELECTION",
+        "NO_PROFITABLE_CONFIGURATION_FOUND",
+        "CHAMPION_PENDING_APPROVAL",
+        "COMPLETED",
+        "PAUSED",
+        "BLOCKED"
+      ]
+    },
+    "objectiveMode": {
+      "type": "string"
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "completedAt": {
+      "type": "string"
+    },
+    "eligibleSettledBets": {
+      "type": "number"
+    },
+    "newSettledBets": {
+      "type": "number"
+    },
+    "currentChampionId": {
+      "type": "string"
+    },
+    "recommendedChampionId": {
+      "type": "string"
+    },
+    "candidateCount": {
+      "type": "number"
+    },
+    "paretoFrontier": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "trainValidationTestResults": {
+      "type": "object"
+    },
+    "walkForwardResults": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "segmentPerformance": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "probabilityCalibration": {
+      "type": "object"
+    },
+    "overfittingChecks": {
+      "type": "object"
+    },
+    "settingsHistory": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "rollbackHistory": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "resultCode": {
+      "type": "string"
+    },
+    "details": {
+      "type": "object"
+    },
+    "error": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "runId",
+    "triggerMode",
+    "status",
+    "calibrationState",
+    "startedAt"
+  ]
+}

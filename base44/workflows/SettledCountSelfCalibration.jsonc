@@ -1,0 +1,40 @@
+{
+  "name": "Settled Count Self Calibration",
+  "description": "Checks calibration after a paper order settles and runs only after 100 new eligible settlements.",
+  "trigger": {
+    "config": {
+      "trigger_type": "entity",
+      "entity_name": "PaperOrder",
+      "events": [
+        "update"
+      ]
+    },
+    "condition": "${ .trigger.data.status == \"settled\" and .trigger.data.settlementStatus == \"settled\" and .trigger.old_data.status != \"settled\" }"
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "settled_count_self_calibration",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "check_calibration": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runScheduledCalibration",
+            "args": {
+              "triggerMode": "settled_count"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Check settled-count calibration",
+            "description": "Runs after 100 new bets"
+          }
+        }
+      }
+    ]
+  }
+}

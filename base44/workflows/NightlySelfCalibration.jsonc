@@ -1,0 +1,47 @@
+{
+  "description": "Runs guarded paper-only calibration nightly when at least 25 new eligible settlements exist.",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "nightly_self_calibration",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_calibration": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runScheduledCalibration",
+            "args": {
+              "triggerMode": "nightly"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Run nightly calibration",
+            "description": "Paper-only guarded run"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 2 * * *",
+      "one_time_date": null,
+      "timezone": "Australia/Brisbane",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "name": "Nightly Self Calibration"
+}
