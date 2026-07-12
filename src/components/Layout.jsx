@@ -1,25 +1,50 @@
 import React, { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
-import { AlertOctagon } from 'lucide-react';
+import { Outlet, useLocation, Link } from 'react-router-dom';
+import { AlertOctagon, LayoutDashboard, SlidersHorizontal, BarChart3, Settings, Bug } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import { useApp } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const PAGE_TITLES = {
-  '/': { title: 'Dashboard', subtitle: 'System status, latest decision, opportunities, and next markets' },
-  '/controls': { title: 'Controls', subtitle: 'Connections, bot actions, paper orders, and operational risk' },
-  '/analytics': { title: 'Analytics', subtitle: 'Performance, order history, and decision review' },
-  '/settings': { title: 'Settings', subtitle: 'Thresholds, risk limits, AI, and system configuration' },
-  '/debug': { title: 'Debug', subtitle: 'Technical diagnostics, logs, raw data, and test tools' },
+  '/': { title: 'Dashboard', subtitle: 'System status, latest decision, and bankroll' },
+  '/controls': { title: 'Controls', subtitle: 'Bot operations, candidates, and cycle timeline' },
+  '/analytics': { title: 'Analytics', subtitle: 'Performance, calibration, and order history' },
+  '/settings': { title: 'Settings', subtitle: 'Thresholds, risk limits, AI, and system config' },
+  '/debug': { title: 'Debug', subtitle: 'Diagnostics, raw data, and export tools' },
 };
+
+const MOBILE_NAV = [
+  { label: 'Home', path: '/', icon: LayoutDashboard },
+  { label: 'Controls', path: '/controls', icon: SlidersHorizontal },
+  { label: 'Analytics', path: '/analytics', icon: BarChart3 },
+  { label: 'Settings', path: '/settings', icon: Settings },
+  { label: 'Debug', path: '/debug', icon: Bug },
+];
+
+function MobileBottomNav() {
+  const location = useLocation();
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around border-t border-border bg-background md:hidden" aria-label="Mobile navigation">
+      {MOBILE_NAV.map(item => {
+        const Icon = item.icon;
+        const active = location.pathname === item.path;
+        return (
+          <Link key={item.path} to={item.path} className={cn('flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 py-1.5', active ? 'text-primary' : 'text-muted-foreground')}>
+            <Icon className="h-4 w-4" />
+            <span className="text-[9px] font-medium">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export default function Layout() {
   const { emergencyStop, clearEmergencyStop } = useApp();
   const location = useLocation();
-  const pageInfo = PAGE_TITLES[location.pathname]
-    || (location.pathname.startsWith('/strategy/') ? { title: 'Strategy Detail', subtitle: 'Full strategy audit and validation' } : null)
-    || { title: 'Betfair Edge Lab', subtitle: '' };
+  const pageInfo = PAGE_TITLES[location.pathname] || { title: 'Betfair Edge Lab', subtitle: '' };
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -38,12 +63,13 @@ export default function Layout() {
             </Button>
           </div>
         )}
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
           <div className="max-w-[1400px] mx-auto">
             <Outlet />
           </div>
         </main>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }
