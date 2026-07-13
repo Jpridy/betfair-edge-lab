@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Save, Download, CheckCircle2, ChevronDown, RotateCcw, AlertTriangle } from 'lucide-react';
+import BetfairConnection from '@/components/settings/BetfairConnection';
 import FeatherlessSettings from '@/components/settings/FeatherlessSettings';
 import MarketTypeThresholds from '@/components/settings/MarketTypeThresholds';
 import ResetAppData from '@/components/settings/ResetAppData';
@@ -123,7 +124,10 @@ export default function Settings() {
         </div>
       </Panel>
 
-      {/* B. Quick Preset */}
+      {/* B. Betfair Connection */}
+      <BetfairConnection />
+
+      {/* C. Quick Preset */}
       <Panel title="Quick Preset" subtitle="Choose a preset configuration">
         <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
           <Button variant="outline" onClick={() => applyPreset('safe')} className="justify-start h-auto py-3">
