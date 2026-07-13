@@ -487,6 +487,12 @@ Deno.serve(async (req) => {
       errors.push(...catalogueErrors);
     }
 
+    // ── Cap at 200 markets max ──
+    const MAX_MARKETS = 200;
+    if (catalogues.length > MAX_MARKETS) {
+      catalogues = catalogues.slice(0, MAX_MARKETS);
+    }
+
     const rawMarketCount = catalogues.length;
 
     if (!Array.isArray(catalogues) || rawMarketCount === 0) {
