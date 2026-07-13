@@ -10,64 +10,106 @@ import { describe, it, expect } from 'vitest';
 import { runExchangeCycle } from './exchangeOpportunityEngine';
 
 function makeMarket(id, type = 'WIN') {
+  const start = new Date(Date.now() + 300000).toISOString();
   return {
-    id, betfairMarketId: id, marketName: `Market ${id}`,
-    marketTypeCode: type, marketType: type, eventId: 'evt1',
-    eventName: 'Test Race', status: 'OPEN', inPlay: false,
-    startTime: new Date(Date.now() + 300000).toISOString(),
-    marketStartTime: new Date(Date.now() + 300000).toISOString(),
-    numberOfRunners: 3, numberOfActiveRunners: 3,
-    numberOfWinners: type === 'PLACE' ? 2 : 1, totalMatched: 5000,
+    id,
+    betfairMarketId: id,
+    marketName: `Market ${id}`,
+    marketTypeCode: type,
+    marketType: type,
+    eventId: 'evt1',
+    eventName: 'Test Race',
+    status: 'OPEN',
+    inPlay: false,
+    startTime: start,
+    marketStartTime: start,
+    numberOfRunners: 3,
+    numberOfActiveRunners: 3,
+    numberOfWinners: type === 'PLACE' ? 2 : 1,
+    totalMatched: 5000,
+    marketBaseRate: 0.05,
   };
 }
 
 function makeRunner(selId, name, back, lay, marketId) {
   return {
-    id: `r${selId}`, marketId, betfairSelectionId: selId, selectionId: selId,
-    runnerName: name, status: 'ACTIVE', handicap: 0,
-    bestBackPrice: back, bestBackSize: 100,
-    bestLayPrice: lay, bestLaySize: 100,
+    id: `r${selId}`,
+    marketId,
+    betfairSelectionId: selId,
+    selectionId: selId,
+    runnerName: name,
+    status: 'ACTIVE',
+    handicap: 0,
+    bestBackPrice: back,
+    bestBackSize: 100,
+    bestLayPrice: lay,
+    bestLaySize: 100,
     lastTradedPrice: (back + lay) / 2,
   };
 }
 
 const BASE_SETTINGS = {
-  minOdds: 1.5, maxOdds: 50, minLiquidity: 10, maxSpread: 7,
-  bankroll: 10000, paperBankroll: 10000, baseStake: 100, maxStake: 500,
-  maxLayLiability: 1500, defaultCommissionRate: 0.05, useMarketBaseRate: true,
-  allowInPlay: false, maxMarketExposure: 1000, maxOpenOrders: 10,
-  maxTradesPerRunner: 1, maxTradesPerMarket: 5, maxTradesPerDay: 50,
-  dailyLossLimit: 500, weeklyLossLimit: 2500, maxUnmatchedOrders: 10,
-  minimumLiquidity: 10, minimumTradedVolume: 0,
-  defaultTimeWindowStartSeconds: 500, defaultTimeWindowEndSeconds: 30,
+  minOdds: 1.5,
+  maxOdds: 50,
+  minLiquidity: 10,
+  maxSpread: 7,
+  bankroll: 10000,
+  paperBankroll: 10000,
+  baseStake: 2,
+  maxStake: 5,
+  maxLayLiability: 25,
+  defaultCommissionRate: 0.05,
+  useMarketBaseRate: true,
+  allowInPlay: false,
+  maxMarketExposure: 1000,
+  maxOpenOrders: 10,
+  maxTradesPerRunner: 1,
+  maxTradesPerMarket: 5,
+  maxTradesPerDay: 50,
+  dailyLossLimit: 500,
+  weeklyLossLimit: 2500,
+  maxUnmatchedOrders: 10,
+  minimumLiquidity: 10,
+  minimumTradedVolume: 0,
+  defaultTimeWindowStartSeconds: 500,
+  defaultTimeWindowEndSeconds: 30,
+  dataFreshnessLimit: 30,
 };
+
+const liveConnection = () => ({ apiConnected: true, streamConnected: true, lastActualPriceUpdateAt: new Date().toISOString() });
 
 export async function testPaperProofMode_callAI_returnsNull_fallsBackToMarketOnly() {
   const markets = [makeMarket('1.1', 'WIN')];
   const runners = [
     makeRunner('1001', 'Horse A', 3.0, 3.1, '1.1'),
-    makeRunner('1002', 'Horse B', 5.0, 5.1, '1.1'),
-    makeRunner('1003', 'Horse C', 7.0, 7.1, '1.1'),
+    makeRunner('1002', 'Horse B', 5.0, 5.2, '1.1'),
+    makeRunner('1003', 'Horse C', 7.0, 7.2, '1.1'),
   ];
   const result = await runExchangeCycle({
-    markets, runners,
+    markets,
+    runners,
     settings: { ...BASE_SETTINGS, paperProofMode: true, forcedPaperOnlyMode: true, liveTradingEnabled: false },
     botSettings: { botMode: 'paper_proof', paperProofMode: true, liveTradingEnabled: false },
     featherlessSettings: { enabled: true, debugScanMode: false, paperProofMode: true, allowDeterministicFallback: true },
-    bankrollStats: { bankroll: 10000 }, paperOrders: [],
-    emergencyStop: false, connectionState: { apiConnected: true },
+    bankrollStats: { bankroll: 10000, available: 10000 },
+    paperOrders: [],
+    emergencyStop: false,
+    connectionState: liveConnection(),
     callAI: async () => null,
   });
 
-  const passed = !result.diagnostics.engineError &&
-    result.diagnostics.totalOpportunities > 0 &&
-    result.diagnostics.marketOnlyResultsCreated > 0;
+  const passed = !result.diagnostics.engineError
+    && result.diagnostics.marketOnlyResultsCreated > 0
+    && result.diagnostics.proofOverrideOpportunities > 0
+    && result.diagnostics.opportunityFunnel.proofFallbackCreated === true;
   return {
-    name: 'paperProofMode + callAI returns null → market-only fallback',
+    name: 'paperProofMode + callAI returns null → market-only diagnostics + proof override',
     passed,
     diagnostics: {
       opportunities: result.diagnostics.totalOpportunities,
       marketOnlyFallbacks: result.diagnostics.marketOnlyResultsCreated,
+      proofFallbackCreated: result.diagnostics.opportunityFunnel.proofFallbackCreated,
+      proofOverrideOpportunities: result.diagnostics.proofOverrideOpportunities,
       engineError: result.diagnostics.engineError,
       noBetReason: result.diagnostics.noBetReason,
       totalMarketsLoaded: result.diagnostics.totalMarketsLoaded,
@@ -83,20 +125,23 @@ export async function testDebugScanMode_callAI_throws_fallsBackToMarketOnly() {
     makeRunner('2002', 'Horse E', 4.0, 4.1, '1.2'),
   ];
   const result = await runExchangeCycle({
-    markets, runners,
+    markets,
+    runners,
     settings: { ...BASE_SETTINGS },
     botSettings: { botMode: 'demo' },
     featherlessSettings: { enabled: true, debugScanMode: true, allowDeterministicFallback: true },
-    bankrollStats: { bankroll: 10000 }, paperOrders: [],
-    emergencyStop: false, connectionState: { apiConnected: true },
+    bankrollStats: { bankroll: 10000 },
+    paperOrders: [],
+    emergencyStop: false,
+    connectionState: liveConnection(),
     callAI: async () => { throw new Error('ETIMEDOUT'); },
   });
 
-  const passed = !result.diagnostics.engineError &&
-    result.diagnostics.totalOpportunities > 0 &&
-    result.diagnostics.marketOnlyResultsCreated > 0;
+  const passed = !result.diagnostics.engineError
+    && result.diagnostics.totalOpportunities > 0
+    && result.diagnostics.marketOnlyResultsCreated > 0;
   return {
-    name: 'debugScanMode + callAI throws timeout → market-only fallback',
+    name: 'debugScanMode + callAI throws timeout → market-only fallback diagnostics',
     passed,
     diagnostics: {
       opportunities: result.diagnostics.totalOpportunities,
@@ -113,12 +158,15 @@ export async function testNoReferenceError_forPaperProofMode() {
   let errorMessage = null;
   try {
     await runExchangeCycle({
-      markets, runners,
+      markets,
+      runners,
       settings: { ...BASE_SETTINGS, paperProofMode: true },
       botSettings: { botMode: 'paper_proof', paperProofMode: true },
       featherlessSettings: { enabled: true, debugScanMode: false, paperProofMode: true, allowDeterministicFallback: true },
-      bankrollStats: { bankroll: 10000 }, paperOrders: [],
-      emergencyStop: false, connectionState: { apiConnected: true },
+      bankrollStats: { bankroll: 10000 },
+      paperOrders: [],
+      emergencyStop: false,
+      connectionState: liveConnection(),
       callAI: async () => null,
     });
   } catch (err) {
@@ -157,7 +205,7 @@ export async function runRegressionTests() {
     await testNoReferenceError_forPaperProofMode(),
     await testSafeDefaults_undefinedArgs_dontCrash(),
   ];
-  return { allPassed: tests.every(t => t.passed), tests };
+  return { allPassed: tests.every(test => test.passed), tests };
 }
 
 describe('Exchange Engine — regression cases', () => {
