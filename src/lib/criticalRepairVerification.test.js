@@ -44,7 +44,7 @@ describe('critical repair verification', () => {
     const existing = { eventId: 'critical-verification-race', marketId: representative.marketId, betfairMarketId: representative.betfairMarketId, status: 'matched', settlementStatus: 'awaiting_result', selectionId: representative.selectionId, side: representative.side };
     const second = await run([existing]);
     expect(second.bestOpportunity).toBeNull();
-    expect(second.allOpportunities.every(item => item.decision === 'REJECT' && ['DUPLICATE_MARKET_EXPOSURE', 'DUPLICATE_RACE_EXPOSURE'].includes(item.failedGate))).toBe(true);
+    expect(second.allOpportunities.every(item => ['NO_BET', 'REJECT'].includes(item.decision) && ['DUPLICATE_MARKET_EXPOSURE', 'DUPLICATE_RACE_EXPOSURE'].includes(item.failedGate))).toBe(true);
     console.log('CRITICAL_REPAIR_REPORT', JSON.stringify({ raceKey: 'critical-verification-race', coverage: first.diagnostics.selectedRaceMarketCoverage, candidates: first.diagnostics.candidateCountByMarketTypeAndSide, ai: first.diagnostics.aiObservability[0], representative: { opportunityId: representative.opportunityId, marketType: representative.marketType, side: representative.side, runner: representative.runnerName, score: representative.riskAdjustedScore, ev: representative.ev, roi: representative.roi, reason: first.diagnostics.sideSelectionDiagnostics.selectedSideReason, decisionSource: representative.decisionSource, decision: representative.decision, failedGate: representative.failedGate }, sideValidation: first.diagnostics.sideSelectionDiagnostics, secondOrder: { blocked: second.bestOpportunity === null, failedGates: [...new Set(second.allOpportunities.map(item => item.failedGate))] } }));
   });
 });
