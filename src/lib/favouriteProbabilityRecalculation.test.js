@@ -13,7 +13,7 @@ it('uses favourite-adjusted probability in EV, ROI, edge, fair odds and sorting 
   const cluster = { eventId: 'e1', canonicalRaceKey: 'e1:R1', raceKey: 'e1:R1', eventName: 'Race', venue: 'Test', raceNumber: 1, startTime: start, winMarkets: [market], placeMarkets: [], h2hMarkets: [], otherMarkets: [] };
   const favouriteContext = calculateFavouriteContext(runners);
   expect(favouriteContext?.favouriteLooksStrong).toBe(true);
-  const ai = { dataQuality: 90, raceSummary: '', runnerProbabilities: [{ selectionId: '1', pWin: 0.55, pPlace: 0.7, confidence: 90 }, { selectionId: '2', pWin: 0.2, pPlace: 0.4, confidence: 80 }] };
+  const ai = { dataQuality: 90, raceSummary: '', runnerProbabilities: [{ selectionId: '1', pWin: 0.6, pPlace: 0.7, confidence: 90 }, { selectionId: '2', pWin: 0.4, pPlace: 0.4, confidence: 80 }] };
   const settings = { paperBankroll: 10000, baseStake: 10, maxStake: 100, maxLayLiability: 1000, maxMarketExposure: 1000, maxOpenOrders: 10, defaultCommissionRate: 0.05, defaultTimeWindowStartSeconds: 500, defaultTimeWindowEndSeconds: 30 };
   const fs = { favouriteContextEnabled: true, favouriteContextMaxProbabilityAdjustment: 0.03, favouriteStrongConfidenceBoost: 5, favouriteWeakConfidencePenalty: 10, allowFavouriteLayOnlyWhenVulnerable: true, minConfidence: 0, winMinOdds: 1.01, winMaxOdds: 50, winMinLiquidity: 2, winMaxSpreadTicks: 20, winMinEdge: -100, winMinROI: -100 };
   const opportunities = generateOpportunitiesForEvent(cluster, runners, ai, settings, {}, fs, { bankroll: 10000, available: 10000, openPaperExposure: 0, todayPL: 0 }, [], null);
