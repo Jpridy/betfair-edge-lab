@@ -1,6 +1,7 @@
 import React from 'react';
 import NextAction from '@/components/shared/NextAction';
 import SafetyBanners from '@/components/controlroom/SafetyBanners';
+import AccountingSummary from '@/components/shared/AccountingSummary';
 import SimpleControlBar from '@/components/controls/SimpleControlBar';
 import CurrentRaceCard from '@/components/dashboard/CurrentRaceCard';
 import BotStatusProgress from '@/components/controls/BotStatusProgress';
@@ -15,6 +16,7 @@ export default function Controls() {
       <SafetyBanners />
       <NextAction />
       <SimpleControlBar />
+      <AccountingSummary />
       <CurrentRaceCard />
       <BotStatusProgress />
       <BestOpportunityCard />
