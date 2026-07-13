@@ -160,15 +160,13 @@ export class BetfairStreamClient {
     // Filters go broad → narrow so we get the most data possible while
     // staying under Betfair's 200-market-per-subscription limit.
     const filters = [
-      // Level 0 — global horse racing WIN + PLACE + MATCH_BET (broadest)
-      { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE', 'MATCH_BET'] },
-      // Level 1 — AU + GB + IE horse racing
+      // Level 0 — AU + GB + IE horse racing (start narrower to avoid SUBSCRIPTION_LIMIT_EXCEEDED)
       { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE', 'MATCH_BET'], countryCodes: ['AU', 'GB', 'IE'] },
-      // Level 2 — AU + GB horse racing
+      // Level 1 — AU + GB horse racing
       { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE', 'MATCH_BET'], countryCodes: ['AU', 'GB'] },
-      // Level 3 — AU only horse racing (drop MATCH_BET — may not exist for AU)
+      // Level 2 — AU only horse racing (drop MATCH_BET)
       { eventTypeIds: ['7'], marketTypes: ['WIN', 'PLACE'], countryCodes: ['AU'] },
-      // Level 4 — AU WIN only (narrowest fallback)
+      // Level 3 — AU WIN only (narrowest)
       { eventTypeIds: ['7'], marketTypes: ['WIN'], countryCodes: ['AU'] },
     ];
     const filter = filters[Math.min(filterLevel, filters.length - 1)];
@@ -555,7 +553,8 @@ export class BetfairStreamClient {
       const bTime = b.startTime ? new Date(b.startTime).getTime() : Infinity;
       return aTime - bTime;
     });
-    return markets;
+    // Cap at 200 markets — Betfair's stream subscription limit
+    return markets.slice(0, 200);
   }
 
   _getMarketsArray() {
