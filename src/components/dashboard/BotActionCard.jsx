@@ -3,11 +3,17 @@ import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
 import { Panel } from '@/components/ui/workstation';
 import { Button } from '@/components/ui/button';
-import { fmtAge } from '@/lib/format';
+import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
 import { Play, Square, ArrowRight, Bot, Clock, CheckCircle2, AlertTriangle, ShoppingCart, RefreshCw } from 'lucide-react';
 
 function BotMetric({ icon: Icon, label, value, tone }) {
-  const toneClass = tone === 'success' ? 'text-success' : tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-muted-foreground';
+  const toneClass = tone === 'success'
+    ? 'text-success'
+    : tone === 'danger'
+      ? 'text-danger'
+      : tone === 'warning'
+        ? 'text-warning'
+        : 'text-muted-foreground';
   return (
     <div className="flex items-center gap-2">
       <Icon className={`h-3.5 w-3.5 shrink-0 ${toneClass}`} />
@@ -18,21 +24,22 @@ function BotMetric({ icon: Icon, label, value, tone }) {
 }
 
 export default function BotActionCard() {
-  const { botState, botCycles, paperOrders, settlementRunning, startBot, stopBot } = useApp();
+  const { botState, botCycles, settlementRunning, startBot, stopBot, emergencyStop } = useApp();
+  const accounting = usePortfolioAccountingDisplay();
   const botRunning = botState.running && !botState.paused;
-  const lastSuccessful = botCycles.find(c => c.status === 'completed');
-  const lastFailed = botCycles.find(c => c.status === 'failed');
-  const openOrders = paperOrders.filter(o => ['matched', 'partially_matched', 'pending', 'executable'].includes(o.status)).length;
+  const lastSuccessful = botCycles.find(cycle => cycle.status === 'completed');
+  const lastFailed = botCycles.find(cycle => cycle.status === 'failed');
+  const unresolvedOrders = accounting.unresolvedOrderCount || 0;
 
   return (
-    <Panel title="Bot Action" subtitle="Start or stop the paper trading bot">
+    <Panel title="Paper Bot" subtitle="Start or stop automated paper scanning">
       <div className="p-4 space-y-3">
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-          <BotMetric icon={Bot} label="State" value={botRunning ? 'Running' : botState.paused ? 'Paused' : 'Stopped'} tone={botRunning ? 'success' : 'warning'} />
+          <BotMetric icon={Bot} label="State" value={emergencyStop ? 'Emergency stop' : botRunning ? 'Running' : botState.paused ? 'Paused' : 'Stopped'} tone={emergencyStop ? 'danger' : botRunning ? 'success' : 'warning'} />
           <BotMetric icon={Clock} label="Next scan" value={botRunning ? `${botState.nextScanCountdown}s` : '—'} />
           <BotMetric icon={CheckCircle2} label="Last success" value={lastSuccessful ? `#${lastSuccessful.cycleNumber}` : '—'} tone={lastSuccessful ? 'success' : undefined} />
           <BotMetric icon={AlertTriangle} label="Last error" value={lastFailed ? `#${lastFailed.cycleNumber}` : 'None'} tone={lastFailed ? 'danger' : undefined} />
-          <BotMetric icon={ShoppingCart} label="Open orders" value={String(openOrders)} tone={openOrders > 0 ? 'warning' : undefined} />
+          <BotMetric icon={ShoppingCart} label="Unresolved orders" value={String(unresolvedOrders)} tone={unresolvedOrders > 0 ? 'warning' : undefined} />
           <BotMetric icon={RefreshCw} label="Settlement" value={settlementRunning ? 'Running' : 'Idle'} tone={settlementRunning ? 'warning' : undefined} />
         </div>
 
@@ -41,6 +48,7 @@ export default function BotActionCard() {
           className="w-full"
           variant={botRunning ? 'destructive' : 'default'}
           onClick={botRunning ? stopBot : startBot}
+          disabled={emergencyStop}
         >
           {botRunning ? <><Square className="h-4 w-4" /> Stop Paper Bot</> : <><Play className="h-4 w-4" /> Start Paper Bot</>}
         </Button>
