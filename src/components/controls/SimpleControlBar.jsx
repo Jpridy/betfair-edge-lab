@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useApp } from '@/lib/AppContext';
 import useAuthoritativeTradingState from '@/hooks/useAuthoritativeTradingState';
 import { Panel } from '@/components/ui/workstation';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Play, Pause, Square, RefreshCw, AlertOctagon, CheckCircle2, ShieldCheck } from 'lucide-react';
 
