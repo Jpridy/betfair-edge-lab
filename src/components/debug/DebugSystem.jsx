@@ -1,8 +1,7 @@
 import React from 'react';
 import { useApp } from '@/lib/AppContext';
-import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
 import { Panel } from '@/components/ui/workstation';
-import { fmtMoney, fmtAge } from '@/lib/format';
+import { fmtAge } from '@/lib/format';
 
 function DebugMetric({ label, value, mono = true }) {
   return (
@@ -16,23 +15,30 @@ function DebugMetric({ label, value, mono = true }) {
 export default function DebugSystem() {
   const { apiConnected, betfairConnection, botState, botCycles, schedulerDiagnostics, auditLogs } = useApp();
   const lastCycle = botCycles[0];
-  const lastError = auditLogs.find(l => l.severity === 'error' || l.severity === 'critical');
-  const errorCount = auditLogs.filter(l => l.severity === 'error' || l.severity === 'critical').length;
+  const lastError = auditLogs.find(log => log.severity === 'error' || log.severity === 'critical');
+  const errorCount = auditLogs.filter(log => log.severity === 'error' || log.severity === 'critical').length;
+  const schedulerState = schedulerDiagnostics?.runInProgress
+    ? 'Cycle running'
+    : botState.running
+      ? 'Waiting for next scan'
+      : 'Stopped';
 
   return (
     <div className="space-y-4">
-      <Panel title="System" subtitle="Application and connection status">
-        <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <Panel title="System" subtitle="Application, scheduler and connection status">
+        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-3 lg:grid-cols-5">
           <DebugMetric label="App Version" value="v1.0" />
-          <DebugMetric label="Build" value="edge-lab" />
+          <DebugMetric label="Mode" value="Paper only" />
           <DebugMetric label="API Status" value={apiConnected ? 'Connected' : 'Disconnected'} />
           <DebugMetric label="Stream Status" value={betfairConnection?.streamConnectionStatus || '—'} />
-          <DebugMetric label="Scheduler" value={schedulerDiagnostics?.active ? 'Active' : 'Idle'} />
-          <DebugMetric label="Tab Lease" value={schedulerDiagnostics?.browserTabId || '—'} />
+          <DebugMetric label="Scheduler" value={schedulerState} />
+          <DebugMetric label="Scheduler Instance" value={schedulerDiagnostics?.schedulerInstanceId || '—'} />
+          <DebugMetric label="Browser Tab" value={schedulerDiagnostics?.browserTabId || '—'} />
+          <DebugMetric label="Active Run Key" value={schedulerDiagnostics?.activeCycleRunKey || '—'} />
           <DebugMetric label="Last Cycle" value={lastCycle ? `#${lastCycle.cycleNumber}` : '—'} />
-          <DebugMetric label="Last Error" value={lastError ? lastError.action.slice(0, 20) : 'None'} />
+          <DebugMetric label="Last Error" value={lastError ? String(lastError.action).slice(0, 40) : 'None'} mono={false} />
           <DebugMetric label="Error Count" value={String(errorCount)} />
-          <DebugMetric label="Data Age" value={fmtAge(betfairConnection?.lastActualPriceUpdateAt)} />
+          <DebugMetric label="Price Data Age" value={fmtAge(betfairConnection?.lastActualPriceUpdateAt)} />
         </div>
       </Panel>
     </div>
