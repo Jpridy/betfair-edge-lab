@@ -1,3 +1,46 @@
-import{describe,expect,it}from'vitest';import{calculateStatisticalValidation}from'./statisticalValidation';
-const order=(i,net=1)=>({id:String(i),status:'settled',settlementStatus:'settled',result:net>0?'won':'lost',grossProfit:net,commission:0,netProfit:net,side:'BACK',matchedStake:2,modelProbability:net>0?.7:.3,settledAt:new Date(2025,0,i+1).toISOString()});
-describe('statistical validation',()=>{it('never validates a small sample',()=>expect(calculateStatisticalValidation(Array.from({length:20},(_,i)=>order(i))).status).toBe('NOT_ENOUGH_DATA'));it('excludes proof and invalid records',()=>{const rows=[order(1),{...order(2),proofMode:true},{...order(3),invalidTestRecord:true}];expect(calculateStatisticalValidation(rows).settledBets).toBe(1);});it('requires an out-of-sample lower confidence bound',()=>{const rows=Array.from({length:500},(_,i)=>order(i,1));const result=calculateStatisticalValidation(rows);expect(result.trainBets).toBe(300);expect(result.testBets).toBe(100);expect(result.bootstrapLower95ROI).toBeGreaterThan(0);expect(result.status).toBe('VALIDATED_OUT_OF_SAMPLE');});});
+import { describe, expect, it } from 'vitest';
+import { calculateStatisticalValidation } from './statisticalValidation';
+
+const order = (i, net = 1) => ({
+  id: String(i),
+  status: 'settled',
+  settlementStatus: 'settled',
+  result: net > 0 ? 'won' : 'lost',
+  grossProfit: net,
+  commission: 0,
+  netProfit: net,
+  side: 'BACK',
+  matchedStake: 2,
+  modelProbability: net > 0 ? 0.7 : 0.3,
+  settledAt: new Date(2025, 0, i + 1).toISOString(),
+});
+
+describe('statistical validation', () => {
+  it('never validates a small sample', () => {
+    expect(calculateStatisticalValidation(Array.from({ length: 20 }, (_, i) => order(i))).status).toBe('NOT_ENOUGH_DATA');
+  });
+
+  it('excludes proof and invalid records', () => {
+    const rows = [order(1), { ...order(2), proofMode: true }, { ...order(3), invalidTestRecord: true }];
+    expect(calculateStatisticalValidation(rows).settledBets).toBe(1);
+  });
+
+  it('includes economically settled legacy records without requiring perfect status fields', () => {
+    const legacy = {
+      ...order(1, -1),
+      status: 'awaiting_result',
+      settlementStatus: 'awaiting_result',
+      settledAt: '2025-01-01T00:00:00.000Z',
+    };
+    expect(calculateStatisticalValidation([legacy]).settledBets).toBe(1);
+  });
+
+  it('requires an out-of-sample lower confidence bound', () => {
+    const rows = Array.from({ length: 500 }, (_, i) => order(i, 1));
+    const result = calculateStatisticalValidation(rows);
+    expect(result.trainBets).toBe(300);
+    expect(result.testBets).toBe(100);
+    expect(result.bootstrapLower95ROI).toBeGreaterThan(0);
+    expect(result.status).toBe('VALIDATED_OUT_OF_SAMPLE');
+  });
+});
