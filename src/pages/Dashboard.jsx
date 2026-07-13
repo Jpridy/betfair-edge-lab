@@ -1,4 +1,6 @@
 import React from 'react';
+import CommandCentre from '@/components/dashboard/CommandCentre';
+import OperationGuide from '@/components/shared/OperationGuide';
 import NextAction from '@/components/shared/NextAction';
 import SafetyBanners from '@/components/controlroom/SafetyBanners';
 import SystemStatusStrip from '@/components/dashboard/SystemStatusStrip';
@@ -12,11 +14,13 @@ export default function Dashboard() {
   return (
     <div className="space-y-4">
       <SafetyBanners />
+      <CommandCentre />
+      <OperationGuide />
       <NextAction />
       <SystemStatusStrip />
       <MainMoneyRow />
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
+        <div className="space-y-4 lg:col-span-2">
           <CurrentRaceCard />
           <LatestDecisionCard />
         </div>
