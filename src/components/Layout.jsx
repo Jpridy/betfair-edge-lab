@@ -8,18 +8,18 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const PAGE_TITLES = {
-  '/': { title: 'Dashboard', subtitle: 'System status, latest decision, and bankroll' },
-  '/controls': { title: 'Controls', subtitle: 'Bot operations, candidates, and cycle timeline' },
-  '/analytics': { title: 'Analytics', subtitle: 'Performance, calibration, and order history' },
-  '/settings': { title: 'Settings', subtitle: 'Thresholds, risk limits, AI, and system config' },
-  '/debug': { title: 'Debug', subtitle: 'Diagnostics, raw data, and export tools' },
+  '/': { title: 'Dashboard', subtitle: 'Start here — status, next action, and paper bankroll' },
+  '/controls': { title: 'Paper Bot', subtitle: 'Start, stop, scan, settle, and inspect the current race' },
+  '/analytics': { title: 'Results', subtitle: 'Paper P/L, calibration, orders, and research' },
+  '/settings': { title: 'Setup', subtitle: 'Safe paper settings, risk limits, and model thresholds' },
+  '/debug': { title: 'Debug', subtitle: 'Diagnostics, raw state, accounting checks, and export tools' },
 };
 
 const MOBILE_NAV = [
   { label: 'Home', path: '/', icon: LayoutDashboard },
-  { label: 'Controls', path: '/controls', icon: SlidersHorizontal },
-  { label: 'Analytics', path: '/analytics', icon: BarChart3 },
-  { label: 'Settings', path: '/settings', icon: Settings },
+  { label: 'Bot', path: '/controls', icon: SlidersHorizontal },
+  { label: 'Results', path: '/analytics', icon: BarChart3 },
+  { label: 'Setup', path: '/settings', icon: Settings },
   { label: 'Debug', path: '/debug', icon: Bug },
 ];
 
@@ -50,21 +50,21 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
-      <div className="md:ml-56 flex flex-col min-h-screen">
+      <div className="flex min-h-screen flex-col md:ml-60">
         <TopBar title={pageInfo.title} subtitle={pageInfo.subtitle} onMenuClick={() => setMobileOpen(true)} />
         {emergencyStop && (
-          <div className="bg-danger/15 border-b border-danger/30 px-4 md:px-6 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-danger font-body font-semibold text-xs md:text-sm">
-              <AlertOctagon className="h-4 w-4 animate-pulse-dot shrink-0" />
-              <span>EMERGENCY STOP ACTIVE — All trading halted. Open paper orders cancelled.</span>
+          <div className="flex items-center justify-between border-b border-danger/30 bg-danger/15 px-4 py-2 md:px-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-danger md:text-sm">
+              <AlertOctagon className="h-4 w-4 shrink-0 animate-pulse-dot" />
+              <span>EMERGENCY STOP ACTIVE — paper scanning is halted.</span>
             </div>
-            <Button size="sm" variant="outline" onClick={clearEmergencyStop} className="h-7 text-xs border-danger/40 text-danger hover:bg-danger/10 shrink-0 ml-3">
-              Clear
+            <Button size="sm" variant="outline" onClick={clearEmergencyStop} className="ml-3 h-7 shrink-0 border-danger/40 text-xs text-danger hover:bg-danger/10">
+              Clear Stop
             </Button>
           </div>
         )}
-        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
-          <div className="max-w-[1400px] mx-auto">
+        <main className="flex-1 p-4 pb-20 md:p-6 md:pb-6">
+          <div className="mx-auto max-w-[1440px]">
             <Outlet />
           </div>
         </main>
