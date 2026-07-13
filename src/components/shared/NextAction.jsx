@@ -2,34 +2,95 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/lib/AppContext';
 import usePortfolioAccountingDisplay from '@/hooks/usePortfolioAccountingDisplay';
+import useAuthoritativeTradingState from '@/hooks/useAuthoritativeTradingState';
 import { Panel } from '@/components/ui/workstation';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, AlertTriangle, Play, Wifi, Clock, CheckCircle2, FlaskConical } from 'lucide-react';
+import { ArrowRight, AlertTriangle, Play, Wifi, Clock, CheckCircle2 } from 'lucide-react';
 
 export default function NextAction() {
-  const { apiConnected, botState, betfairConnection, paperOrders, settlementRunning, runSettlementCheckNow } = useApp();
+  const {
+    apiConnected,
+    botState,
+    paperOrders,
+    settlementRunning,
+    runSettlementCheckNow,
+  } = useApp();
   const accounting = usePortfolioAccountingDisplay();
+  const liveState = useAuthoritativeTradingState();
   const botRunning = botState.running && !botState.paused;
-  const hasPrices = betfairConnection?.lastActualPriceUpdateAt != null;
-  const awaitingResult = paperOrders.filter(o => o.status === 'awaiting_result').length;
-  const openOrders = paperOrders.filter(o => ['matched', 'partially_matched', 'pending', 'executable'].includes(o.status)).length;
+  const awaitingResult = paperOrders.filter(order => {
+    const status = String(order.status || '').toLowerCase();
+    const settlementStatus = String(order.settlementStatus || '').toLowerCase();
+    return ['matched', 'partially_matched', 'awaiting_result', 'result_unknown'].includes(status)
+      || ['awaiting_result', 'result_unknown'].includes(settlementStatus);
+  }).length;
 
-  let action = { icon: CheckCircle2, label: 'No action needed', desc: 'The system is running normally.', to: null, onClick: null, tone: 'success' };
+  let action = {
+    icon: CheckCircle2,
+    label: 'No action needed',
+    desc: 'The paper system is running normally.',
+    to: null,
+    onClick: null,
+    tone: 'success',
+  };
 
-  if (!apiConnected) {
-    action = { icon: Wifi, label: 'Connect to Betfair', desc: 'Paste your session token in Settings to load live market data.', to: '/settings', onClick: null, tone: 'warning' };
-  } else if (!hasPrices) {
-    action = { icon: Clock, label: 'Wait for live prices', desc: 'Markets are loading. Prices will appear shortly.', to: null, onClick: null, tone: 'warning' };
+  if (accounting.accountingDataInconsistent) {
+    action = {
+      icon: AlertTriangle,
+      label: 'Fix accounting inconsistency',
+      desc: `${accounting.resolvedButStateInconsistentCount || 0} resolved order(s) need their settlement status repaired. P/L already includes their economic result.`,
+      to: '/debug',
+      onClick: null,
+      tone: 'danger',
+    };
+  } else if (!apiConnected) {
+    action = {
+      icon: Wifi,
+      label: 'Connect to Betfair',
+      desc: 'Open Settings and connect a valid Betfair session before starting the paper bot.',
+      to: '/settings',
+      onClick: null,
+      tone: 'warning',
+    };
+  } else if (liveState.priceFeedStatus !== 'LIVE') {
+    action = {
+      icon: Clock,
+      label: liveState.priceFeedStatus === 'STALE' ? 'Refresh stale prices' : 'Wait for live prices',
+      desc: liveState.priceFeedStatus === 'STALE'
+        ? `The latest executable price is ${liveState.priceAgeSeconds ?? 'unknown'} seconds old.`
+        : 'Market data is connected, but no fresh executable prices are available yet.',
+      to: '/controls',
+      onClick: null,
+      tone: 'warning',
+    };
   } else if (!botRunning && !botState.paused) {
-    action = { icon: Play, label: 'Start Paper Bot', desc: 'Bot is stopped. Start scanning for betting opportunities.', to: '/controls', onClick: null, tone: 'info' };
+    action = {
+      icon: Play,
+      label: 'Start Paper Bot',
+      desc: 'The price feed is live and the paper bot is ready to scan.',
+      to: '/controls',
+      onClick: null,
+      tone: 'info',
+    };
   } else if (awaitingResult > 0 && !settlementRunning) {
-    action = { icon: AlertTriangle, label: 'Settle completed race', desc: `${awaitingResult} order(s) waiting for settlement.`, to: null, onClick: runSettlementCheckNow, tone: 'warning' };
-  } else if (accounting.reconciliationFailed) {
-    action = { icon: AlertTriangle, label: 'Fix accounting inconsistency', desc: 'Accounting data is inconsistent. Review in Debug > Accounting.', to: '/debug', onClick: null, tone: 'danger' };
+    action = {
+      icon: AlertTriangle,
+      label: 'Check completed races',
+      desc: `${awaitingResult} unresolved matched order(s) are waiting for a result. Future races will be skipped automatically.`,
+      to: null,
+      onClick: runSettlementCheckNow,
+      tone: 'warning',
+    };
   }
 
   const Icon = action.icon;
-  const toneClass = action.tone === 'success' ? 'text-success' : action.tone === 'danger' ? 'text-danger' : action.tone === 'warning' ? 'text-warning' : 'text-info';
+  const toneClass = action.tone === 'success'
+    ? 'text-success'
+    : action.tone === 'danger'
+      ? 'text-danger'
+      : action.tone === 'warning'
+        ? 'text-warning'
+        : 'text-info';
 
   return (
     <Panel>
